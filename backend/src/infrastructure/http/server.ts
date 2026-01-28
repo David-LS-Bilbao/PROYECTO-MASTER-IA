@@ -1,9 +1,14 @@
 import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import { DependencyContainer } from '../config/dependencies';
+import { createIngestRoutes } from './routes/ingest.routes';
 
 export function createServer(): Application {
   const app = express();
+
+  // Initialize dependencies
+  const container = DependencyContainer.getInstance();
 
   // Security middleware
   app.use(helmet());
@@ -26,6 +31,9 @@ export function createServer(): Application {
       timestamp: new Date().toISOString(),
     });
   });
+
+  // API Routes
+  app.use('/api/ingest', createIngestRoutes(container.ingestController));
 
   // 404 handler
   app.use((_req: Request, res: Response) => {
