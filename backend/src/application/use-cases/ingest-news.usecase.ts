@@ -102,6 +102,10 @@ export class IngestNewsUseCase {
             category: request.category || null,
             language: request.language || 'es',
             embedding: null, // Will be generated later by embedding service
+            summary: null, // Will be generated later by analysis service
+            biasScore: null, // Will be generated later by analysis service
+            analysis: null, // Will be generated later by analysis service
+            analyzedAt: null, // Will be set when article is analyzed
             fetchedAt: new Date(),
             updatedAt: new Date(),
           });

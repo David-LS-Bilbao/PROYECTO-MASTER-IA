@@ -24,6 +24,10 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
           author: data.author,
           category: data.category,
           embedding: data.embedding,
+          summary: data.summary,
+          biasScore: data.biasScore,
+          analysis: data.analysis,
+          analyzedAt: data.analyzedAt,
           updatedAt: new Date(),
         },
         create: {
@@ -39,6 +43,10 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
           category: data.category,
           language: data.language,
           embedding: data.embedding,
+          summary: data.summary,
+          biasScore: data.biasScore,
+          analysis: data.analysis,
+          analyzedAt: data.analyzedAt,
           fetchedAt: data.fetchedAt,
           updatedAt: new Date(),
         },
@@ -67,6 +75,10 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
               author: data.author,
               category: data.category,
               embedding: data.embedding,
+              summary: data.summary,
+              biasScore: data.biasScore,
+              analysis: data.analysis,
+              analyzedAt: data.analyzedAt,
               updatedAt: new Date(),
             },
             create: {
@@ -82,6 +94,10 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
               category: data.category,
               language: data.language,
               embedding: data.embedding,
+              summary: data.summary,
+              biasScore: data.biasScore,
+              analysis: data.analysis,
+              analyzedAt: data.analyzedAt,
               fetchedAt: data.fetchedAt,
               updatedAt: new Date(),
             },
@@ -91,6 +107,23 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
     } catch (error) {
       throw new DatabaseError(
         `Failed to save articles in batch: ${(error as Error).message}`,
+        error as Error
+      );
+    }
+  }
+
+  async findById(id: string): Promise<NewsArticle | null> {
+    try {
+      const article = await this.prisma.article.findUnique({
+        where: { id },
+      });
+
+      if (!article) return null;
+
+      return this.toDomain(article);
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to find article by ID: ${(error as Error).message}`,
         error as Error
       );
     }
@@ -167,6 +200,42 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
     }
   }
 
+  async findUnanalyzed(limit: number): Promise<NewsArticle[]> {
+    try {
+      const articles = await this.prisma.article.findMany({
+        where: {
+          analyzedAt: null,
+        },
+        orderBy: {
+          publishedAt: 'desc',
+        },
+        take: limit,
+      });
+
+      return articles.map((article) => this.toDomain(article));
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to find unanalyzed articles: ${(error as Error).message}`,
+        error as Error
+      );
+    }
+  }
+
+  async countAnalyzed(): Promise<number> {
+    try {
+      return await this.prisma.article.count({
+        where: {
+          analyzedAt: { not: null },
+        },
+      });
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to count analyzed articles: ${(error as Error).message}`,
+        error as Error
+      );
+    }
+  }
+
   /**
    * Map Prisma model to Domain entity
    */
@@ -184,6 +253,10 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
       category: prismaArticle.category,
       language: prismaArticle.language,
       embedding: prismaArticle.embedding,
+      summary: prismaArticle.summary,
+      biasScore: prismaArticle.biasScore,
+      analysis: prismaArticle.analysis,
+      analyzedAt: prismaArticle.analyzedAt,
       fetchedAt: prismaArticle.fetchedAt,
       updatedAt: prismaArticle.updatedAt,
     };

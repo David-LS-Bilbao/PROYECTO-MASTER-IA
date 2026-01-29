@@ -5,20 +5,27 @@
 
 import { PrismaClient } from '@prisma/client';
 import { NewsAPIClient } from '../external/newsapi.client';
+import { GeminiClient } from '../external/gemini.client';
+import { JinaReaderClient } from '../external/jina-reader.client';
 import { PrismaNewsArticleRepository } from '../persistence/prisma-news-article.repository';
 import { IngestNewsUseCase } from '../../application/use-cases/ingest-news.usecase';
+import { AnalyzeArticleUseCase } from '../../application/use-cases/analyze-article.usecase';
 import { IngestController } from '../http/controllers/ingest.controller';
+import { AnalyzeController } from '../http/controllers/analyze.controller';
 
 export class DependencyContainer {
   private static instance: DependencyContainer;
 
   public readonly prisma: PrismaClient;
   public readonly ingestController: IngestController;
+  public readonly analyzeController: AnalyzeController;
 
   private constructor() {
     // Infrastructure Layer
     this.prisma = new PrismaClient();
     const newsAPIClient = new NewsAPIClient();
+    const geminiClient = new GeminiClient(process.env.GEMINI_API_KEY || '');
+    const jinaReaderClient = new JinaReaderClient(process.env.JINA_API_KEY || '');
     const articleRepository = new PrismaNewsArticleRepository(this.prisma);
 
     // Application Layer
@@ -28,8 +35,15 @@ export class DependencyContainer {
       this.prisma
     );
 
+    const analyzeArticleUseCase = new AnalyzeArticleUseCase(
+      articleRepository,
+      geminiClient,
+      jinaReaderClient
+    );
+
     // Presentation Layer
     this.ingestController = new IngestController(ingestNewsUseCase);
+    this.analyzeController = new AnalyzeController(analyzeArticleUseCase);
   }
 
   static getInstance(): DependencyContainer {

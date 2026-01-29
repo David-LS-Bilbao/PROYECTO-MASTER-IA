@@ -16,8 +16,23 @@ export interface NewsArticleProps {
   category: string | null;
   language: string;
   embedding: string | null;
+  // AI Analysis fields
+  summary: string | null;
+  biasScore: number | null;
+  analysis: string | null;
+  analyzedAt: Date | null;
+  // Metadata
   fetchedAt: Date;
   updatedAt: Date;
+}
+
+export interface ArticleAnalysis {
+  summary: string;
+  biasScore: number;
+  biasIndicators: string[];
+  sentiment: 'positive' | 'negative' | 'neutral';
+  mainTopics: string[];
+  factualClaims: string[];
 }
 
 export class NewsArticle {
@@ -96,12 +111,69 @@ export class NewsArticle {
     return this.props.embedding;
   }
 
+  get summary(): string | null {
+    return this.props.summary;
+  }
+
+  get biasScore(): number | null {
+    return this.props.biasScore;
+  }
+
+  get analysis(): string | null {
+    return this.props.analysis;
+  }
+
+  get analyzedAt(): Date | null {
+    return this.props.analyzedAt;
+  }
+
   get fetchedAt(): Date {
     return this.props.fetchedAt;
   }
 
   get updatedAt(): Date {
     return this.props.updatedAt;
+  }
+
+  get isAnalyzed(): boolean {
+    return this.props.analyzedAt !== null;
+  }
+
+  /**
+   * Get parsed analysis object
+   */
+  getParsedAnalysis(): ArticleAnalysis | null {
+    if (!this.props.analysis) return null;
+    try {
+      return JSON.parse(this.props.analysis) as ArticleAnalysis;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Create a new instance with analysis data
+   */
+  withAnalysis(analysis: ArticleAnalysis): NewsArticle {
+    return NewsArticle.reconstitute({
+      ...this.props,
+      summary: analysis.summary,
+      biasScore: analysis.biasScore,
+      analysis: JSON.stringify(analysis),
+      analyzedAt: new Date(),
+      updatedAt: new Date(),
+    });
+  }
+
+  /**
+   * Create a new instance with full content (from scraping)
+   */
+  withFullContent(content: string): NewsArticle {
+    return NewsArticle.reconstitute({
+      ...this.props,
+      content,
+      updatedAt: new Date(),
+    });
   }
 
   toJSON(): NewsArticleProps {

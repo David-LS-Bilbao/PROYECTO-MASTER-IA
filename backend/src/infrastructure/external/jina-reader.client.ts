@@ -1,0 +1,191 @@
+/**
+ * JinaReaderClient Implementation (Infrastructure Layer)
+ * Uses Jina Reader API for web scraping and content extraction
+ */
+
+import {
+  IJinaReaderClient,
+  ScrapedContent,
+} from '../../domain/services/jina-reader-client.interface';
+import {
+  ExternalAPIError,
+  ConfigurationError,
+} from '../../domain/errors/infrastructure.error';
+
+const JINA_READER_BASE_URL = 'https://r.jina.ai/';
+const REQUEST_TIMEOUT = 30000; // 30 seconds
+
+export class JinaReaderClient implements IJinaReaderClient {
+  private readonly apiKey: string;
+
+  constructor(apiKey: string) {
+    if (!apiKey || apiKey.trim() === '') {
+      throw new ConfigurationError('JINA_API_KEY is required');
+    }
+    this.apiKey = apiKey;
+  }
+
+  async scrapeUrl(url: string): Promise<ScrapedContent> {
+    // Validate URL format
+    if (!this.isValidUrl(url)) {
+      throw new ExternalAPIError('JinaReader', 'Invalid URL format', 400);
+    }
+
+    const encodedUrl = encodeURIComponent(url);
+    const jinaUrl = `${JINA_READER_BASE_URL}${encodedUrl}`;
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+
+      const response = await fetch(jinaUrl, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          Accept: 'application/json',
+          'X-Return-Format': 'json',
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new ExternalAPIError('JinaReader', 'Invalid API key', 401);
+        }
+        if (response.status === 429) {
+          throw new ExternalAPIError('JinaReader', 'Rate limit exceeded', 429);
+        }
+        if (response.status === 404) {
+          throw new ExternalAPIError('JinaReader', 'URL not found or inaccessible', 404);
+        }
+        throw new ExternalAPIError(
+          'JinaReader',
+          `HTTP error: ${response.status}`,
+          response.status
+        );
+      }
+
+      const data = await response.json();
+      return this.parseJinaResponse(data, url);
+    } catch (error) {
+      if (error instanceof ExternalAPIError) {
+        throw error;
+      }
+
+      const err = error as Error;
+
+      if (err.name === 'AbortError') {
+        throw new ExternalAPIError(
+          'JinaReader',
+          'Request timeout - page took too long to load',
+          408
+        );
+      }
+
+      throw new ExternalAPIError(
+        'JinaReader',
+        `Scraping failed: ${err.message}`,
+        500,
+        err
+      );
+    }
+  }
+
+  async isAvailable(): Promise<boolean> {
+    try {
+      const testUrl = 'https://example.com';
+      const response = await fetch(`${JINA_READER_BASE_URL}${encodeURIComponent(testUrl)}`, {
+        method: 'HEAD',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Validate URL format
+   */
+  private isValidUrl(url: string): boolean {
+    try {
+      const parsed = new URL(url);
+      return ['http:', 'https:'].includes(parsed.protocol);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Parse Jina Reader response
+   */
+  private parseJinaResponse(data: any, originalUrl: string): ScrapedContent {
+    // Jina Reader returns different formats depending on the page
+    // Handle both direct content and structured response
+
+    if (typeof data === 'string') {
+      // Plain text/markdown response
+      return {
+        title: this.extractTitleFromMarkdown(data),
+        content: data,
+        description: null,
+        author: null,
+        publishedDate: null,
+      };
+    }
+
+    // Structured JSON response
+    const content = data.content || data.text || data.markdown || '';
+    const title = data.title || this.extractTitleFromMarkdown(content);
+
+    if (!content || content.trim().length === 0) {
+      throw new ExternalAPIError(
+        'JinaReader',
+        `No content could be extracted from URL: ${originalUrl}`,
+        422
+      );
+    }
+
+    return {
+      title: title || 'Untitled',
+      content: this.cleanContent(content),
+      description: data.description || data.excerpt || null,
+      author: data.author || data.byline || null,
+      publishedDate: data.publishedDate || data.date || null,
+    };
+  }
+
+  /**
+   * Extract title from markdown content
+   */
+  private extractTitleFromMarkdown(markdown: string): string {
+    const titleMatch = markdown.match(/^#\s+(.+)$/m);
+    if (titleMatch) {
+      return titleMatch[1].trim();
+    }
+
+    // Fallback: use first line if it's short enough
+    const firstLine = markdown.split('\n')[0]?.trim();
+    if (firstLine && firstLine.length < 200) {
+      return firstLine;
+    }
+
+    return 'Untitled';
+  }
+
+  /**
+   * Clean extracted content
+   */
+  private cleanContent(content: string): string {
+    return content
+      .replace(/\[.*?\]\(javascript:.*?\)/g, '') // Remove JS links
+      .replace(/!\[.*?\]\(data:.*?\)/g, '') // Remove base64 images
+      .replace(/\n{4,}/g, '\n\n\n') // Limit consecutive newlines
+      .replace(/\s{2,}/g, ' ') // Normalize spaces
+      .trim();
+  }
+}

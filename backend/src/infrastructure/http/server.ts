@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { DependencyContainer } from '../config/dependencies';
 import { createIngestRoutes } from './routes/ingest.routes';
+import { createAnalyzeRoutes } from './routes/analyze.routes';
 
 export function createServer(): Application {
   const app = express();
@@ -34,6 +35,7 @@ export function createServer(): Application {
 
   // API Routes
   app.use('/api/ingest', createIngestRoutes(container.ingestController));
+  app.use('/api/analyze', createAnalyzeRoutes(container.analyzeController));
 
   // 404 handler
   app.use((_req: Request, res: Response) => {

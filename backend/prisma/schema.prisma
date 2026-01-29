@@ -50,6 +50,12 @@ model Article {
   // RAG fields
   embedding     String?   @db.Text  // JSON string of vector embedding
 
+  // AI Analysis fields
+  summary       String?   @db.Text  // AI-generated summary
+  biasScore     Float?              // Bias score from 0 (neutral) to 1 (highly biased)
+  analysis      String?   @db.Text  // JSON string with detailed analysis
+  analyzedAt    DateTime?           // When the article was analyzed
+
   // Metadata
   fetchedAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -60,6 +66,7 @@ model Article {
   @@index([publishedAt])
   @@index([source])
   @@index([category])
+  @@index([analyzedAt])
   @@map("articles")
 }
 
