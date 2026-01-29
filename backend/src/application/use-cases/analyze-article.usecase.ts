@@ -8,8 +8,6 @@ import { INewsArticleRepository } from '../../domain/repositories/news-article.r
 import { IGeminiClient } from '../../domain/services/gemini-client.interface';
 import { IJinaReaderClient } from '../../domain/services/jina-reader-client.interface';
 import { EntityNotFoundError, ValidationError } from '../../domain/errors/domain.error';
-import { ExternalAPIError } from '../../domain/errors/infrastructure.error';
-
 
 
 export interface AnalyzeArticleInput {
@@ -95,15 +93,22 @@ export class AnalyzeArticleUseCase {
       console.log(`   🌐 Scraping contenido con Jina Reader (URL: ${article.url})...`);
       
       try {
-        const scrapedContent = await this.scrapeArticleContent(article.url);
+        const scrapedData = await this.jinaReaderClient.scrapeUrl(article.url);
         
-        if (scrapedContent && scrapedContent.length >= 100) {
-          contentToAnalyze = scrapedContent;
-          scrapedContentLength = scrapedContent.length;
+        if (scrapedData.content && scrapedData.content.length >= 100) {
+          contentToAnalyze = scrapedData.content;
+          scrapedContentLength = scrapedData.content.length;
           console.log(`   ✅ Scraping OK (${scrapedContentLength} caracteres).`);
 
           // Update article with scraped content
-          const articleWithContent = article.withFullContent(scrapedContent);
+          let articleWithContent = article.withFullContent(scrapedData.content);
+          
+          // Enrich with image URL if article doesn't have one
+          if (!article.urlToImage && scrapedData.imageUrl) {
+            console.log(`   🖼️  Imagen detectada: ${scrapedData.imageUrl}`);
+            articleWithContent = articleWithContent.withImage(scrapedData.imageUrl);
+          }
+          
           await this.articleRepository.save(articleWithContent);
         } else {
           throw new Error('Contenido scrapeado vacío o muy corto');
@@ -217,32 +222,5 @@ export class AnalyzeArticleUseCase {
     const percentAnalyzed = total > 0 ? Math.round((analyzed / total) * 100) : 0;
 
     return { total, analyzed, pending, percentAnalyzed };
-  }
-
-  /**
-   * Scrape article content using Jina Reader
-   * @throws ExternalAPIError if scraping fails
-   */
-  private async scrapeArticleContent(url: string): Promise<string> {
-    try {
-      const scraped = await this.jinaReaderClient.scrapeUrl(url);
-      
-      // Validar que el contenido no sea un mensaje de error
-      if (!scraped.content || scraped.content.includes('JinaReader API Error')) {
-        throw new Error('Jina devolvió contenido inválido o vacío');
-      }
-      
-      return scraped.content;
-    } catch (error) {
-      if (error instanceof ExternalAPIError) {
-        throw error;
-      }
-      throw new ExternalAPIError(
-        'JinaReader',
-        `Failed to scrape URL: ${url}`,
-        500,
-        error as Error
-      );
-    }
   }
 }

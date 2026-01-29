@@ -9,6 +9,7 @@ export interface ScrapedContent {
   description: string | null;
   author: string | null;
   publishedDate: string | null;
+  imageUrl: string | null;
 }
 
 export interface IJinaReaderClient {

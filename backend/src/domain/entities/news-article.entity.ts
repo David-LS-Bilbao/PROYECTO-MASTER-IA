@@ -176,6 +176,17 @@ export class NewsArticle {
     });
   }
 
+  /**
+   * Create a new instance with image URL
+   */
+  withImage(imageUrl: string): NewsArticle {
+    return NewsArticle.reconstitute({
+      ...this.props,
+      urlToImage: imageUrl,
+      updatedAt: new Date(),
+    });
+  }
+
   toJSON(): NewsArticleProps {
     return { ...this.props };
   }

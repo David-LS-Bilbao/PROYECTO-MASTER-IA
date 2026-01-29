@@ -135,6 +135,7 @@ export class JinaReaderClient implements IJinaReaderClient {
         description: null,
         author: null,
         publishedDate: null,
+        imageUrl: null,
       };
     }
 
@@ -150,12 +151,16 @@ export class JinaReaderClient implements IJinaReaderClient {
       );
     }
 
+    // Extract image URL from Open Graph metadata or other fields
+    const imageUrl = this.extractImageUrl(data);
+
     return {
       title: title || 'Untitled',
       content: this.cleanContent(content),
       description: data.description || data.excerpt || null,
       author: data.author || data.byline || null,
       publishedDate: data.publishedDate || data.date || null,
+      imageUrl,
     };
   }
 
@@ -175,6 +180,39 @@ export class JinaReaderClient implements IJinaReaderClient {
     }
 
     return 'Untitled';
+  }
+
+  /**
+   * Extract image URL from Jina Reader response
+   * Prioritizes: og:image > twitter:image > images array > null
+   */
+  private extractImageUrl(data: any): string | null {
+    // Priority 1: Open Graph image
+    if (data.ogImage || data['og:image']) {
+      return data.ogImage || data['og:image'];
+    }
+
+    // Priority 2: Twitter card image
+    if (data.twitterImage || data['twitter:image']) {
+      return data.twitterImage || data['twitter:image'];
+    }
+
+    // Priority 3: Generic image field
+    if (data.image && typeof data.image === 'string') {
+      return data.image;
+    }
+
+    // Priority 4: Images array (take first)
+    if (Array.isArray(data.images) && data.images.length > 0) {
+      return data.images[0];
+    }
+
+    // Priority 5: Featured image
+    if (data.featuredImage) {
+      return data.featuredImage;
+    }
+
+    return null;
   }
 
   /**
