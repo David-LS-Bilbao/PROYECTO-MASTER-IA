@@ -8,6 +8,7 @@ import { INewsArticleRepository } from '../../domain/repositories/news-article.r
 import { IGeminiClient } from '../../domain/services/gemini-client.interface';
 import { IJinaReaderClient } from '../../domain/services/jina-reader-client.interface';
 import { EntityNotFoundError, ValidationError } from '../../domain/errors/domain.error';
+import { MetadataExtractor } from '../../infrastructure/external/metadata-extractor';
 
 
 export interface AnalyzeArticleInput {
@@ -41,7 +42,8 @@ export class AnalyzeArticleUseCase {
   constructor(
     private readonly articleRepository: INewsArticleRepository,
     private readonly geminiClient: IGeminiClient,
-    private readonly jinaReaderClient: IJinaReaderClient
+    private readonly jinaReaderClient: IJinaReaderClient,
+    private readonly metadataExtractor: MetadataExtractor
   ) {}
 
   /**
@@ -56,7 +58,7 @@ export class AnalyzeArticleUseCase {
     }
 
     // 1. Fetch article from database
-    const article = await this.articleRepository.findById(articleId);
+    let article = await this.articleRepository.findById(articleId);
     if (!article) {
       throw new EntityNotFoundError('Article', articleId);
     }
@@ -125,6 +127,31 @@ export class AnalyzeArticleUseCase {
       }
     } else {
         console.log(`   📂 Usando contenido existente en DB.`);
+    }
+
+    // 3.5. Extract image metadata if article doesn't have one (BEFORE Gemini analysis)
+    if (!article.urlToImage) {
+      console.log(`   🖼️  Extrayendo metadata de imagen (timeout 2s)...`);
+      try {
+        const metadata = await this.metadataExtractor.extractMetadata(article.url);
+        const imageUrl = this.metadataExtractor.getBestImageUrl(metadata);
+        
+        if (imageUrl) {
+          console.log(`   ✅ Imagen encontrada: ${imageUrl.substring(0, 60)}...`);
+          // Update article with image URL
+          const articleWithImage = article.withImage(imageUrl);
+          await this.articleRepository.save(articleWithImage);
+          // Update local reference for next steps
+          article = articleWithImage;
+        } else {
+          console.log(`   ⚠️  No se encontró og:image en la página.`);
+        }
+      } catch (metadataError) {
+        console.warn(`   ⚠️  Metadata extraction falló (continuando sin imagen): ${metadataError instanceof Error ? metadataError.message : 'Error desconocido'}`);
+        // Continue without image - not a critical error
+      }
+    } else {
+      console.log(`   🖼️  Artículo ya tiene imagen.`);
     }
 
     // 4. Analyze with Gemini

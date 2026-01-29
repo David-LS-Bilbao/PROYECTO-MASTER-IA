@@ -1,10 +1,10 @@
 # Estado del Proyecto - Verity News
 
-> Última actualización: Sprint 3 FINAL + Refactorización Google News RSS (2026-01-29) - **OPERACIONAL** ✅
+> Última actualización: Sprint 3 FINAL + RSS Directos (2026-01-29) - **OPERACIONAL ✅** - Imágenes reales en Dashboard
 
 ---
 
-## Estado Actual: SPRINT 3 COMPLETADO + MOTOR GOOGLE NEWS RSS VALIDADO
+## Estado Actual: SPRINT 3 COMPLETADO + RSS DIRECTOS VALIDADO ✅
 
 | Componente | Estado | Notas |
 |------------|--------|-------|
@@ -16,9 +16,9 @@
 | **Backend - Infrastructure** | ✅ Listo | NewsAPI, Gemini 2.5 Flash (corregido), JinaReader con fallback, Prisma 7 + Adapter. |
 | **Base de Datos** | ✅ Listo | PostgreSQL + Prisma 7 con `@prisma/adapter-pg`. |
 | **Infraestructura Docker** | ✅ Listo | PostgreSQL, ChromaDB y Redis corriendo. |
-| **Pipeline de Ingesta** | ✅ GoogleNewsRssClient | Nueva fuente: Google News RSS (GRATIS, sin API key). Test end-to-end exitoso: 30 noticias ingestadas, 0 duplicados. Costo: GRATIS vs NewsAPI $45/mes. |
+| **Pipeline de Ingesta** | ✅ **DirectSpanishRssClient** | Feeds RSS directos de 4 medios españoles (El País, El Mundo, 20 Minutos, Europa Press). URLs limpias sin obfuscación. 20 noticias ingestadas exitosamente. |
 | **Pipeline de Análisis IA** | ✅ Listo | **Gemini 2.5 Flash** + Jina Reader + Fallback Strategy + Soporte contenido parcial. |
-| **Dashboard Analytics** | ✅ Listo | Recharts (Donut Chart) + StatsOverview + BiasDistributionChart. |
+| **MetadataExtractor** | ✅ **Mejorado** | maxRedirects: 5 para seguir redirecciones CORS. Extrae og:image real de medios sin bloqueos. |
 | **Layout Sidebar** | ✅ Listo | Navegación escalable, responsive hamburger menu, 4 items principales. |
 | **Dashboard Drawer** | ✅ Listo | Sheet lateral con análisis de medios bajo demanda. |
 | **Página Principal** | ✅ Listo | Client component con Sidebar + Main Content + Dashboard integrado. |

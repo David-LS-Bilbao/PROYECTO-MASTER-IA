@@ -1,20 +1,20 @@
-# 🗞️ Filter News - Plataforma Inteligente de Noticias con IA
+# 🗞️ Verity News - Plataforma Inteligente de Noticias con IA
 
 > Trabajo Final de Máster - Máster en Desarrollo con Inteligencia Artificial (BIG School)
 
-**Aplicación web multiplataforma** para búsqueda, análisis y consumo inteligente de noticias, potenciada por IA conversacional y técnicas avanzadas de NLP.
+**Aplicación web multiplataforma** para búsqueda, análisis y consumo inteligente de noticias españolas, potenciada por IA conversacional con imágenes reales de medios.
 
 ---
 
 ## 📋 Descripción
 
-Filter News es una plataforma que combina:
-- 🔍 **Búsqueda semántica** de noticias (keyword + RAG)
-- 🤖 **Resúmenes automáticos** generados por IA
-- 💬 **Chat conversacional** con contexto de noticias
-- ⚙️ **Controles de IA personalizables** (temperatura, profundidad, veracidad)
-- 📊 **Análisis de fuentes** consultadas
-- 💾 **Gestión de favoritos** e historial
+Verity News es una plataforma que combina:
+- 📰 **Ingesta de noticias en tiempo real** desde RSS directos de medios españoles (El País, El Mundo, 20 Minutos, Europa Press)
+- 🖼️ **Extracción automática de imágenes reales** de portadas mediante MetadataExtractor
+- 🤖 **Análisis de sesgo político** generado por Gemini 2.5 Flash
+- 💬 **Chat conversacional con RAG** y Google Search Grounding
+- 📊 **Dashboard de analytics** con visualización de distribución de sesgo
+- ✅ **Imágenes reales en Dashboard** (no placeholders genéricos)
 
 ---
 
@@ -46,11 +46,10 @@ Filter News es una plataforma que combina:
 - **Testing:** Jest + Supertest
 
 ### IA & Data
-- **LLM:** Gemini API (Google)
-- **Embeddings:** Gemini Embeddings
-- **Orchestration:** LangChain.js
-- **Vector Store:** ChromaDB
-- **News Sources:** NewsAPI + Google News RSS
+- **LLM:** Gemini 2.5 Flash (análisis de sesgo, chat conversacional)
+- **News Sources:** DirectSpanishRssClient (4 medios españoles) + MetadataExtractor (og:image)
+- **Image Extraction:** Axios + Cheerio + HTML parsing (sin costes API)
+- **Chat Grounding:** Google Search API
 
 ### Infrastructure
 - **Auth:** Firebase Authentication

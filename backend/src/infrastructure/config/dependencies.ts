@@ -7,8 +7,10 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { NewsAPIClient } from '../external/newsapi.client';
 import { GoogleNewsRssClient } from '../external/google-news-rss.client';
+import { DirectSpanishRssClient } from '../external/direct-spanish-rss.client';
 import { GeminiClient } from '../external/gemini.client';
 import { JinaReaderClient } from '../external/jina-reader.client';
+import { MetadataExtractor } from '../external/metadata-extractor';
 import { PrismaNewsArticleRepository } from '../persistence/prisma-news-article.repository';
 import { IngestNewsUseCase } from '../../application/use-cases/ingest-news.usecase';
 import { AnalyzeArticleUseCase } from '../../application/use-cases/analyze-article.usecase';
@@ -32,15 +34,19 @@ export class DependencyContainer {
     const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
     this.prisma = new PrismaClient({ adapter });
 
-    // Use Google News RSS as primary client (free, unlimited, Spanish-focused)
-    // Fallback to NewsAPI if needed
+    // Use Direct Spanish RSS as primary client (clean URLs, no Google obfuscation)
+    // This allows MetadataExtractor to work properly with direct media links
+    // Fallback options: 'google-news' or 'newsapi'
     const newsAPIClient =
       process.env.NEWS_CLIENT === 'newsapi'
         ? new NewsAPIClient()
-        : new GoogleNewsRssClient();
+        : process.env.NEWS_CLIENT === 'google-news'
+        ? new GoogleNewsRssClient()
+        : new DirectSpanishRssClient(); // Default: Direct Spanish RSS
 
     const geminiClient = new GeminiClient(process.env.GEMINI_API_KEY || '');
     const jinaReaderClient = new JinaReaderClient(process.env.JINA_API_KEY || '');
+    const metadataExtractor = new MetadataExtractor();
     const articleRepository = new PrismaNewsArticleRepository(this.prisma);
 
     // Application Layer
@@ -53,7 +59,8 @@ export class DependencyContainer {
     const analyzeArticleUseCase = new AnalyzeArticleUseCase(
       articleRepository,
       geminiClient,
-      jinaReaderClient
+      jinaReaderClient,
+      metadataExtractor
     );
 
     const chatArticleUseCase = new ChatArticleUseCase(
