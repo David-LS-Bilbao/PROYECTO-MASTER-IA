@@ -236,6 +236,25 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
     }
   }
 
+  async findAll(limit: number = 50, offset: number = 0): Promise<NewsArticle[]> {
+    try {
+      const articles = await this.prisma.article.findMany({
+        orderBy: {
+          publishedAt: 'desc',
+        },
+        take: limit,
+        skip: offset,
+      });
+
+      return articles.map((article) => this.toDomain(article));
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to find all articles: ${(error as Error).message}`,
+        error as Error
+      );
+    }
+  }
+
   /**
    * Map Prisma model to Domain entity
    */

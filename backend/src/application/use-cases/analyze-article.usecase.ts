@@ -83,29 +83,57 @@ export class AnalyzeArticleUseCase {
     // 3. Scrape full content if needed
     let contentToAnalyze = article.content;
     let scrapedContentLength = contentToAnalyze?.length || 0;
+    let usedFallback = false;
 
-    if (!contentToAnalyze || contentToAnalyze.length < 100) {
+    // Verificar si el contenido es válido
+    const isContentInvalid = 
+      !contentToAnalyze || 
+      contentToAnalyze.length < 100 || 
+      contentToAnalyze.includes('JinaReader API Error');
+
+    if (isContentInvalid) {
       console.log(`   🌐 Scraping contenido con Jina Reader (URL: ${article.url})...`);
-      const scrapedContent = await this.scrapeArticleContent(article.url);
       
-      if (!scrapedContent) throw new Error("Jina devolvió contenido vacío");
-      
-      contentToAnalyze = scrapedContent;
-      scrapedContentLength = scrapedContent.length;
-      console.log(`   ✅ Scraping OK (${scrapedContentLength} caracteres).`);
+      try {
+        const scrapedContent = await this.scrapeArticleContent(article.url);
+        
+        if (scrapedContent && scrapedContent.length >= 100) {
+          contentToAnalyze = scrapedContent;
+          scrapedContentLength = scrapedContent.length;
+          console.log(`   ✅ Scraping OK (${scrapedContentLength} caracteres).`);
 
-      // Update article with scraped content
-      const articleWithContent = article.withFullContent(scrapedContent);
-      await this.articleRepository.save(articleWithContent);
+          // Update article with scraped content
+          const articleWithContent = article.withFullContent(scrapedContent);
+          await this.articleRepository.save(articleWithContent);
+        } else {
+          throw new Error('Contenido scrapeado vacío o muy corto');
+        }
+      } catch (scrapingError) {
+        // FALLBACK: Usar título + descripción
+        console.warn(`   ⚠️ Scraping falló. Usando FALLBACK (título + descripción).`);
+        console.warn(`   👉 Razón: ${scrapingError instanceof Error ? scrapingError.message : 'Error desconocido'}`);
+        
+        const fallbackContent = `${article.title}\n\n${article.description || 'Sin descripción disponible'}`;
+        contentToAnalyze = fallbackContent;
+        scrapedContentLength = 0; // Indicar que no se hizo scraping
+        usedFallback = true;
+      }
     } else {
         console.log(`   📂 Usando contenido existente en DB.`);
     }
 
     // 4. Analyze with Gemini
     console.log(`   🧠 Enviando a Gemini para análisis de sesgo...`);
+    
+    // Si usamos fallback, ajustar el prompt
+    let adjustedContent = contentToAnalyze || '';
+    if (usedFallback) {
+      adjustedContent = `ADVERTENCIA: No se pudo acceder al artículo completo. Realiza el análisis basándote ÚNICAMENTE en el título y el resumen disponibles. Indica explícitamente en tu respuesta que el análisis es preliminar por falta de acceso a la fuente original.\n\n${contentToAnalyze || ''}`;
+    }
+    
     const analysis = await this.geminiClient.analyzeArticle({
       title: article.title,
-      content: contentToAnalyze,
+      content: adjustedContent,
       source: article.source,
       language: article.language,
     });
@@ -193,10 +221,17 @@ export class AnalyzeArticleUseCase {
 
   /**
    * Scrape article content using Jina Reader
+   * @throws ExternalAPIError if scraping fails
    */
   private async scrapeArticleContent(url: string): Promise<string> {
     try {
       const scraped = await this.jinaReaderClient.scrapeUrl(url);
+      
+      // Validar que el contenido no sea un mensaje de error
+      if (!scraped.content || scraped.content.includes('JinaReader API Error')) {
+        throw new Error('Jina devolvió contenido inválido o vacío');
+      }
+      
       return scraped.content;
     } catch (error) {
       if (error instanceof ExternalAPIError) {

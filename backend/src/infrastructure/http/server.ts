@@ -4,6 +4,8 @@ import helmet from 'helmet';
 import { DependencyContainer } from '../config/dependencies';
 import { createIngestRoutes } from './routes/ingest.routes';
 import { createAnalyzeRoutes } from './routes/analyze.routes';
+import { createNewsRoutes } from './routes/news.routes';
+import { createChatRoutes } from './routes/chat.routes';
 
 export function createServer(): Application {
   const app = express();
@@ -14,9 +16,9 @@ export function createServer(): Application {
   // Security middleware
   app.use(helmet());
 
-  // CORS configuration
+  // CORS configuration - Allow frontend origins
   app.use(cors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    origin: process.env.CORS_ORIGIN || ['http://localhost:3001', 'http://localhost:5173'],
     credentials: true,
   }));
 
@@ -34,8 +36,10 @@ export function createServer(): Application {
   });
 
   // API Routes
+  app.use('/api/news', createNewsRoutes(container.newsController));
   app.use('/api/ingest', createIngestRoutes(container.ingestController));
   app.use('/api/analyze', createAnalyzeRoutes(container.analyzeController));
+  app.use('/api/chat', createChatRoutes(container.chatController));
 
   // 404 handler
   app.use((_req: Request, res: Response) => {

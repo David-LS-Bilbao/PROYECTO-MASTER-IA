@@ -7,6 +7,8 @@ import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
 import {
   IGeminiClient,
   AnalyzeContentInput,
+  ChatWithContextInput,
+  ChatResponse,
 } from '../../domain/services/gemini-client.interface';
 import { ArticleAnalysis } from '../../domain/entities/news-article.entity';
 import {
@@ -45,6 +47,7 @@ Criterios para el biasScore:
 
 export class GeminiClient implements IGeminiClient {
   private readonly model: GenerativeModel;
+  private readonly chatModel: GenerativeModel;
   private readonly genAI: GoogleGenerativeAI;
 
   constructor(apiKey: string) {
@@ -53,8 +56,16 @@ export class GeminiClient implements IGeminiClient {
     }
 
     this.genAI = new GoogleGenerativeAI(apiKey);
-    // Modelo disponible en tu cuenta
+
+    // Modelo base para análisis (sin herramientas externas)
     this.model = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+    // Modelo para chat con Google Search habilitado (Grounding)
+    this.chatModel = this.genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+          // @ts-expect-error - googleSearch tool typing not yet available in current SDK
+          tools: [{ googleSearch: {} }],
+    });
   }
 
   async analyzeArticle(input: AnalyzeContentInput): Promise<ArticleAnalysis> {
@@ -121,6 +132,73 @@ export class GeminiClient implements IGeminiClient {
       return result.response.text().includes('OK');
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * Chat with context injection for article Q&A
+   * Uses Google Search Grounding for hybrid responses (article + external info)
+   */
+  async chatWithContext(input: ChatWithContextInput): Promise<ChatResponse> {
+    const { systemContext, messages } = input;
+
+    if (!messages || messages.length === 0) {
+      throw new ExternalAPIError('Gemini', 'At least one message is required', 400);
+    }
+
+    // Build the conversation with system context
+    const conversationParts: string[] = [];
+
+    // Add system context as the foundation
+    conversationParts.push(`CONTEXTO DEL SISTEMA:\n${systemContext}\n`);
+    conversationParts.push('---\nHISTORIAL DE CONVERSACIÓN:\n');
+
+    // Add message history
+    for (const msg of messages) {
+      const roleLabel = msg.role === 'user' ? 'Usuario' : 'Asistente';
+      conversationParts.push(`${roleLabel}: ${msg.content}`);
+    }
+
+    // Instruction moved to use case (system prompt)
+    conversationParts.push('\n---\nResponde a la última pregunta del usuario.');
+
+    const prompt = conversationParts.join('\n');
+
+    try {
+      console.log(`      [GeminiClient] Chat (con Google Search) - Enviando conversación...`);
+      // Use chatModel which has Google Search Grounding enabled
+      const result = await this.chatModel.generateContent(prompt);
+      const response = result.response;
+      const text = response.text();
+
+      // Log if grounding was used
+      const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
+      if (groundingMetadata?.searchEntryPoint) {
+        console.log(`      [GeminiClient] Chat - Google Search utilizado para grounding`);
+      }
+
+      console.log(`      [GeminiClient] Chat - Respuesta recibida OK`);
+
+      return { message: text.trim() };
+    } catch (error) {
+      const err = error as Error;
+      console.error(`      [GeminiClient] Chat ERROR: ${err.message}`);
+
+      if (err.message?.includes('API key')) {
+        throw new ExternalAPIError('Gemini', 'Invalid API key', 401, err);
+      }
+
+      if (err.message?.includes('quota') || err.message?.includes('RESOURCE_EXHAUSTED') ||
+          err.message?.includes('429') || err.message?.includes('Too Many Requests')) {
+        throw new ExternalAPIError('Gemini', 'Rate limit exceeded', 429, err);
+      }
+
+      throw new ExternalAPIError(
+        'Gemini',
+        `Chat failed: ${err.message}`,
+        500,
+        err
+      );
     }
   }
 

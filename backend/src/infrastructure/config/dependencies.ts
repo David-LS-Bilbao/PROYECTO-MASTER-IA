@@ -11,8 +11,11 @@ import { JinaReaderClient } from '../external/jina-reader.client';
 import { PrismaNewsArticleRepository } from '../persistence/prisma-news-article.repository';
 import { IngestNewsUseCase } from '../../application/use-cases/ingest-news.usecase';
 import { AnalyzeArticleUseCase } from '../../application/use-cases/analyze-article.usecase';
+import { ChatArticleUseCase } from '../../application/use-cases/chat-article.usecase';
 import { IngestController } from '../http/controllers/ingest.controller';
 import { AnalyzeController } from '../http/controllers/analyze.controller';
+import { NewsController } from '../http/controllers/news.controller';
+import { ChatController } from '../http/controllers/chat.controller';
 
 export class DependencyContainer {
   private static instance: DependencyContainer;
@@ -20,6 +23,8 @@ export class DependencyContainer {
   public readonly prisma: PrismaClient;
   public readonly ingestController: IngestController;
   public readonly analyzeController: AnalyzeController;
+  public readonly newsController: NewsController;
+  public readonly chatController: ChatController;
 
   private constructor() {
     // Infrastructure Layer - Prisma 7 requires adapter for database connection
@@ -43,9 +48,16 @@ export class DependencyContainer {
       jinaReaderClient
     );
 
+    const chatArticleUseCase = new ChatArticleUseCase(
+      articleRepository,
+      geminiClient
+    );
+
     // Presentation Layer
     this.ingestController = new IngestController(ingestNewsUseCase);
     this.analyzeController = new AnalyzeController(analyzeArticleUseCase);
+    this.newsController = new NewsController(articleRepository);
+    this.chatController = new ChatController(chatArticleUseCase);
   }
 
   static getInstance(): DependencyContainer {

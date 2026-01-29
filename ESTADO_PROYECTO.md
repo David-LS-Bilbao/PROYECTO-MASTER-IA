@@ -1,25 +1,71 @@
 # Estado del Proyecto - Verity News
 
-> Última actualización: Sprint 2 - El Cerebro de la IA (2026-01-29) - Revisión Final
+> Última actualización: Sprint 3 - Experiencia y Visualización (2026-01-29) - **FINALIZADO** ✅
 
 ---
 
-## Estado Actual: SPRINT 2 - ANÁLISIS IA COMPLETO Y VALIDADO
+## Estado Actual: SPRINT 3 - LA CAPA DE EXPERIENCIA **COMPLETADO**
 
 | Componente | Estado | Notas |
 |------------|--------|-------|
 | **Estructura Proyecto** | ✅ Listo | Carpetas creadas, Monorepo setup. |
-| **Frontend** | ✅ Listo | Vite + React + TS corriendo en puerto 5173. |
-| **Backend - Core** | ✅ Listo | Express + TS + Clean Arch configurado. Health check OK. |
+| **Frontend** | ✅ Listo | Next.js 16.1.6 + React 19 + TypeScript + Turbopack. |
+| **Backend - Core** | ✅ Listo | Clean Architecture validada y robusta. |
 | **Backend - Domain** | ✅ Listo | Entidades, Repositories, Errores personalizados, interfaces IA. |
-| **Backend - Application** | ✅ Listo | IngestNewsUseCase + AnalyzeArticleUseCase con tests. |
-| **Backend - Infrastructure** | ✅ Listo | NewsAPI, Gemini 2.5 Flash, JinaReader, Prisma 7 + Adapter. |
+| **Backend - Application** | ✅ Listo | IngestNewsUseCase + AnalyzeArticleUseCase con tests + Fallback Strategy. |
+| **Backend - Infrastructure** | ✅ Listo | NewsAPI, Gemini 2.5 Flash (corregido), JinaReader con fallback, Prisma 7 + Adapter. |
 | **Base de Datos** | ✅ Listo | PostgreSQL + Prisma 7 con `@prisma/adapter-pg`. |
 | **Infraestructura Docker** | ✅ Listo | PostgreSQL, ChromaDB y Redis corriendo. |
 | **Pipeline de Ingesta** | ✅ Listo | NewsAPI integrado con filtrado de duplicados. |
-| **Pipeline de Análisis IA** | ✅ Listo | **Gemini 2.5 Flash** + Jina Reader integrados y validados. |
+| **Pipeline de Análisis IA** | ✅ Listo | **Gemini 2.5 Flash** + Jina Reader + Fallback Strategy + Soporte contenido parcial. |
+| **Dashboard Analytics** | ✅ Listo | Recharts (Donut Chart) + StatsOverview + BiasDistributionChart. |
+| **Layout Sidebar** | ✅ Listo | Navegación escalable, responsive hamburger menu, 4 items principales. |
+| **Dashboard Drawer** | ✅ Listo | Sheet lateral con análisis de medios bajo demanda. |
+| **Página Principal** | ✅ Listo | Client component con Sidebar + Main Content + Dashboard integrado. |
+| **Chat IA (RAG Agéntico)** | ✅ Listo | Chat con Gemini + Google Search Grounding, contexto de noticia, auto-scroll. |
+| **Auto-scroll Chat** | ✅ Listo | Implementado con viewport ref directo. |
 | **Testing** | ✅ Listo | Vitest configurado, 41 tests pasando. |
-| **ChromaDB Integration** | ⏳ Pendiente | Embeddings y búsqueda vectorial por integrar. |
+| **ChromaDB Integration** | ⏳ Pendiente | Sprint 4 - Embeddings y búsqueda vectorial global. |
+
+---
+
+## Logros Sprint 3: La Capa de Experiencia
+
+### 1. Arquitectura de Interfaz (Layout & Navigation)
+- ✅ **Sidebar Escalable:** Navegación lateral de 264px con 4 items principales (Últimas noticias, Tendencias, Favoritos, Inteligencia de Medios)
+- ✅ **Responsive Design:** Hamburger menu en móvil, sidebar fijo en desktop
+- ✅ **Layout Profesional:** Two-column layout (Sidebar + Main) que despeja el feed de noticias
+- ✅ **Barrel Exports:** Componentes organizados en `components/layout/` y `components/dashboard/`
+
+### 2. Chat Inteligente (RAG Agéntico)
+- ✅ **Gemini 2.5 Flash con Google Search Grounding:** Chat con acceso a búsquedas web en tiempo real
+- ✅ **Consultas Externas:** Capacidad de realizar búsquedas y recuperar noticias relacionadas
+- ✅ **Contexto de Noticia:** Chat mantiene contexto del artículo seleccionado
+- ✅ **Auto-scroll:** Scroll automático al nuevo mensaje con viewport ref
+- ✅ **Historia de Conversación:** Mantiene sesión de chat en memoria del componente
+
+### 3. Dashboard de Analítica (Visualización)
+- ✅ **Gráfico Donut con Recharts:** Distribución visual de sesgo (Left/Neutral/Right)
+- ✅ **4 KPIs Operativos:**
+  - Noticias Totales
+  - Analizadas con IA
+  - Cobertura IA (%)
+  - Índice de Veracidad
+- ✅ **Panel Deslizable (Sheet):** Abre desde Sidebar, responsive full-width en móvil
+- ✅ **Skeletons de Carga:** Estados indeterminados manejados elegantemente
+
+### 4. Resiliencia en Análisis (Fallback Strategy)
+- ✅ **Análisis Parcial:** Si el scraping falla, se utiliza título + descripción
+- ✅ **Detección de Errores:** Identifica contenido inválido (null, < 100 chars, errores)
+- ✅ **Flag usedFallback:** Aviso en prompt de Gemini sobre análisis preliminar
+- ✅ **URLs Bloqueadas:** Manejo graceful de sitios con restricciones
+
+### 5. UX Avanzada
+- ✅ **Auto-scroll en Chat:** Implementado con viewport ref directo
+- ✅ **Skeletons de Carga:** Para KPIs y gráficos durante fetching
+- ✅ **Estados de Error:** Mensaje de error + instrucciones de curl para backend
+- ✅ **Empty State:** Interfaz clara cuando no hay noticias
+- ✅ **Tailwind v4 Optimizado:** Clases canónicas (shrink-0 en lugar de flex-shrink-0)
 
 ---
 
@@ -195,10 +241,140 @@ const prisma = new PrismaClient({ adapter });
 
 ---
 
-## Próximos Pasos (Sprint 3)
+## Sprint 3: La Capa de Experiencia (Completado - 2026-01-29)
 
-1. **Integrar ChromaDB** para almacenamiento de embeddings
-2. **Generar embeddings** de los artículos analizados
-3. **Implementar búsqueda semántica** (RAG)
-4. **Crear endpoint de chat conversacional** con contexto
-5. **Frontend básico** para visualizar artículos y análisis
+### Cambios Técnicos Realizados
+
+**Backend:**
+- `gemini.client.ts`: Corregido tool de Gemini `googleSearchRetrieval` → `googleSearch` con `@ts-expect-error`
+- `analyze-article.usecase.ts`: Implementada fallback strategy robusta para URLs bloqueadas
+  - Detección de contenido inválido (null, < 100 chars, "JinaReader API Error")
+  - Fallback a `title + description` cuando scraping falla
+  - Flag `usedFallback` para advertencia en prompt
+
+**Frontend:**
+- `app/page.tsx`: Convertida a `'use client'` component con React hooks
+  - `useEffect` para fetching con `Promise.all([fetchNews, fetchDashboardStats])`
+  - Layout de dos columnas: `<Sidebar /> + <main className="flex-1">`
+  - Integración de `<DashboardDrawer isOpen={isDashboardOpen} />`
+  - Estados de error, carga, vacío y populated
+  - Función `calculateBiasDistribution()` integrada
+
+- `components/layout/sidebar.tsx` (NEW, 142 líneas):
+  - Hamburger menu en móvil (top-left fijo)
+  - 4 items: Últimas noticias, Tendencias, Favoritos, Inteligencia de Medios
+  - Sección de Settings
+  - Responsive: Hidden en móvil (-translate-x-full), 264px fijo en desktop
+  - Prop `onOpenDashboard` para abrir analytics
+
+- `components/layout/dashboard-drawer.tsx` (NEW, 59 líneas):
+  - Sheet lateral que contiene `StatsOverview`
+  - Props: isOpen, onOpenChange, stats data
+  - Responsive: Full width en móvil, max-w-2xl en desktop
+
+- `components/dashboard/bias-distribution-chart.tsx` (NEW, 60 líneas):
+  - Donut chart con Recharts
+  - Colores semánticos: Left (Red 500), Neutral (Slate 400), Right (Blue 500)
+  - Tooltips interactivos
+  - Fallback UI "Sin datos de sesgo"
+
+- `components/dashboard/stats-overview.tsx` (NEW, 127 líneas):
+  - Grid de 5 columnas (2 KPI + 3 gráfico)
+  - 4 KPI Cards + BiasDistributionChart
+  - Skeletons para carga
+  - Responsive
+
+- `app/layout.tsx`: Metadata actualizada, background global
+- `components/news-chat-drawer.tsx`: Auto-scroll con viewport ref
+- `components/layout/index.ts` (NEW): Barrel exports
+
+### Archivos Modificados/Creados
+- 10 archivos modificados/creados
+- ~650 líneas de código nuevo
+- 0 errores de TypeScript
+- 0 warnings de Tailwind CSS (clases canónicas)
+
+### Dependencias Añadidas
+- `recharts` (gráficos)
+- `@radix-ui/react-sheet` (drawer)
+- `lucide-react` (iconos)
+
+### Errores Corregidos
+1. ✅ Gemini API: `google_search_retrieval` → `google_search`
+2. ✅ TypeScript compilation error en gemini.client.ts
+3. ✅ Auto-scroll fallaba con ScrollArea (reemplazado con div nativo)
+4. ✅ Scraping fallido dejaba contenido vacío (fallback strategy)
+5. ✅ Llave extra en page.tsx (removida)
+6. ✅ Warnings de Tailwind: `flex-shrink-0` → `shrink-0`
+
+### Testing Validado
+- ✅ No TypeScript errors
+- ✅ No lint errors
+- ✅ Todos los imports resolvidos
+- ✅ Componentes renderizando correctamente
+- ✅ Responsive en móvil/tablet/desktop
+
+---
+
+## Próximos Pasos: Sprint 4 - Cierre y Refinamiento
+
+### 1. Integración de ChromaDB
+- [ ] Generar embeddings de artículos analizados
+- [ ] Almacenar embeddings en ChromaDB
+- [ ] Crear endpoint `/api/search/semantic` para RAG global
+- [ ] Búsqueda semántica entre todas las noticias
+
+### 2. Auditoría Final
+- [ ] Revisión de seguridad OWASP (SQL injection, XSS, CSRF)
+- [ ] Optimización de costes de APIs (Gemini, NewsAPI, Jina)
+- [ ] Performance audit (Lighthouse, Web Vitals)
+- [ ] Testing de carga (k6 o Artillery)
+
+### 3. Memoria TFM
+- [ ] Redacción de capítulo de IA Assisted Engineering
+- [ ] Conclusiones y limitaciones
+- [ ] Recomendaciones futuras
+- [ ] Apéndices técnicos
+
+### 4. Mejoras Futuras (Sprint 5+)
+- [ ] Rutas adicionales: `/trending`, `/favorites`, `/news/[id]`
+- [ ] Persistencia de favoritos en BD
+- [ ] Historial de búsquedas semánticas
+- [ ] Alertas personalizadas por tema
+- [ ] Exportación de reportes de sesgo
+
+---
+
+## Métricas de Desarrollo - Sprint 3
+
+| Métrica | Valor |
+|---------|-------|
+| **Duración** | 1 día (2026-01-29) |
+| **Componentes Creados** | 5 nuevos |
+| **Archivos Modificados** | 5 existentes |
+| **Líneas de Código** | ~650 |
+| **Tests** | 41 pasando (sin cambios) |
+| **TypeScript Errors** | 0 |
+| **Warnings** | 0 |
+| **Tiempo de Build** | ~45s (Turbopack) |
+
+---
+
+## Conclusión Sprint 3
+
+**Sprint 3 representa la materialización de la "Capa de Experiencia"** - aquella que el usuario ve e interactúa. Se ha logrado:
+
+1. ✅ Una interfaz profesional y escalable con Sidebar
+2. ✅ Un chat inteligente con capacidades de búsqueda web
+3. ✅ Un dashboard de analítica que expone insights valiosos
+4. ✅ Una resiliencia robusta ante fallos de servicios externos
+5. ✅ Una UX pulida con auto-scroll, skeletons y manejo de errores
+
+**El proyecto ahora tiene:**
+- 🧠 Cerebro (Backend IA + Gemini) - Sprint 2 ✅
+- 👁️ Ojos (Dashboard + Visualización) - Sprint 3 ✅
+- 🤖 Voz (Chat conversacional) - Sprint 3 ✅
+- 💾 Memoria (ChromaDB embeddings) - Sprint 4 (Pendiente)
+
+**Status:** Listo para auditoría técnica final y redacción de TFM.
+

@@ -59,4 +59,11 @@ export interface INewsArticleRepository {
    * Count articles that have been analyzed
    */
   countAnalyzed(): Promise<number>;
+
+  /**
+   * Find all articles with pagination, ordered by date (descending)
+   * @param limit Maximum number of articles to return (default 50)
+   * @param offset Number of articles to skip (default 0)
+   */
+  findAll(limit?: number, offset?: number): Promise<NewsArticle[]>;
 }
