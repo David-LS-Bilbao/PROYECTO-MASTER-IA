@@ -6,6 +6,7 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { NewsAPIClient } from '../external/newsapi.client';
+import { GoogleNewsRssClient } from '../external/google-news-rss.client';
 import { GeminiClient } from '../external/gemini.client';
 import { JinaReaderClient } from '../external/jina-reader.client';
 import { PrismaNewsArticleRepository } from '../persistence/prisma-news-article.repository';
@@ -30,7 +31,14 @@ export class DependencyContainer {
     // Infrastructure Layer - Prisma 7 requires adapter for database connection
     const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
     this.prisma = new PrismaClient({ adapter });
-    const newsAPIClient = new NewsAPIClient();
+
+    // Use Google News RSS as primary client (free, unlimited, Spanish-focused)
+    // Fallback to NewsAPI if needed
+    const newsAPIClient =
+      process.env.NEWS_CLIENT === 'newsapi'
+        ? new NewsAPIClient()
+        : new GoogleNewsRssClient();
+
     const geminiClient = new GeminiClient(process.env.GEMINI_API_KEY || '');
     const jinaReaderClient = new JinaReaderClient(process.env.JINA_API_KEY || '');
     const articleRepository = new PrismaNewsArticleRepository(this.prisma);
