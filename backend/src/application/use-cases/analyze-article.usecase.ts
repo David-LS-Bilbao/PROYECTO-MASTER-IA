@@ -1,6 +1,6 @@
 /**
- * AnalyzeArticleUseCase (Application Layer)
- * Orchestrates article analysis: Scrape -> Analyze -> Persist
+ * AnalyzeArticleUseCase (DEBUG VERSION)
+ * Con logs detallados para encontrar el fallo.
  */
 
 import { ArticleAnalysis } from '../../domain/entities/news-article.entity';
@@ -9,6 +9,8 @@ import { IGeminiClient } from '../../domain/services/gemini-client.interface';
 import { IJinaReaderClient } from '../../domain/services/jina-reader-client.interface';
 import { EntityNotFoundError, ValidationError } from '../../domain/errors/domain.error';
 import { ExternalAPIError } from '../../domain/errors/infrastructure.error';
+
+
 
 export interface AnalyzeArticleInput {
   articleId: string;
@@ -61,10 +63,13 @@ export class AnalyzeArticleUseCase {
       throw new EntityNotFoundError('Article', articleId);
     }
 
+    console.log(`\n🔍 [Análisis] Iniciando noticia: "${article.title}"`);
+
     // 2. Check if already analyzed
     if (article.isAnalyzed) {
       const existingAnalysis = article.getParsedAnalysis();
       if (existingAnalysis) {
+        console.log(`   ⏭️ Ya analizada previamente. Saltando.`);
         return {
           articleId: article.id,
           summary: article.summary!,
@@ -80,22 +85,31 @@ export class AnalyzeArticleUseCase {
     let scrapedContentLength = contentToAnalyze?.length || 0;
 
     if (!contentToAnalyze || contentToAnalyze.length < 100) {
+      console.log(`   🌐 Scraping contenido con Jina Reader (URL: ${article.url})...`);
       const scrapedContent = await this.scrapeArticleContent(article.url);
+      
+      if (!scrapedContent) throw new Error("Jina devolvió contenido vacío");
+      
       contentToAnalyze = scrapedContent;
       scrapedContentLength = scrapedContent.length;
+      console.log(`   ✅ Scraping OK (${scrapedContentLength} caracteres).`);
 
       // Update article with scraped content
       const articleWithContent = article.withFullContent(scrapedContent);
       await this.articleRepository.save(articleWithContent);
+    } else {
+        console.log(`   📂 Usando contenido existente en DB.`);
     }
 
     // 4. Analyze with Gemini
+    console.log(`   🧠 Enviando a Gemini para análisis de sesgo...`);
     const analysis = await this.geminiClient.analyzeArticle({
       title: article.title,
       content: contentToAnalyze,
       source: article.source,
       language: article.language,
     });
+    console.log(`   ✅ Gemini OK. Score: ${analysis.biasScore} | Summary: ${analysis.summary.substring(0, 30)}...`);
 
     // 5. Update article with analysis
     const analyzedArticle = article.withAnalysis(analysis);
@@ -121,6 +135,7 @@ export class AnalyzeArticleUseCase {
     }
 
     const unanalyzedArticles = await this.articleRepository.findUnanalyzed(limit);
+    console.log(`📋 [Batch] Encontradas ${unanalyzedArticles.length} noticias pendientes.`);
 
     const results: AnalyzeBatchOutput['results'] = [];
     let successful = 0;
@@ -131,8 +146,21 @@ export class AnalyzeArticleUseCase {
         await this.execute({ articleId: article.id });
         results.push({ articleId: article.id, success: true });
         successful++;
+
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        
+        // --- AQUÍ ESTÁ EL CAMBIO CLAVE ---
+        console.error(`❌ [ERROR] Falló la noticia ID ${article.id}:`);
+        console.error(`   👉 Causa: ${errorMessage}`);
+        // ---------------------------------
+
+        // Si el error es de Rate Limit, avisamos
+        if (errorMessage.includes('429') || errorMessage.includes('Rate limit')) {
+            console.warn(`   ⚠️ ALERTA: Gemini está saturado. Aumentando tiempo de espera...`);
+        }
+
+
         results.push({ articleId: article.id, success: false, error: errorMessage });
         failed++;
       }

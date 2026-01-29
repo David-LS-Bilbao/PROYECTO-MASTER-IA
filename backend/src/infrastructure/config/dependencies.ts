@@ -4,6 +4,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 import { NewsAPIClient } from '../external/newsapi.client';
 import { GeminiClient } from '../external/gemini.client';
 import { JinaReaderClient } from '../external/jina-reader.client';
@@ -21,8 +22,9 @@ export class DependencyContainer {
   public readonly analyzeController: AnalyzeController;
 
   private constructor() {
-    // Infrastructure Layer
-    this.prisma = new PrismaClient();
+    // Infrastructure Layer - Prisma 7 requires adapter for database connection
+    const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+    this.prisma = new PrismaClient({ adapter });
     const newsAPIClient = new NewsAPIClient();
     const geminiClient = new GeminiClient(process.env.GEMINI_API_KEY || '');
     const jinaReaderClient = new JinaReaderClient(process.env.JINA_API_KEY || '');

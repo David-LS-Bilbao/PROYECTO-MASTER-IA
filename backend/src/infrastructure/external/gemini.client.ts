@@ -53,7 +53,8 @@ export class GeminiClient implements IGeminiClient {
     }
 
     this.genAI = new GoogleGenerativeAI(apiKey);
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    // Modelo disponible en tu cuenta
+    this.model = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
   }
 
   async analyzeArticle(input: AnalyzeContentInput): Promise<ArticleAnalysis> {
@@ -79,19 +80,29 @@ export class GeminiClient implements IGeminiClient {
       .replace('{content}', sanitizedContent.substring(0, 10000)); // Limit content length
 
     try {
+      console.log(`      [GeminiClient] Llamando a API...`);
       const result = await this.model.generateContent(prompt);
       const response = result.response;
       const text = response.text();
+      console.log(`      [GeminiClient] Respuesta recibida OK`);
 
       return this.parseAnalysisResponse(text);
     } catch (error) {
       const err = error as Error;
+      console.error(`      [GeminiClient] ERROR completo: ${err.message}`);
 
       if (err.message?.includes('API key')) {
         throw new ExternalAPIError('Gemini', 'Invalid API key', 401, err);
       }
 
-      if (err.message?.includes('quota') || err.message?.includes('rate')) {
+      // Detectar modelo no encontrado (404)
+      if (err.message?.includes('404') || err.message?.includes('not found')) {
+        throw new ExternalAPIError('Gemini', `Model not found: ${err.message}`, 404, err);
+      }
+
+      // Detectar rate limit
+      if (err.message?.includes('quota') || err.message?.includes('RESOURCE_EXHAUSTED') ||
+          err.message?.includes('429') || err.message?.includes('Too Many Requests')) {
         throw new ExternalAPIError('Gemini', 'Rate limit exceeded', 429, err);
       }
 

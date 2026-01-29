@@ -1,4 +1,4 @@
-version: '3.8'
+
 
 services:
   # PostgreSQL - Base de datos principal
@@ -7,15 +7,15 @@ services:
     container_name: verity-news-postgres
     restart: unless-stopped
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
-      POSTGRES_USER: verity
-      POSTGRES_PASSWORD: verity_password_dev
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: adminpassword
       POSTGRES_DB: verity_news
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U verity -d verity_news"]
+      test: ["CMD-SHELL", "pg_isready -U admin -d verity_news"]
       interval: 10s
       timeout: 5s
       retries: 5

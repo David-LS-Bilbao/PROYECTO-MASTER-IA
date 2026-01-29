@@ -18,7 +18,7 @@ export class NewsAPIClient implements INewsAPIClient {
   private readonly apiKey: string;
 
   constructor(apiKey?: string) {
-    this.apiKey = apiKey || process.env.NEWSAPI_KEY || '';
+    this.apiKey = apiKey || process.env.NEWS_API_KEY || '';
     if (!this.apiKey) {
       throw new ConfigurationError('NewsAPI key is not configured');
     }

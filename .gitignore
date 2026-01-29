@@ -85,3 +85,4 @@ ENV/
 # Backup files
 *.bak
 *.backup
+.claude/

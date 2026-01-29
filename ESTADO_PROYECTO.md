@@ -1,28 +1,29 @@
 # Estado del Proyecto - Verity News
 
-> Última actualización: Sprint 1 - Pipeline de Ingesta Completado (2026-01-29)
+> Última actualización: Sprint 2 - El Cerebro de la IA (2026-01-29) - Revisión Final
 
 ---
 
-## 🚦 Estado Actual: PIPELINE DE INGESTA COMPLETO ✅
+## Estado Actual: SPRINT 2 - ANÁLISIS IA COMPLETO Y VALIDADO
 
 | Componente | Estado | Notas |
 |------------|--------|-------|
-| **Estructura Proyecto** | 🟢 Listo | Carpetas creadas, Monorepo setup. |
-| **Frontend** | 🟢 Listo | Vite + React + TS corriendo en puerto 5173. |
-| **Backend - Core** | 🟢 Listo | Express + TS + Clean Arch configurado. Health check OK. |
-| **Backend - Domain** | 🟢 Listo | Entidades, Repositories, Errores personalizados. |
-| **Backend - Application** | 🟢 Listo | IngestNewsUseCase con tests 100% coverage. |
-| **Backend - Infrastructure** | 🟢 Listo | NewsAPI Client, Prisma Repo, Validación Zod. |
-| **Base de Datos** | 🟢 Listo | PostgreSQL + Prisma 7 configurado. Migraciones aplicadas. |
-| **Infraestructura Docker** | 🟢 Listo | PostgreSQL, ChromaDB y Redis corriendo. |
-| **Pipeline de Ingesta** | 🟢 Listo | NewsAPI integrado con filtrado de duplicados. |
-| **Testing** | 🟢 Listo | Vitest configurado, 16 tests pasando. |
-| **IA Integration** | 🔴 Pendiente | Gemini API y ChromaDB por integrar. |
+| **Estructura Proyecto** | ✅ Listo | Carpetas creadas, Monorepo setup. |
+| **Frontend** | ✅ Listo | Vite + React + TS corriendo en puerto 5173. |
+| **Backend - Core** | ✅ Listo | Express + TS + Clean Arch configurado. Health check OK. |
+| **Backend - Domain** | ✅ Listo | Entidades, Repositories, Errores personalizados, interfaces IA. |
+| **Backend - Application** | ✅ Listo | IngestNewsUseCase + AnalyzeArticleUseCase con tests. |
+| **Backend - Infrastructure** | ✅ Listo | NewsAPI, Gemini 2.5 Flash, JinaReader, Prisma 7 + Adapter. |
+| **Base de Datos** | ✅ Listo | PostgreSQL + Prisma 7 con `@prisma/adapter-pg`. |
+| **Infraestructura Docker** | ✅ Listo | PostgreSQL, ChromaDB y Redis corriendo. |
+| **Pipeline de Ingesta** | ✅ Listo | NewsAPI integrado con filtrado de duplicados. |
+| **Pipeline de Análisis IA** | ✅ Listo | **Gemini 2.5 Flash** + Jina Reader integrados y validados. |
+| **Testing** | ✅ Listo | Vitest configurado, 41 tests pasando. |
+| **ChromaDB Integration** | ⏳ Pendiente | Embeddings y búsqueda vectorial por integrar. |
 
 ---
 
-## 📅 Sprint 1: Cimientos y Arquitectura (Semana 1)
+## Sprint 1: Cimientos y Arquitectura (Completado)
 
 - [x] Definición del Stack y Modelo de Datos.
 - [x] Creación de Repositorio y README.
@@ -34,78 +35,170 @@
 
 ---
 
-## 📝 Historial de Decisiones (ADRs)
+## Sprint 2: El Cerebro de la IA (Completado)
 
-- **ADR-001:** Se elige **Monorepo** para facilitar la gestión de tipos compartidos entre Front y Back.
-- **ADR-002:** Se utilizará **Prisma** como ORM por su seguridad de tipos con TypeScript.
-- **ADR-003:** Se usará **Gemini Flash** por ser multimodal, rápido y tener capa gratuita generosa.
-- **ADR-004:** Pipeline de Ingesta implementado siguiendo Clean Architecture estricta (Domain → Application → Infrastructure → Presentation).
-- **ADR-005:** Validación Zod en capa de Presentation (Shift Left Security) antes de llegar al UseCase.
-- **ADR-006:** Testing unitario con Vitest, objetivo 100% coverage en Domain y Application, 80% en Presentation.
+- [x] Instalar dependencia `@google/generative-ai`.
+- [x] Actualizar schema Prisma con campos de análisis IA.
+- [x] Actualizar entidad `NewsArticle` con `summary`, `biasScore`, `analysis`, `analyzedAt`.
+- [x] Crear interfaz `IGeminiClient` en Domain Layer.
+- [x] Crear interfaz `IJinaReaderClient` en Domain Layer.
+- [x] Implementar `GeminiClient` (Gemini Flash API).
+- [x] Implementar `JinaReaderClient` (Jina Reader API para scraping).
+- [x] Actualizar `INewsArticleRepository` con `findById`, `findUnanalyzed`, `countAnalyzed`.
+- [x] Crear `AnalyzeArticleUseCase` con análisis single y batch.
+- [x] Crear `AnalyzeController` y rutas Express.
+- [x] Validación Zod para endpoints de análisis.
+- [x] 25 tests unitarios para AnalyzeArticleUseCase (41 tests totales).
 
 ---
 
-## 🎉 Logros de esta Sesión (2026-01-29)
+## Historial de Decisiones (ADRs)
 
-### ✅ Pipeline de Ingesta Completo (Clean Architecture)
+- **ADR-001:** Se elige **Monorepo** para facilitar la gestión de tipos compartidos entre Front y Back.
+- **ADR-002:** Se utilizará **Prisma 7** como ORM con `@prisma/adapter-pg` para conexión directa a PostgreSQL.
+- **ADR-003:** Se usará **Gemini 2.5 Flash** (Pay-As-You-Go) por rendimiento y coste optimizado (~0.0002€/artículo).
+- **ADR-004:** Pipeline de Ingesta implementado siguiendo Clean Architecture estricta (Domain → Application → Infrastructure → Presentation).
+- **ADR-005:** Validación Zod en capa de Presentation (Shift Left Security) antes de llegar al UseCase.
+- **ADR-006:** Testing unitario con Vitest, objetivo 100% coverage en Domain y Application, 80% en Presentation.
+- **ADR-007:** Jina Reader API para extracción de contenido web (scraping) por su simplicidad y calidad de resultados.
+- **ADR-008:** Análisis de bias con escala numérica 0-1 (0=neutral, 1=altamente sesgado) con indicadores específicos.
+- **ADR-009:** Prisma 7 requiere Driver Adapters - se usa `@prisma/adapter-pg` en lugar de conexión directa.
+
+---
+
+## Logros Sprint 2 (2026-01-29)
+
+### Sistema de Análisis IA Completo
 
 **Domain Layer** (Puro, sin dependencias):
-- ✅ Entidad `NewsArticle` con validación
-- ✅ Interfaces `INewsArticleRepository` e `INewsAPIClient`
-- ✅ Clases de error personalizadas: `DomainError`, `InfrastructureError`, `ValidationError`, etc.
+- Entidad `NewsArticle` actualizada con campos de análisis (`summary`, `biasScore`, `analysis`, `analyzedAt`)
+- Nueva interfaz `ArticleAnalysis` para tipado de resultados
+- Interfaz `IGeminiClient` con contrato para análisis de contenido
+- Interfaz `IJinaReaderClient` con contrato para scraping web
+- Métodos inmutables en entidad: `withAnalysis()`, `withFullContent()`, `getParsedAnalysis()`
 
 **Application Layer** (Lógica de negocio):
-- ✅ `IngestNewsUseCase` con:
-  - Filtrado de duplicados
-  - Validación de integridad
-  - Manejo de errores robusto
-  - Metadata de ingesta
-  - **16 tests unitarios con 100% coverage** ✨
+- `AnalyzeArticleUseCase` con:
+  - Análisis individual por ID de artículo
+  - Análisis en batch de artículos pendientes
+  - Estadísticas de análisis (total, analizados, pendientes, porcentaje)
+  - Scraping automático si el contenido es insuficiente
+  - **25 tests unitarios con 100% coverage**
 
 **Infrastructure Layer**:
-- ✅ `NewsAPIClient` con sanitización de inputs (XSS prevention)
-- ✅ `PrismaNewsArticleRepository` con transacciones
-- ✅ Validación Zod en schemas
+- `GeminiClient` con:
+  - Modelo: **Gemini 2.5 Flash** (Pay-As-You-Go)
+  - Sanitización de inputs (prevención prompt injection)
+  - Parsing robusto de respuestas JSON
+  - Manejo de errores: 404 (modelo), 429 (rate limit), 401 (API key)
+- `JinaReaderClient` con:
+  - Validación de URLs
+  - Timeout configurable
+  - Limpieza de contenido extraído
+- `PrismaNewsArticleRepository` actualizado con:
+  - Prisma 7 + `@prisma/adapter-pg`
+  - `findById()`, `findUnanalyzed()`, `countAnalyzed()`
+  - Soporte para nuevos campos de análisis
 
 **Presentation Layer**:
-- ✅ `IngestController` con manejo de errores centralizado
-- ✅ Rutas Express configuradas
-- ✅ Dependency Injection Container
+- `AnalyzeController` con manejo de errores centralizado
+- Rutas Express para análisis
+- Schemas Zod para validación de inputs
 
-**Testing**:
-- ✅ Vitest configurado
-- ✅ 16 tests unitarios pasando
-- ✅ Cobertura 100% en UseCase
+**Schema Prisma actualizado**:
+```prisma
+model Article {
+  // ... campos existentes ...
 
-**Archivos Creados** (21 archivos):
+  // AI Analysis fields
+  summary       String?   @db.Text
+  biasScore     Float?
+  analysis      String?   @db.Text
+  analyzedAt    DateTime?
+
+  @@index([analyzedAt])
+}
 ```
-backend/src/
-├── domain/
-│   ├── entities/news-article.entity.ts
-│   ├── repositories/news-article.repository.ts
-│   ├── services/news-api-client.interface.ts
-│   └── errors/ (domain.error.ts, infrastructure.error.ts)
-├── application/
-│   └── use-cases/ (ingest-news.usecase.ts, ingest-news.usecase.spec.ts)
-├── infrastructure/
-│   ├── external/newsapi.client.ts
-│   ├── persistence/prisma-news-article.repository.ts
-│   ├── config/dependencies.ts
-│   └── http/
-│       ├── schemas/ingest.schema.ts
-│       ├── controllers/ingest.controller.ts
-│       ├── routes/ingest.routes.ts
-│       └── server.ts (actualizado)
-└── vitest.config.ts
+
+**Archivos Creados/Modificados** (17 archivos):
+```
+backend/
+├── prisma.config.ts (configuración Prisma 7)
+├── prisma/
+│   └── schema.prisma (campos IA)
+└── src/
+    ├── domain/
+    │   ├── entities/news-article.entity.ts
+    │   ├── repositories/news-article.repository.ts
+    │   └── services/
+    │       ├── gemini-client.interface.ts (nuevo)
+    │       └── jina-reader-client.interface.ts (nuevo)
+    ├── application/
+    │   └── use-cases/
+    │       ├── analyze-article.usecase.ts (nuevo)
+    │       └── analyze-article.usecase.spec.ts (nuevo)
+    └── infrastructure/
+        ├── external/
+        │   ├── gemini.client.ts (nuevo - Gemini 2.5 Flash)
+        │   ├── jina-reader.client.ts (nuevo)
+        │   └── newsapi.client.ts (corregido NEWS_API_KEY)
+        ├── persistence/prisma-news-article.repository.ts
+        ├── config/dependencies.ts (Prisma 7 adapter)
+        └── http/
+            ├── schemas/analyze.schema.ts (nuevo)
+            ├── controllers/analyze.controller.ts (nuevo)
+            ├── routes/analyze.routes.ts (nuevo)
+            └── server.ts
 ```
 
 **API Endpoints Disponibles**:
 - `POST /api/ingest/news` - Ingestar noticias desde NewsAPI
 - `GET /api/ingest/status` - Estado de última ingesta
+- `POST /api/analyze/article` - Analizar artículo individual `{ articleId: UUID }`
+- `POST /api/analyze/batch` - Analizar batch de artículos `{ limit: 1-100 }`
+- `GET /api/analyze/stats` - Estadísticas de análisis
 - `GET /health` - Health check
 
-**Próximos Pasos Sugeridos**:
-1. Integrar Gemini API para generación de embeddings
-2. Integrar ChromaDB para búsqueda vectorial
-3. Crear endpoint de búsqueda semántica
-4. Implementar sistema de chat conversacional
+**Testing**:
+- 41 tests unitarios pasando
+- 25 tests para AnalyzeArticleUseCase
+- 16 tests para IngestNewsUseCase
+
+---
+
+## Correcciones Técnicas (2026-01-29)
+
+### Migración a Prisma 7 con Driver Adapters
+Prisma 7 eliminó el soporte para `new PrismaClient()` sin opciones. Se requiere:
+```typescript
+import { PrismaPg } from '@prisma/adapter-pg';
+
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+const prisma = new PrismaClient({ adapter });
+```
+
+**Dependencias añadidas:**
+- `@prisma/adapter-pg`
+- `pg` + `@types/pg`
+
+### Actualización del Modelo de IA
+- **Antes:** `gemini-1.5-flash` (no disponible en cuenta de pago)
+- **Después:** `gemini-2.5-flash` (modelo estable, Pay-As-You-Go)
+
+### Variables de Entorno
+- Corregida variable `NEWSAPI_KEY` → `NEWS_API_KEY` para coincidir con `.env`
+
+### Unit Economics Validados
+- **Coste por artículo:** < 0.0002€ con Gemini 2.5 Flash
+- **Presupuesto 5€/mes:** Permite procesar +25.000 artículos
+- **Modelo de negocio:** Freemium viable
+
+---
+
+## Próximos Pasos (Sprint 3)
+
+1. **Integrar ChromaDB** para almacenamiento de embeddings
+2. **Generar embeddings** de los artículos analizados
+3. **Implementar búsqueda semántica** (RAG)
+4. **Crear endpoint de chat conversacional** con contexto
+5. **Frontend básico** para visualizar artículos y análisis
