@@ -7,11 +7,11 @@ import {
   X,
   BarChart3,
   Newspaper,
-  TrendingUp,
   Heart,
   Settings,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { SearchBar } from '@/components/search-bar';
 import { cn } from '@/lib/utils';
 
 interface SidebarProps {
@@ -28,13 +28,8 @@ export function Sidebar({ onOpenDashboard }: SidebarProps) {
       icon: Newspaper,
     },
     {
-      label: 'Tendencias',
-      href: '/trending',
-      icon: TrendingUp,
-    },
-    {
       label: 'Favoritos',
-      href: '/favorites',
+      href: '/?category=favorites',
       icon: Heart,
     },
     {
@@ -86,6 +81,14 @@ export function Sidebar({ onOpenDashboard }: SidebarProps) {
               Verity
             </span>
           </Link>
+        </div>
+
+        {/* Search */}
+        <div className="px-3 py-4 border-b border-zinc-200 dark:border-zinc-800">
+          <SearchBar
+            placeholder="Buscar con IA..."
+            className="w-full"
+          />
         </div>
 
         {/* Navigation */}

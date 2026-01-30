@@ -1,10 +1,10 @@
 # Estado del Proyecto - Verity News
 
-> Última actualización: Sprint 3 FINAL + RSS Directos (2026-01-29) - **OPERACIONAL ✅** - Imágenes reales en Dashboard
+> Última actualización: Sprint 6 - Página de Detalle + Análisis IA (2026-01-30) - **OPERACIONAL ✅** - RAG Full Stack + Análisis Gemini
 
 ---
 
-## Estado Actual: SPRINT 3 COMPLETADO + RSS DIRECTOS VALIDADO ✅
+## Estado Actual: SPRINT 6 COMPLETADO - DETALLE DE NOTICIA + ANÁLISIS IA ✅
 
 | Componente | Estado | Notas |
 |------------|--------|-------|
@@ -16,7 +16,7 @@
 | **Backend - Infrastructure** | ✅ Listo | NewsAPI, Gemini 2.5 Flash (corregido), JinaReader con fallback, Prisma 7 + Adapter. |
 | **Base de Datos** | ✅ Listo | PostgreSQL + Prisma 7 con `@prisma/adapter-pg`. |
 | **Infraestructura Docker** | ✅ Listo | PostgreSQL, ChromaDB y Redis corriendo. |
-| **Pipeline de Ingesta** | ✅ **DirectSpanishRssClient** | Feeds RSS directos de 4 medios españoles (El País, El Mundo, 20 Minutos, Europa Press). URLs limpias sin obfuscación. 20 noticias ingestadas exitosamente. |
+| **Pipeline de Ingesta** | ✅ **DirectSpanishRssClient v2** | 8 categorías RSS con 9 medios españoles. Promise.allSettled para robustez. Resolución automática de categorías por keywords. |
 | **Pipeline de Análisis IA** | ✅ Listo | **Gemini 2.5 Flash** + Jina Reader + Fallback Strategy + Soporte contenido parcial. |
 | **MetadataExtractor** | ✅ **Mejorado** | maxRedirects: 5 para seguir redirecciones CORS. Extrae og:image real de medios sin bloqueos. |
 | **Layout Sidebar** | ✅ Listo | Navegación escalable, responsive hamburger menu, 4 items principales. |
@@ -25,7 +25,13 @@
 | **Chat IA (RAG Agéntico)** | ✅ Operacional | Chat con Gemini 2.5 Flash + Google Search Grounding. Test validado con fuentes españolas: 8+ periódicos identificados. |
 | **Auto-scroll Chat** | ✅ Listo | Implementado con viewport ref directo. |
 | **Testing** | ✅ Listo | Vitest configurado, 41 tests pasando. |
-| **ChromaDB Integration** | ⏳ Pendiente | Sprint 4 - Embeddings y búsqueda vectorial global. |
+| **ChromaDB Integration** | ✅ **Completado** | Embeddings con Gemini text-embedding-004, búsqueda semántica operativa. |
+| **Búsqueda Semántica** | ✅ Listo | Endpoint `GET /api/search?q=...` con patrón Vector Search → SQL Fetch. |
+| **Backfill Script** | ✅ Listo | Script idempotente con rate-limiting (2s) para migración de datos. |
+| **UI Búsqueda** | ✅ Listo | SearchBar en Sidebar + Página `/search` con resultados semánticos. |
+| **Página Detalle** | ✅ **Nuevo** | `/news/[id]` con layout 60/40, panel de análisis IA, botón analizar. |
+| **Endpoint Análisis** | ✅ **Nuevo** | `POST /api/analyze/article` con Gemini 2.5 Flash + scraping Jina. |
+| **Favoritos** | ✅ **Nuevo** | Toggle heart en cards, filtro en sidebar, persistencia en DB. |
 
 ---
 
@@ -167,6 +173,8 @@ Eliminar dependencia de NewsAPI ($45/mes) y reemplazarla con Google News RSS (gr
 - **ADR-007:** Jina Reader API para extracción de contenido web (scraping) por su simplicidad y calidad de resultados.
 - **ADR-008:** Análisis de bias con escala numérica 0-1 (0=neutral, 1=altamente sesgado) con indicadores específicos.
 - **ADR-009:** Prisma 7 requiere Driver Adapters - se usa `@prisma/adapter-pg` en lugar de conexión directa.
+- **ADR-010:** ChromaDB como vector store con patrón "Vector Search → SQL Fetch" para mantener datos actualizados en PostgreSQL.
+- **ADR-011:** Embeddings generados con Gemini `text-embedding-004` (768 dimensiones) por consistencia con el stack de IA existente.
 
 ---
 
@@ -374,17 +382,126 @@ const prisma = new PrismaClient({ adapter });
 
 ---
 
-## Próximos Pasos: Sprint 4 - Cierre y Refinamiento
+## Sprint 4: La Memoria Vectorial (Completado - 2026-01-30)
 
-### 1. Integración de ChromaDB
-- [ ] Generar embeddings de artículos analizados
-- [ ] Almacenar embeddings en ChromaDB
-- [ ] Crear endpoint `/api/search/semantic` para RAG global
-- [ ] Búsqueda semántica entre todas las noticias
+### 🎯 Objetivo
+Implementar búsqueda semántica usando ChromaDB como vector store, permitiendo encontrar noticias por significado en lugar de keywords exactos.
+
+### ✅ Logros Completados
+
+#### 1. Integración de ChromaDB
+- **Cliente:** `ChromaClient` en `infrastructure/external/chroma.client.ts`
+- **Interfaz Domain:** `IChromaClient` con métodos puros (Clean Architecture)
+- **Colección:** `verity-news-articles` con distancia coseno (`hnsw:space: cosine`)
+- **Conexión:** Via variable de entorno `CHROMA_DB_URL` (default: `http://localhost:8000`)
+
+#### 2. Generación de Embeddings con Gemini
+- **Modelo:** `text-embedding-004` (768 dimensiones)
+- **Método:** `GeminiClient.generateEmbedding(text)` con retry logic (3 intentos)
+- **Texto indexado:** `título + descripción + summary` por artículo
+- **Rate limiting:** Exponential backoff (2s, 4s, 8s) en caso de error
+
+#### 3. Sincronización Automática (Write Path)
+- **Hook en `AnalyzeArticleUseCase`:** Después de guardar análisis en PostgreSQL:
+  1. Genera embedding del artículo
+  2. Upsert en ChromaDB con metadata (title, source, date, biasScore)
+  3. Non-blocking: Si falla ChromaDB, el análisis continúa
+- **Metadata indexada:**
+  ```typescript
+  { title, source, publishedAt, biasScore }
+  ```
+
+#### 4. Búsqueda Semántica (Read Path)
+- **UseCase:** `SearchNewsUseCase` con patrón "Vector Search → SQL Fetch"
+- **Endpoint:** `GET /api/search?q=término&limit=10`
+- **Flujo:**
+  1. Query del usuario → Gemini embedding (768d)
+  2. ChromaDB.querySimilar() → Array de IDs ordenados por similitud
+  3. PostgreSQL.findByIds() → Artículos completos
+  4. preserveRelevanceOrder() → Mantiene orden de ChromaDB
+- **Controller:** `SearchController` con manejo de errores (400, 503, 500)
+
+#### 5. Script de Backfill
+- **Archivo:** `scripts/backfill-embeddings.ts`
+- **Características:**
+  - Solo procesa artículos con `analyzedAt` y `urlToImage`
+  - Idempotente: Verifica existencia antes de generar embedding
+  - Rate limiting: 2 segundos entre requests (tier gratuito Gemini)
+  - Feedback visual: `[N/Total] ✅ Indexada: "Título..."`
+  - Manejo de 429: Espera 10s adicionales si rate limited
+
+### 📊 Resultados del Backfill
+
+```
+╔════════════════════════════════════════════════════════════╗
+║                      RESUMEN FINAL                         ║
+╠════════════════════════════════════════════════════════════╣
+║  ✅ Indexadas:    20                                      ║
+║  ⏭️  Saltadas:      0                                      ║
+║  ❌ Fallidas:      0                                      ║
+║  📊 Total:        20                                      ║
+╚════════════════════════════════════════════════════════════╝
+📦 Documentos en ChromaDB: 21
+```
+
+### 🔍 Test de Búsqueda Semántica
+
+| Query | Resultados | Top Match |
+|-------|------------|-----------|
+| "política España gobierno" | 2 | Madrid recuerda víctimas (El País) |
+| "deportes fútbol" | 3 | Simeone, Guardiola (El País, 20 Minutos) |
+| "economía inflación" | 2 | Rodalies, Simeone |
+
+### Archivos Creados/Modificados (Sprint 4)
+
+```
+backend/
+├── src/
+│   ├── domain/services/
+│   │   └── chroma-client.interface.ts (NEW - 47 líneas)
+│   ├── application/use-cases/
+│   │   ├── analyze-article.usecase.ts (MOD - +30 líneas hook indexación)
+│   │   └── search-news.usecase.ts (NEW - 95 líneas)
+│   └── infrastructure/
+│       ├── external/
+│       │   ├── chroma.client.ts (NEW - 185 líneas)
+│       │   └── gemini.client.ts (MOD - +55 líneas generateEmbedding)
+│       ├── persistence/
+│       │   └── prisma-news-article.repository.ts (MOD - +18 líneas findByIds)
+│       ├── http/
+│       │   ├── controllers/search.controller.ts (NEW - 107 líneas)
+│       │   └── routes/search.routes.ts (NEW - 15 líneas)
+│       └── config/dependencies.ts (MOD - SearchController, SearchUseCase)
+└── scripts/
+    ├── backfill-embeddings.ts (NEW - 158 líneas)
+    ├── test-chroma.ts (NEW - 40 líneas)
+    ├── test-embedding-flow.ts (NEW - 75 líneas)
+    └── test-search-endpoint.ts (NEW - 78 líneas)
+```
+
+### Dependencias Añadidas
+- `chromadb` - Cliente oficial de ChromaDB
+
+### API Endpoints Actualizados
+- `GET /api/search?q=query&limit=10` - **NUEVO** - Búsqueda semántica
+
+---
+
+## Próximos Pasos: Sprint 7 - Cierre y Refinamiento
+
+### 1. Funcionalidades Completadas ✅
+- [x] Componente de búsqueda semántica en Sidebar ✅
+- [x] Página de resultados `/search` ✅
+- [x] Feedback visual durante búsqueda (loading states) ✅
+- [x] Página de detalle `/news/[id]` con layout 60/40 ✅
+- [x] Panel de análisis IA con visualización completa ✅
+- [x] Endpoint `POST /api/analyze/article` con Gemini ✅
+- [x] Persistencia de favoritos en BD ✅
+- [x] Filtro de favoritos en Sidebar ✅
 
 ### 2. Auditoría Final
 - [ ] Revisión de seguridad OWASP (SQL injection, XSS, CSRF)
-- [ ] Optimización de costes de APIs (Gemini, NewsAPI, Jina)
+- [ ] Optimización de costes de APIs (Gemini, Jina)
 - [ ] Performance audit (Lighthouse, Web Vitals)
 - [ ] Testing de carga (k6 o Artillery)
 
@@ -394,12 +511,13 @@ const prisma = new PrismaClient({ adapter });
 - [ ] Recomendaciones futuras
 - [ ] Apéndices técnicos
 
-### 4. Mejoras Futuras (Sprint 5+)
-- [ ] Rutas adicionales: `/trending`, `/favorites`, `/news/[id]`
-- [ ] Persistencia de favoritos en BD
+### 4. Mejoras Futuras (Post-MVP)
+- [ ] Ruta `/trending` con noticias más comentadas
 - [ ] Historial de búsquedas semánticas
 - [ ] Alertas personalizadas por tema
 - [ ] Exportación de reportes de sesgo
+- [ ] Autenticación de usuarios (Firebase Auth)
+- [ ] Compartir análisis en redes sociales
 
 ---
 
@@ -432,7 +550,415 @@ const prisma = new PrismaClient({ adapter });
 - 🧠 Cerebro (Backend IA + Gemini) - Sprint 2 ✅
 - 👁️ Ojos (Dashboard + Visualización) - Sprint 3 ✅
 - 🤖 Voz (Chat conversacional) - Sprint 3 ✅
-- 💾 Memoria (ChromaDB embeddings) - Sprint 4 (Pendiente)
+- 💾 Memoria (ChromaDB embeddings) - Sprint 4 ✅
+- 🔍 Búsqueda (UI Semántica) - Sprint 5 ✅
+- 📰 Fuentes (8 Categorías RSS, 9 Medios) - Sprint 5.2 ✅
+- 📄 Detalle (Página `/news/[id]` + Análisis IA) - Sprint 6.1 ✅
+- 🎯 Análisis (Endpoint Gemini + Panel Visual) - Sprint 6.2 ✅
+- ❤️ Favoritos (Toggle + Filtro + Persistencia) - Sprint 6.3 ✅
 
-**Status:** Listo para auditoría técnica final y redacción de TFM.
+**Status:** Sistema RAG Full Stack con análisis de sesgo completo. MVP funcional listo para auditoría final y redacción de TFM.
+
+---
+
+## Conclusión Sprint 4
+
+**Sprint 4 representa la implementación de la "Memoria Vectorial"** - el componente que permite al sistema recordar y encontrar noticias por significado semántico.
+
+### Arquitectura RAG Completa
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    VERITY NEWS - RAG STACK                  │
+├─────────────────────────────────────────────────────────────┤
+│  WRITE PATH (Análisis)                                      │
+│  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐ │
+│  │ Ingest   │ → │ Analyze  │ → │ Gemini   │ → │ ChromaDB │ │
+│  │ (RSS)    │   │ (Gemini) │   │ Embed    │   │ (Vector) │ │
+│  └──────────┘   └──────────┘   └──────────┘   └──────────┘ │
+│        ↓              ↓                                     │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │              PostgreSQL (Source of Truth)             │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                                                             │
+│  READ PATH (Búsqueda)                                       │
+│  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐ │
+│  │ Query    │ → │ Gemini   │ → │ ChromaDB │ → │ Postgres │ │
+│  │ (User)   │   │ Embed    │   │ (IDs)    │   │ (Full)   │ │
+│  └──────────┘   └──────────┘   └──────────┘   └──────────┘ │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Métricas Sprint 4
+
+| Métrica | Valor |
+|---------|-------|
+| **Duración** | 1 día (2026-01-30) |
+| **Archivos Creados** | 8 nuevos |
+| **Archivos Modificados** | 6 existentes |
+| **Líneas de Código** | ~700 |
+| **Documentos en ChromaDB** | 21 |
+| **Dimensiones Embedding** | 768 |
+| **TypeScript Errors** | 0 |
+
+---
+
+## Sprint 5: UI de Búsqueda Semántica (Completado - 2026-01-30)
+
+### 🎯 Objetivo
+Implementar la interfaz de usuario para la búsqueda semántica, permitiendo a los usuarios buscar noticias por significado desde el frontend.
+
+### ✅ Logros Completados
+
+#### 1. Componente SearchBar
+- **Archivo:** `frontend/components/search-bar.tsx`
+- **Características:**
+  - Input con icono de búsqueda y botón "Buscar"
+  - Botón de limpiar (X) cuando hay texto
+  - Navegación automática a `/search?q=término`
+  - Soporte para `onSearch` callback personalizado
+  - Estados: idle, searching (con spinner)
+  - Props: `placeholder`, `defaultValue`, `autoFocus`, `className`
+
+#### 2. Página de Resultados `/search`
+- **Archivo:** `frontend/app/search/page.tsx`
+- **Características:**
+  - Header sticky con SearchBar y botón "Volver"
+  - Estado inicial con ejemplos de búsqueda
+  - Loading state con spinner y mensaje
+  - Error state con instrucciones
+  - Empty state cuando no hay resultados
+  - Grid responsive de NewsCards (1-2-3 columnas)
+  - Footer con créditos de tecnología
+  - Suspense boundary para SSR
+
+#### 3. Integración en Sidebar
+- **Archivo modificado:** `frontend/components/layout/sidebar.tsx`
+- **Cambios:**
+  - SearchBar integrado debajo del logo
+  - Placeholder: "Buscar con IA..."
+  - Separador visual con borde inferior
+
+#### 4. API Client
+- **Archivo modificado:** `frontend/lib/api.ts`
+- **Nuevo:** Función `searchNews(query, limit)` + tipo `SearchResponse`
+- **Endpoint:** `GET /api/search?q=query&limit=10`
+
+### Archivos Creados/Modificados (Sprint 5)
+
+```
+frontend/
+├── components/
+│   ├── search-bar.tsx (NEW - 95 líneas)
+│   └── layout/
+│       └── sidebar.tsx (MOD - +10 líneas)
+├── app/
+│   └── search/
+│       └── page.tsx (NEW - 175 líneas)
+└── lib/
+    └── api.ts (MOD - +35 líneas)
+```
+
+### Flujo de Usuario
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  1. Usuario escribe en SearchBar del Sidebar               │
+│     ↓                                                       │
+│  2. Presiona Enter o click en "Buscar"                     │
+│     ↓                                                       │
+│  3. Router navega a /search?q=consulta                     │
+│     ↓                                                       │
+│  4. useEffect detecta query param                          │
+│     ↓                                                       │
+│  5. Llama searchNews() → GET /api/search?q=...             │
+│     ↓                                                       │
+│  6. Backend: Gemini embedding → ChromaDB → PostgreSQL      │
+│     ↓                                                       │
+│  7. Frontend: Renderiza NewsCards ordenados por relevancia │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Métricas Sprint 5
+
+| Métrica | Valor |
+|---------|-------|
+| **Duración** | 1 sesión (2026-01-30) |
+| **Archivos Creados** | 2 nuevos |
+| **Archivos Modificados** | 2 existentes |
+| **Líneas de Código** | ~315 |
+| **TypeScript Errors** | 0 |
+| **Build Status** | ✅ Passed |
+
+---
+
+## Sprint 5.2: Configuración de Categorías RSS (Completado - 2026-01-30)
+
+### 🎯 Objetivo
+Establecer 8 categorías fijas de noticias usando múltiples fuentes RSS públicas de España para garantizar robustez y variedad.
+
+### ✅ Logros Completados
+
+#### 1. Reestructuración de RSS_SOURCES
+- **Archivo:** `backend/src/infrastructure/external/direct-spanish-rss.client.ts`
+- **8 Categorías configuradas:**
+
+| Categoría | Fuentes | Medios |
+|-----------|---------|--------|
+| `general` | 3 | El País, El Mundo, 20 Minutos |
+| `internacional` | 2 | El País, El Mundo |
+| `deportes` | 3 | AS, Marca, Mundo Deportivo |
+| `economia` | 3 | 20 Minutos, El País, El Economista |
+| `politica` | 2 | Europa Press, El País |
+| `ciencia` | 2 | El País, 20 Minutos |
+| `tecnologia` | 3 | 20 Minutos, El Mundo, Xataka |
+| `cultura` | 2 | El País, 20 Minutos |
+
+#### 2. Promise.allSettled para Robustez
+- Fetch paralelo de todas las fuentes de una categoría
+- Si una fuente falla, las demás continúan
+- Logging detallado por fuente: `✅ El País: 15 articles` / `⚠️ Marca failed`
+
+#### 3. Resolución Automática de Categorías
+- **Método:** `resolveCategory(query)` mapea keywords a categorías
+- **Ejemplos:**
+  - `"fútbol liga"` → `deportes`
+  - `"gobierno congreso"` → `politica`
+  - `"inteligencia artificial"` → `tecnologia`
+  - `"cambio climático"` → `ciencia`
+
+#### 4. Función getSourceFromUrl
+- Identifica el medio desde la URL del feed
+- Soporta 9 medios: El País, El Mundo, 20 Minutos, Europa Press, AS, Marca, Mundo Deportivo, El Economista, Xataka
+
+### Uso de la API
+
+```bash
+# Ingesta por categoría directa
+POST /api/ingest/news
+{ "query": "deportes", "pageSize": 20 }
+
+# Ingesta con keywords (resolución automática)
+POST /api/ingest/news
+{ "query": "fútbol champions", "pageSize": 15 }
+# → Resuelve a categoría "deportes"
+
+# Categorías disponibles
+general, internacional, deportes, economia, politica, ciencia, tecnologia, cultura
+```
+
+### Métricas Sprint 5.2
+
+| Métrica | Valor |
+|---------|-------|
+| **Categorías** | 8 |
+| **Medios integrados** | 9 |
+| **Fuentes RSS totales** | 20 |
+| **TypeScript Errors** | 0 |
+
+---
+
+## Sprint 6: Página de Detalle y Análisis IA (Completado - 2026-01-30)
+
+### 🎯 Objetivo
+Implementar la página de detalle de noticia con panel de análisis IA y endpoint de análisis con Gemini.
+
+### ✅ Sprint 6.1: Página de Detalle de Noticia (UI)
+
+#### 1. Página `/news/[id]`
+- **Archivo:** `frontend/app/news/[id]/page.tsx` (421 líneas)
+- **Layout:** Two-column responsive (60% artículo / 40% análisis IA)
+- **Características:**
+  - Header sticky con botón "Volver" y logo
+  - Imagen de portada con aspect-ratio 16:9
+  - Metadata: fuente, categoría, autor, fecha formateada
+  - Contenido con prose styling para HTML
+  - Botón "Leer noticia completa" a fuente original
+
+#### 2. Panel de Análisis IA (Columna Derecha)
+- **Estados:**
+  - **Sin analizar:** Botón "Analizar Veracidad" con icono Sparkles
+  - **Analizando:** Spinner + "Analizando..."
+  - **Analizado:** Visualización completa del análisis
+- **Métricas mostradas:**
+  - Barra de sesgo con gradiente (verde→ámbar→rojo)
+  - Badge de nivel de sesgo (Muy Neutral → Muy Sesgado)
+  - Emoji de sentimiento (😊 / 😐 / 😟)
+  - Resumen IA en 2-3 oraciones
+  - Tags de temas principales
+  - Lista de indicadores de sesgo (máx 3)
+- **Botón Re-analizar:** Permite forzar nuevo análisis
+
+#### 3. Estados de Error y Carga
+- **ArticleSkeleton:** Skeleton loading para toda la página
+- **Error State:** Card con emoji 😵 y botón "Volver al inicio"
+- **Not Found:** Página dedicada `/news/[id]/not-found.tsx`
+
+#### 4. Funciones Helper
+- `formatDate()`: Fecha en español con día de semana
+- `getBiasInfo()`: Mapea score 0-1 a label + color
+- `getSentimentInfo()`: Mapea sentiment a emoji + label
+
+### ✅ Sprint 6.2: Backend de Análisis con Gemini
+
+#### 1. Endpoint `POST /api/analyze/article`
+- **Controller:** `analyze.controller.ts` líneas 24-40
+- **Route:** `analyze.routes.ts` línea 17
+- **Body:** `{ articleId: string (UUID) }`
+- **Response:**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "articleId": "uuid",
+      "summary": "Resumen en 2-3 oraciones",
+      "biasScore": 0.35,
+      "analysis": { ... },
+      "scrapedContentLength": 4500
+    },
+    "message": "Article analyzed successfully"
+  }
+  ```
+
+#### 2. GeminiClient - Prompt de Análisis
+- **Modelo:** Gemini 2.5 Flash (Pay-As-You-Go)
+- **Prompt estructurado** que genera JSON con:
+  - `summary`: Resumen conciso
+  - `biasScore`: 0.0 (neutral) a 1.0 (muy sesgado)
+  - `biasIndicators`: Lista de indicadores de sesgo
+  - `sentiment`: positive | negative | neutral
+  - `mainTopics`: Array de temas principales
+  - `factualClaims`: Afirmaciones factuales detectadas
+- **Criterios de puntuación:**
+  - 0.0-0.2: Neutral, factual, múltiples perspectivas
+  - 0.2-0.4: Ligero sesgo, lenguaje mayormente neutral
+  - 0.4-0.6: Sesgo moderado, omisión de perspectivas
+  - 0.6-0.8: Sesgo significativo, lenguaje emocional
+  - 0.8-1.0: Altamente sesgado, propaganda
+
+#### 3. AnalyzeArticleUseCase - Flujo Completo
+1. Buscar artículo en PostgreSQL por ID
+2. Verificar si ya fue analizado (skip si existe)
+3. Scraping con Jina Reader si contenido < 100 chars
+4. Fallback a título+descripción si scraping falla
+5. Extracción de og:image con MetadataExtractor
+6. Análisis con Gemini 2.5 Flash
+7. Guardar análisis en PostgreSQL
+8. Indexar en ChromaDB para búsqueda semántica
+
+#### 4. Endpoints Adicionales
+- `POST /api/analyze/batch` - Análisis en lote `{ limit: 1-100 }`
+- `GET /api/analyze/stats` - Estadísticas de análisis
+
+### ✅ Sprint 6.3: Sistema de Favoritos
+
+#### 1. Backend
+- **Campo Prisma:** `isFavorite Boolean @default(false)`
+- **Endpoint:** `PATCH /api/news/:id/favorite`
+- **UseCase:** `ToggleFavoriteUseCase` con validación
+- **Response:** `{ success, data: { id, isFavorite, message } }`
+
+#### 2. Frontend
+- **NewsCard:** Botón corazón con animación fill
+- **Optimistic UI:** Toggle inmediato, rollback en error
+- **Sidebar:** Item "Favoritos" con filtro `?favorite=true`
+- **Página principal:** Sección dedicada cuando category=favorites
+
+### Archivos Creados/Modificados (Sprint 6)
+
+```
+frontend/
+├── app/
+│   ├── news/
+│   │   └── [id]/
+│   │       ├── page.tsx (NEW - 421 líneas)
+│   │       └── not-found.tsx (NEW - 23 líneas)
+│   └── page.tsx (MOD - favoritos, categorías)
+├── components/
+│   ├── news-card.tsx (MOD - botón favorito)
+│   └── layout/
+│       └── sidebar.tsx (MOD - item favoritos)
+└── lib/
+    └── api.ts (MOD - toggleFavorite, fetchFavorites)
+
+backend/
+├── src/
+│   ├── application/use-cases/
+│   │   ├── analyze-article.usecase.ts (existente - completo)
+│   │   └── toggle-favorite.usecase.ts (NEW)
+│   └── infrastructure/
+│       ├── http/
+│       │   ├── controllers/news.controller.ts (MOD - toggleFavorite)
+│       │   └── routes/news.routes.ts (MOD - PATCH favorite)
+│       └── persistence/
+│           └── prisma-news-article.repository.ts (MOD - toggleFavorite)
+└── prisma/
+    └── schema.prisma (MOD - isFavorite field)
+```
+
+### Métricas Sprint 6
+
+| Métrica | Valor |
+|---------|-------|
+| **Duración** | 1 día (2026-01-30) |
+| **Archivos Creados** | 3 nuevos |
+| **Archivos Modificados** | 8 existentes |
+| **Líneas de Código** | ~600 |
+| **Endpoints Nuevos** | 1 (PATCH favorite) |
+| **TypeScript Errors** | 0 |
+| **Build Status** | ✅ Passed |
+
+---
+
+## Conclusión Sprint 6
+
+**Sprint 6 representa la culminación del MVP de Verity News** - completando la experiencia de usuario end-to-end para análisis de sesgo en noticias.
+
+### Flujo Completo del Usuario
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  1. Usuario navega a Verity News                                │
+│     ↓                                                           │
+│  2. Ve grid de noticias con categorías (8) y favoritos (❤️)     │
+│     ↓                                                           │
+│  3. Click en noticia → /news/[id]                               │
+│     ↓                                                           │
+│  4. Ve layout 60/40: Artículo | Panel IA                        │
+│     ↓                                                           │
+│  5. Click "Analizar Veracidad"                                  │
+│     ↓                                                           │
+│  6. Backend: Scraping → Gemini → PostgreSQL → ChromaDB          │
+│     ↓                                                           │
+│  7. Panel muestra: BiasScore, Sentiment, Summary, Topics        │
+│     ↓                                                           │
+│  8. Usuario puede marcar como favorito o buscar semánticamente  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Stack Tecnológico Final
+
+| Capa | Tecnología |
+|------|------------|
+| **Frontend** | Next.js 16.1.6 + React 19 + Tailwind CSS v4 |
+| **Backend** | Node.js + Express + Clean Architecture |
+| **Base de Datos** | PostgreSQL + Prisma 7 |
+| **Vector Store** | ChromaDB (búsqueda semántica) |
+| **IA - Análisis** | Gemini 2.5 Flash (bias detection) |
+| **IA - Embeddings** | Gemini text-embedding-004 (768d) |
+| **IA - Chat** | Gemini 2.5 Flash + Google Search Grounding |
+| **Scraping** | Jina Reader API |
+| **Ingesta** | 9 medios españoles via RSS |
+
+### Capacidades del Sistema
+
+1. ✅ **Ingesta Multi-fuente**: 8 categorías, 9 medios españoles
+2. ✅ **Análisis de Sesgo IA**: Puntuación 0-1 con indicadores específicos
+3. ✅ **Búsqueda Semántica**: Por significado, no solo keywords
+4. ✅ **Chat Conversacional**: Con Google Search Grounding
+5. ✅ **Dashboard Analítico**: KPIs y distribución de sesgo
+6. ✅ **Sistema de Favoritos**: Toggle + filtro + persistencia
+7. ✅ **Detalle de Noticia**: Layout profesional con panel IA
+
+**Status Final:** MVP funcional y completo. Listo para auditoría de seguridad y redacción de memoria TFM.
 

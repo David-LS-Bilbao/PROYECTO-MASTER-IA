@@ -1,62 +1,59 @@
 /**
- * News Controller (Infrastructure/Presentation Layer)
- * Handles HTTP requests for fetching news articles
+ * NewsController (Infrastructure/Presentation Layer)
+ * Handles HTTP requests for news articles
  */
 
 import { Request, Response } from 'express';
 import { INewsArticleRepository } from '../../../domain/repositories/news-article.repository';
-import { DatabaseError } from '../../../domain/errors/infrastructure.error';
+import { ToggleFavoriteUseCase } from '../../../application/use-cases/toggle-favorite.usecase';
 
 export class NewsController {
-  constructor(private readonly articleRepository: INewsArticleRepository) {}
+  constructor(
+    private readonly repository: INewsArticleRepository,
+    private readonly toggleFavoriteUseCase: ToggleFavoriteUseCase
+  ) {}
 
   /**
    * GET /api/news
-   * Get all news articles with optional pagination
+   * Get all news with pagination and optional filters
    */
   async getNews(req: Request, res: Response): Promise<void> {
     try {
-      const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
-      const offset = parseInt(req.query.offset as string) || 0;
+      // Parse query parameters with type casting
+      const limit = Number(req.query.limit) || 20;
+      const offset = Number(req.query.offset) || 0;
+      const category = req.query.category as string | undefined;
+      const onlyFavorites = req.query.favorite === 'true';
 
-      const articles = await this.articleRepository.findAll(limit, offset);
-      const total = await this.articleRepository.count();
-
-      // Map domain entities to API response format
-      const newsData = articles.map((article) => {
-        const json = article.toJSON();
-        return {
-          id: json.id,
-          title: json.title,
-          description: json.description,
-          content: json.content,
-          url: json.url,
-          urlToImage: json.urlToImage,
-          source: json.source,
-          author: json.author,
-          publishedAt: json.publishedAt,
-          category: json.category,
-          language: json.language,
-          // AI Analysis fields
-          summary: json.summary,
-          biasScore: json.biasScore,
-          analysis: json.analysis ? this.safeParseJSON(json.analysis) : null,
-          analyzedAt: json.analyzedAt,
-        };
+      // Fetch articles using unified findAll with params object
+      const news = await this.repository.findAll({
+        limit,
+        offset,
+        category,
+        onlyFavorites,
       });
 
-      res.status(200).json({
+      // Get count for pagination (filtered or total)
+      const total = category || onlyFavorites
+        ? await this.repository.countFiltered({ category, onlyFavorites })
+        : await this.repository.count();
+
+      res.json({
         success: true,
-        data: newsData,
+        data: news,
         pagination: {
           total,
           limit,
           offset,
-          hasMore: offset + limit < total,
+          hasMore: offset + news.length < total,
         },
       });
     } catch (error) {
-      this.handleError(error, res);
+      console.error('Error fetching news:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+      });
     }
   }
 
@@ -67,73 +64,80 @@ export class NewsController {
   async getNewsById(req: Request, res: Response): Promise<void> {
     try {
       const id = req.params.id as string;
-      const article = await this.articleRepository.findById(id);
 
-      if (!article) {
-        res.status(404).json({
+      if (!id) {
+        res.status(400).json({
           success: false,
-          error: 'Not Found',
-          message: `Article with ID ${id} not found`,
+          error: 'Missing article ID',
         });
         return;
       }
 
-      const json = article.toJSON();
-      res.status(200).json({
+      const article = await this.repository.findById(id);
+
+      if (!article) {
+        res.status(404).json({
+          success: false,
+          error: 'Article not found',
+        });
+        return;
+      }
+
+      res.json({
         success: true,
-        data: {
-          id: json.id,
-          title: json.title,
-          description: json.description,
-          content: json.content,
-          url: json.url,
-          urlToImage: json.urlToImage,
-          source: json.source,
-          author: json.author,
-          publishedAt: json.publishedAt,
-          category: json.category,
-          language: json.language,
-          summary: json.summary,
-          biasScore: json.biasScore,
-          analysis: json.analysis ? this.safeParseJSON(json.analysis) : null,
-          analyzedAt: json.analyzedAt,
-        },
+        data: article,
       });
     } catch (error) {
-      this.handleError(error, res);
-    }
-  }
-
-  /**
-   * Safely parse JSON string
-   */
-  private safeParseJSON(jsonString: string): unknown {
-    try {
-      return JSON.parse(jsonString);
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * Centralized error handling
-   */
-  private handleError(error: unknown, res: Response): void {
-    console.error('NewsController Error:', error);
-
-    if (error instanceof DatabaseError) {
+      console.error('Error fetching article:', error);
       res.status(500).json({
         success: false,
-        error: 'Database Error',
-        message: 'Failed to fetch news data',
+        error: 'Internal server error',
       });
-      return;
     }
+  }
 
-    res.status(500).json({
-      success: false,
-      error: 'Internal Server Error',
-      message: 'An unexpected error occurred',
-    });
+  /**
+   * PATCH /api/news/:id/favorite
+   * Toggle favorite status of an article
+   */
+  async toggleFavorite(req: Request, res: Response): Promise<void> {
+    try {
+      const id = req.params.id as string;
+
+      console.log(`❤️ Toggling favorite for ID: ${id}`);
+
+      if (!id) {
+        res.status(400).json({
+          success: false,
+          error: 'Missing article ID',
+        });
+        return;
+      }
+
+      // Execute use case with { id } object
+      const result = await this.toggleFavoriteUseCase.execute({ id });
+
+      res.json({
+        success: true,
+        data: result.article,
+        isFavorite: result.isFavorite,
+      });
+    } catch (error: any) {
+      console.error('Error toggling favorite:', error);
+
+      // Handle domain errors (article not found)
+      if (error.message?.includes('not found')) {
+        res.status(404).json({
+          success: false,
+          error: error.message,
+        });
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Internal server error',
+      });
+    }
   }
 }

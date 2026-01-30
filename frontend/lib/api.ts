@@ -29,6 +29,7 @@ export interface NewsArticle {
   biasScore: number | null;
   analysis: ArticleAnalysis | null;
   analyzedAt: string | null;
+  isFavorite: boolean;
 }
 
 export interface NewsResponse {
@@ -202,6 +203,143 @@ export async function chatWithArticle(
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
     throw new Error(errorData.message || `Chat failed: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Search response from semantic search endpoint
+ */
+export interface SearchResponse {
+  success: boolean;
+  data: {
+    query: string;
+    results: NewsArticle[];
+    totalFound: number;
+  };
+  message: string;
+}
+
+/**
+ * Semantic search for news articles using ChromaDB
+ */
+export async function searchNews(
+  query: string,
+  limit = 10
+): Promise<SearchResponse> {
+  const res = await fetch(
+    `${API_BASE_URL}/api/search?q=${encodeURIComponent(query)}&limit=${limit}`,
+    {
+      cache: 'no-store',
+    }
+  );
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.message || `Search failed: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Toggle favorite response
+ */
+export interface ToggleFavoriteResponse {
+  success: boolean;
+  data: {
+    id: string;
+    isFavorite: boolean;
+    message: string;
+  };
+}
+
+/**
+ * Toggle favorite status of an article
+ */
+export async function toggleFavorite(articleId: string): Promise<ToggleFavoriteResponse> {
+  const res = await fetch(`${API_BASE_URL}/api/news/${articleId}/favorite`, {
+    method: 'PATCH',
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.message || `Toggle favorite failed: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Fetch favorite articles
+ */
+export async function fetchFavorites(limit = 50, offset = 0): Promise<NewsResponse> {
+  const res = await fetch(
+    `${API_BASE_URL}/api/news?favorite=true&limit=${limit}&offset=${offset}`,
+    {
+      cache: 'no-store',
+    }
+  );
+
+  if (!res.ok) {
+    throw new Error(`Failed to fetch favorites: ${res.status} ${res.statusText}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Ingest response from backend
+ */
+export interface IngestResponse {
+  success: boolean;
+  data: {
+    query: string;
+    savedCount: number;
+    duplicateCount: number;
+    errorCount: number;
+  };
+  message: string;
+}
+
+/**
+ * Trigger RSS ingestion for a specific category
+ */
+export async function ingestByCategory(category: string, pageSize = 20): Promise<IngestResponse> {
+  const res = await fetch(`${API_BASE_URL}/api/ingest/news`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ category, pageSize }),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.message || `Ingest failed: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Fetch news by category
+ */
+export async function fetchNewsByCategory(
+  category: string,
+  limit = 50,
+  offset = 0
+): Promise<NewsResponse> {
+  const res = await fetch(
+    `${API_BASE_URL}/api/news?category=${encodeURIComponent(category)}&limit=${limit}&offset=${offset}`,
+    {
+      cache: 'no-store',
+    }
+  );
+
+  if (!res.ok) {
+    throw new Error(`Failed to fetch news by category: ${res.status} ${res.statusText}`);
   }
 
   return res.json();

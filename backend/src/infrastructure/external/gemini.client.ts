@@ -136,6 +136,57 @@ export class GeminiClient implements IGeminiClient {
   }
 
   /**
+   * Generate embedding vector for text using text-embedding-004
+   * Includes retry logic for transient failures
+   */
+  async generateEmbedding(text: string): Promise<number[]> {
+    if (!text || text.trim().length === 0) {
+      throw new ExternalAPIError('Gemini', 'Text is required for embedding generation', 400);
+    }
+
+    // Truncate text to avoid token limits (max ~8000 tokens for embedding model)
+    const truncatedText = text.substring(0, 8000);
+    const maxRetries = 3;
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`      [GeminiClient] Generando embedding (intento ${attempt}/${maxRetries})...`);
+
+        const embeddingModel = this.genAI.getGenerativeModel({ model: 'text-embedding-004' });
+        const result = await embeddingModel.embedContent(truncatedText);
+        const embedding = result.embedding.values;
+
+        console.log(`      [GeminiClient] Embedding OK - dimensiones: ${embedding.length}`);
+        return embedding;
+
+      } catch (error) {
+        lastError = error as Error;
+        console.warn(`      [GeminiClient] Embedding intento ${attempt} falló: ${lastError.message}`);
+
+        // Don't retry on non-transient errors
+        if (lastError.message?.includes('API key') || lastError.message?.includes('401')) {
+          throw new ExternalAPIError('Gemini', 'Invalid API key', 401, lastError);
+        }
+
+        // Wait before retry (exponential backoff)
+        if (attempt < maxRetries) {
+          const delay = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
+          console.log(`      [GeminiClient] Esperando ${delay}ms antes de reintentar...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    throw new ExternalAPIError(
+      'Gemini',
+      `Embedding generation failed after ${maxRetries} attempts: ${lastError?.message}`,
+      500,
+      lastError || undefined
+    );
+  }
+
+  /**
    * Chat with context injection for article Q&A
    * Uses Google Search Grounding for hybrid responses (article + external info)
    */

@@ -6,7 +6,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { IngestNewsUseCase } from './ingest-news.usecase';
 import { INewsAPIClient, FetchNewsResult } from '../../domain/services/news-api-client.interface';
-import { INewsArticleRepository } from '../../domain/repositories/news-article.repository';
+import { INewsArticleRepository, FindAllParams } from '../../domain/repositories/news-article.repository';
+import { NewsArticle } from '../../domain/entities/news-article.entity';
 import { ValidationError } from '../../domain/errors/domain.error';
 import { PrismaClient } from '@prisma/client';
 
@@ -46,23 +47,32 @@ class MockNewsAPIClient implements INewsAPIClient {
   }
 }
 
+/**
+ * Mock Repository that implements ALL methods from INewsArticleRepository
+ */
 class MockNewsArticleRepository implements INewsArticleRepository {
   private articles: Map<string, any> = new Map();
 
-  async save(): Promise<void> {
-    // Mock implementation
+  // ===============================
+  // Core Methods (Used by UseCase)
+  // ===============================
+
+  async save(article: NewsArticle): Promise<void> {
+    const data = article.toJSON();
+    this.articles.set(data.url, data);
   }
 
-  async saveMany(): Promise<void> {
-    // Mock implementation
+  async saveMany(articles: NewsArticle[]): Promise<void> {
+    for (const article of articles) {
+      const data = article.toJSON();
+      this.articles.set(data.url, data);
+    }
   }
 
-  async findByUrl(url: string) {
-    return this.articles.get(url) || null;
-  }
-
-  async findBySourceAndDateRange() {
-    return [];
+  async findByUrl(url: string): Promise<NewsArticle | null> {
+    const data = this.articles.get(url);
+    if (!data) return null;
+    return NewsArticle.reconstitute(data);
   }
 
   async existsByUrl(url: string): Promise<boolean> {
@@ -73,8 +83,49 @@ class MockNewsArticleRepository implements INewsArticleRepository {
     return this.articles.size;
   }
 
-  setExistingArticle(url: string) {
+  // Test helper
+  setExistingArticle(url: string): void {
     this.articles.set(url, { url });
+  }
+
+  // ===============================
+  // Stub Methods (Interface Compliance)
+  // ===============================
+
+  async findById(_id: string): Promise<NewsArticle | null> {
+    return null;
+  }
+
+  async findAll(_params: FindAllParams): Promise<NewsArticle[]> {
+    return [];
+  }
+
+  async findUnanalyzed(_limit: number): Promise<NewsArticle[]> {
+    return [];
+  }
+
+  async toggleFavorite(_id: string): Promise<NewsArticle | null> {
+    return null;
+  }
+
+  async countFiltered(_params: { category?: string; onlyFavorites?: boolean }): Promise<number> {
+    return 0;
+  }
+
+  async countAnalyzed(): Promise<number> {
+    return 0;
+  }
+
+  async findBySourceAndDateRange(
+    _source: string,
+    _startDate: Date,
+    _endDate: Date
+  ): Promise<NewsArticle[]> {
+    return [];
+  }
+
+  async findByIds(_ids: string[]): Promise<NewsArticle[]> {
+    return [];
   }
 }
 
@@ -105,7 +156,7 @@ describe('IngestNewsUseCase', () => {
   describe('Successful ingestion scenarios', () => {
     it('should ingest new articles successfully', async () => {
       const request = {
-        category: 'technology',
+        category: 'tecnologia', // Spanish category
         language: 'es',
         pageSize: 20,
       };
@@ -185,6 +236,17 @@ describe('IngestNewsUseCase', () => {
         })
       );
     });
+
+    it('should normalize English categories to Spanish', async () => {
+      const saveSpy = vi.spyOn(mockArticleRepository, 'saveMany');
+
+      await useCase.execute({ category: 'technology' });
+
+      expect(saveSpy).toHaveBeenCalled();
+      const savedArticles = saveSpy.mock.calls[0][0];
+      // Category should be normalized to Spanish
+      expect(savedArticles[0].category).toBe('tecnologia');
+    });
   });
 
   describe('Validation scenarios', () => {
@@ -224,18 +286,35 @@ describe('IngestNewsUseCase', () => {
       await expect(useCase.execute(request)).rejects.toThrow('category must be one of');
     });
 
-    it('should accept all valid categories', async () => {
+    it('should accept all valid Spanish categories', async () => {
       const validCategories = [
+        'general',
+        'internacional',
+        'deportes',
+        'economia',
+        'politica',
+        'ciencia',
+        'tecnologia',
+        'cultura',
+      ];
+
+      for (const category of validCategories) {
+        const result = await useCase.execute({ category: category as any });
+        expect(result.success).toBe(true);
+      }
+    });
+
+    it('should accept English categories (backwards compatibility)', async () => {
+      const englishCategories = [
         'business',
         'entertainment',
-        'general',
         'health',
         'science',
         'sports',
         'technology',
       ];
 
-      for (const category of validCategories) {
+      for (const category of englishCategories) {
         const result = await useCase.execute({ category: category as any });
         expect(result.success).toBe(true);
       }
@@ -348,6 +427,27 @@ describe('IngestNewsUseCase', () => {
 
       expect(result.newArticles).toBe(1);
       expect(result.success).toBe(true);
+    });
+
+    it('should save category from request when provided', async () => {
+      const saveSpy = vi.spyOn(mockArticleRepository, 'saveMany');
+
+      await useCase.execute({ category: 'deportes' });
+
+      expect(saveSpy).toHaveBeenCalled();
+      const savedArticles = saveSpy.mock.calls[0][0];
+      expect(savedArticles[0].category).toBe('deportes');
+      expect(savedArticles[1].category).toBe('deportes');
+    });
+
+    it('should save category from query when category not provided', async () => {
+      const saveSpy = vi.spyOn(mockArticleRepository, 'saveMany');
+
+      await useCase.execute({ query: 'economia' });
+
+      expect(saveSpy).toHaveBeenCalled();
+      const savedArticles = saveSpy.mock.calls[0][0];
+      expect(savedArticles[0].category).toBe('economia');
     });
   });
 });

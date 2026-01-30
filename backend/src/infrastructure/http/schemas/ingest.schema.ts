@@ -6,13 +6,14 @@
 import { z } from 'zod';
 
 const validCategories = [
-  'business',
-  'entertainment',
   'general',
-  'health',
-  'science',
-  'sports',
-  'technology',
+  'internacional',
+  'deportes',
+  'economia',
+  'politica',
+  'ciencia',
+  'tecnologia',
+  'cultura',
 ] as const;
 
 export const ingestNewsSchema = z.object({

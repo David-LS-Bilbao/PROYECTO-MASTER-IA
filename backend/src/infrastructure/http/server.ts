@@ -6,12 +6,19 @@ import { createIngestRoutes } from './routes/ingest.routes';
 import { createAnalyzeRoutes } from './routes/analyze.routes';
 import { createNewsRoutes } from './routes/news.routes';
 import { createChatRoutes } from './routes/chat.routes';
+import { createSearchRoutes } from './routes/search.routes';
 
 export function createServer(): Application {
   const app = express();
 
   // Initialize dependencies
   const container = DependencyContainer.getInstance();
+
+  // TEST: Minimal server with just PATCH route
+  app.patch('/api/test-patch', (_req: Request, res: Response) => {
+    console.log('🔧 Test PATCH route called!');
+    res.json({ success: true, message: 'PATCH works!' });
+  });
 
   // Security middleware
   app.use(helmet());
@@ -36,10 +43,19 @@ export function createServer(): Application {
   });
 
   // API Routes
+  console.log('📚 Registrando rutas...');
+  
+  // Test PATCH route to diagnose issue
+  app.patch('/api/test-patch', (_req: Request, res: Response) => {
+    console.log('🔧 Test PATCH route called!');
+    res.json({ success: true, message: 'PATCH works!' });
+  });
+  
   app.use('/api/news', createNewsRoutes(container.newsController));
   app.use('/api/ingest', createIngestRoutes(container.ingestController));
   app.use('/api/analyze', createAnalyzeRoutes(container.analyzeController));
   app.use('/api/chat', createChatRoutes(container.chatController));
+  app.use('/api/search', createSearchRoutes(container.searchController));
 
   // 404 handler
   app.use((_req: Request, res: Response) => {

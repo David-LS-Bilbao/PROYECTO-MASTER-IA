@@ -5,6 +5,16 @@
 
 import { NewsArticle } from '../entities/news-article.entity';
 
+/**
+ * Parameters for findAll query
+ */
+export interface FindAllParams {
+  limit: number;
+  offset: number;
+  category?: string;
+  onlyFavorites?: boolean;
+}
+
 export interface INewsArticleRepository {
   /**
    * Save a single news article
@@ -56,14 +66,32 @@ export interface INewsArticleRepository {
   count(): Promise<number>;
 
   /**
+   * Count articles matching filter criteria
+   */
+  countFiltered(params: { category?: string; onlyFavorites?: boolean }): Promise<number>;
+
+  /**
    * Count articles that have been analyzed
    */
   countAnalyzed(): Promise<number>;
 
   /**
-   * Find all articles with pagination, ordered by date (descending)
-   * @param limit Maximum number of articles to return (default 50)
-   * @param offset Number of articles to skip (default 0)
+   * Find all articles with pagination and optional filtering
+   * @param params Query parameters including limit, offset, category, and favorites filter
    */
-  findAll(limit?: number, offset?: number): Promise<NewsArticle[]>;
+  findAll(params: FindAllParams): Promise<NewsArticle[]>;
+
+  /**
+   * Find multiple articles by their IDs
+   * @param ids Array of article UUIDs
+   * @returns Articles found (may be fewer than requested if some don't exist)
+   */
+  findByIds(ids: string[]): Promise<NewsArticle[]>;
+
+  /**
+   * Toggle favorite status of an article
+   * @param id Article UUID
+   * @returns Updated article or null if not found
+   */
+  toggleFavorite(id: string): Promise<NewsArticle | null>;
 }

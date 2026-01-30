@@ -1,36 +1,101 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { fetchNews, fetchDashboardStats, type NewsArticle, type BiasDistribution } from '@/lib/api';
+import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import {
+  fetchNews,
+  fetchDashboardStats,
+  fetchFavorites,
+  fetchNewsByCategory,
+  ingestByCategory,
+  type NewsArticle,
+  type BiasDistribution,
+  type NewsResponse,
+} from '@/lib/api';
 import { NewsCard } from '@/components/news-card';
 import { Sidebar, DashboardDrawer } from '@/components/layout';
 import { Badge } from '@/components/ui/badge';
+import { CategoryPills, type CategoryId, CATEGORIES } from '@/components/category-pills';
 
 export default function Home() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const urlCategory = searchParams.get('category') as CategoryId | null;
+
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
-  const [newsData, setNewsData] = useState<any>(null);
+  const [newsData, setNewsData] = useState<NewsResponse | null>(null);
   const [stats, setStats] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [category, setCategory] = useState<CategoryId>(() => {
+    const validCategories = CATEGORIES.map(c => c.id);
+    return urlCategory && validCategories.includes(urlCategory) ? urlCategory : 'general';
+  });
+  const [isIngesting, setIsIngesting] = useState(false);
 
-  // Fetch data on mount
+  const loadNewsByCategory = useCallback(async (cat: CategoryId) => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      let newsResponse: NewsResponse;
+
+      if (cat === 'favorites') {
+        newsResponse = await fetchFavorites(50, 0);
+      } else if (cat === 'general') {
+        newsResponse = await fetchNews(50, 0);
+      } else {
+        setIsIngesting(true);
+        try {
+          await ingestByCategory(cat, 20);
+        } catch (ingestError) {
+          console.warn(`Ingesta fallida para ${cat}, mostrando datos existentes:`, ingestError);
+        } finally {
+          setIsIngesting(false);
+        }
+        newsResponse = await fetchNewsByCategory(cat, 50, 0);
+      }
+
+      setNewsData(newsResponse);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al cargar las noticias');
+      console.error('Error fetching data:', e);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     (async () => {
       try {
-        const [newsResponse, statsResponse] = await Promise.all([
-          fetchNews(50, 0),
-          fetchDashboardStats(),
-        ]);
-        setNewsData(newsResponse);
+        const statsResponse = await fetchDashboardStats();
         setStats(statsResponse);
+        await loadNewsByCategory(category);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Error al cargar las noticias');
         console.error('Error fetching data:', e);
-      } finally {
         setIsLoading(false);
       }
     })();
   }, []);
+
+  useEffect(() => {
+    const validCategories = CATEGORIES.map(c => c.id);
+    if (urlCategory && validCategories.includes(urlCategory) && urlCategory !== category) {
+      setCategory(urlCategory);
+      loadNewsByCategory(urlCategory);
+    }
+  }, [urlCategory]);
+
+  const handleCategoryChange = (newCategory: CategoryId) => {
+    if (newCategory === category) return;
+    setCategory(newCategory);
+
+    const url = newCategory === 'general' ? '/' : `/?category=${newCategory}`;
+    router.push(url, { scroll: false });
+
+    loadNewsByCategory(newCategory);
+  };
 
   function calculateBiasDistribution(articles: NewsArticle[]): BiasDistribution {
     const analyzedArticles = articles.filter((article) => article.biasScore !== null);
@@ -134,31 +199,63 @@ export default function Home() {
             )}
 
             {/* Empty State */}
-            {!error && newsData && newsData.data.length === 0 && (
+            {!isLoading && !error && newsData && newsData.data.length === 0 && (
               <div className="max-w-2xl mx-auto text-center py-16">
-                <div className="text-6xl mb-4">📰</div>
+                <div className="text-6xl mb-4">
+                  {category === 'favorites' ? '❤️' : '📰'}
+                </div>
                 <h2 className="text-2xl font-bold text-zinc-900 dark:text-white mb-2">
-                  No hay noticias todavía
+                  {category === 'favorites'
+                    ? 'No tienes favoritos todavía'
+                    : `No hay noticias en ${category}`}
                 </h2>
                 <p className="text-muted-foreground mb-6">
-                  Usa el endpoint de ingesta para cargar noticias desde NewsAPI
+                  {category === 'favorites'
+                    ? 'Marca noticias como favoritas para verlas aquí'
+                    : 'Prueba con otra categoría o espera a que se ingesten noticias'}
                 </p>
-                <code className="block bg-zinc-100 dark:bg-zinc-800 p-4 rounded-lg text-sm text-left overflow-x-auto">
-                  curl -X POST http://localhost:3000/api/ingest/news \{'\n'}
-                  {'  '}-H &quot;Content-Type: application/json&quot; \{'\n'}
-                  {'  '}-d &apos;{'{'}
-                  &quot;query&quot;: &quot;technology&quot;, &quot;pageSize&quot;: 20{'}'}
-                  &apos;
-                </code>
+              </div>
+            )}
+
+            {/* Category Pills */}
+            <div className="max-w-7xl mx-auto mb-6">
+              <CategoryPills
+                selectedCategory={category}
+                onSelect={handleCategoryChange}
+                disabled={isLoading}
+              />
+              {isIngesting && (
+                <p className="text-sm text-muted-foreground mt-2 flex items-center gap-2">
+                  <span className="inline-block w-4 h-4 border-2 border-zinc-400 border-t-zinc-900 rounded-full animate-spin" />
+                  Descargando noticias frescas...
+                </p>
+              )}
+            </div>
+
+            {/* Loading State */}
+            {isLoading && (
+              <div className="max-w-7xl mx-auto">
+                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                  {[...Array(6)].map((_, i) => (
+                    <div key={i} className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden animate-pulse">
+                      <div className="h-48 bg-zinc-200 dark:bg-zinc-800" />
+                      <div className="p-4 space-y-3">
+                        <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded w-3/4" />
+                        <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded w-1/2" />
+                        <div className="h-3 bg-zinc-200 dark:bg-zinc-800 rounded w-1/4" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
             {/* News Grid */}
-            {!error && newsData && newsData.data.length > 0 && (
+            {!isLoading && !error && newsData && newsData.data.length > 0 && (
               <>
                 <div className="flex items-center justify-between mb-6 max-w-7xl mx-auto">
                   <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">
-                    Últimas noticias
+                    {category === 'favorites' ? 'Tus favoritos' : 'Últimas noticias'}
                   </h2>
                   <span className="text-sm text-muted-foreground">
                     Mostrando {newsData.data.length} de {newsData.pagination.total}

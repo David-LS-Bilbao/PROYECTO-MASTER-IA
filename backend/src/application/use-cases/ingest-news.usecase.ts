@@ -5,6 +5,7 @@
  * Responsibilities:
  * - Fetch news from external API
  * - Transform to domain entities
+ * - Assign category correctly
  * - Filter duplicates
  * - Persist to database
  * - Record ingestion metadata
@@ -16,6 +17,29 @@ import { INewsArticleRepository } from '../../domain/repositories/news-article.r
 import { NewsArticle } from '../../domain/entities/news-article.entity';
 import { ValidationError } from '../../domain/errors/domain.error';
 import { PrismaClient } from '@prisma/client';
+
+// Valid categories (Spanish)
+const VALID_CATEGORIES = [
+  'general',
+  'internacional',
+  'deportes',
+  'economia',
+  'politica',
+  'ciencia',
+  'tecnologia',
+  'cultura',
+] as const;
+
+// English to Spanish category mapping for backwards compatibility
+const CATEGORY_MAPPING: Record<string, string> = {
+  business: 'economia',
+  entertainment: 'cultura',
+  health: 'ciencia',
+  science: 'ciencia',
+  sports: 'deportes',
+  technology: 'tecnologia',
+  general: 'general',
+};
 
 export interface IngestNewsRequest {
   category?: string;
@@ -51,6 +75,9 @@ export class IngestNewsUseCase {
     try {
       // Validate input
       this.validateRequest(request);
+
+      // Normalize category (map English to Spanish if needed)
+      const normalizedCategory = this.normalizeCategory(request.category || request.query);
 
       // Fetch from NewsAPI
       const result = await this.newsAPIClient.fetchTopHeadlines({
@@ -88,7 +115,7 @@ export class IngestNewsUseCase {
             continue;
           }
 
-          // Create domain entity
+          // Create domain entity with normalized category
           const article = NewsArticle.create({
             id: randomUUID(),
             title: apiArticle.title || 'Untitled',
@@ -99,13 +126,14 @@ export class IngestNewsUseCase {
             source: apiArticle.source.name,
             author: apiArticle.author,
             publishedAt: new Date(apiArticle.publishedAt),
-            category: request.category || null,
+            category: normalizedCategory, // Always save the normalized category
             language: request.language || 'es',
-            embedding: null, // Will be generated later by embedding service
-            summary: null, // Will be generated later by analysis service
-            biasScore: null, // Will be generated later by analysis service
-            analysis: null, // Will be generated later by analysis service
-            analyzedAt: null, // Will be set when article is analyzed
+            embedding: null,
+            summary: null,
+            biasScore: null,
+            analysis: null,
+            analyzedAt: null,
+            isFavorite: false,
             fetchedAt: new Date(),
             updatedAt: new Date(),
           });
@@ -121,6 +149,7 @@ export class IngestNewsUseCase {
       if (articlesToSave.length > 0) {
         await this.articleRepository.saveMany(articlesToSave);
         newArticles = articlesToSave.length;
+        console.log(`[IngestNewsUseCase] Saved ${newArticles} articles with category: "${normalizedCategory}"`);
       }
 
       // Record ingestion metadata
@@ -153,6 +182,28 @@ export class IngestNewsUseCase {
     }
   }
 
+  /**
+   * Normalize category to Spanish (maps English categories for backwards compatibility)
+   */
+  private normalizeCategory(category: string | undefined): string | null {
+    if (!category) return null;
+
+    const lower = category.toLowerCase();
+
+    // If it's already a valid Spanish category, return it
+    if (VALID_CATEGORIES.includes(lower as any)) {
+      return lower;
+    }
+
+    // Try to map from English
+    if (CATEGORY_MAPPING[lower]) {
+      return CATEGORY_MAPPING[lower];
+    }
+
+    // Return original if can't map (will be stored as-is)
+    return category;
+  }
+
   private validateRequest(request: IngestNewsRequest): void {
     if (request.pageSize !== undefined && (request.pageSize < 1 || request.pageSize > 100)) {
       throw new ValidationError('pageSize must be between 1 and 100');
@@ -162,19 +213,20 @@ export class IngestNewsUseCase {
       throw new ValidationError('language must be a 2-letter ISO code');
     }
 
-    const validCategories = [
+    // Accept both Spanish and English categories (will be normalized later)
+    const allValidCategories = [
+      ...VALID_CATEGORIES,
       'business',
       'entertainment',
-      'general',
       'health',
       'science',
       'sports',
       'technology',
     ];
 
-    if (request.category && !validCategories.includes(request.category)) {
+    if (request.category && !allValidCategories.includes(request.category.toLowerCase() as any)) {
       throw new ValidationError(
-        `category must be one of: ${validCategories.join(', ')}`
+        `category must be one of: ${VALID_CATEGORIES.join(', ')}`
       );
     }
   }
@@ -198,7 +250,6 @@ export class IngestNewsUseCase {
       });
     } catch (error) {
       console.error('Failed to record ingestion metadata:', error);
-      // Don't throw - metadata recording failure shouldn't fail the entire operation
     }
   }
 

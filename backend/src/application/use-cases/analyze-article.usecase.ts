@@ -7,6 +7,7 @@ import { ArticleAnalysis } from '../../domain/entities/news-article.entity';
 import { INewsArticleRepository } from '../../domain/repositories/news-article.repository';
 import { IGeminiClient } from '../../domain/services/gemini-client.interface';
 import { IJinaReaderClient } from '../../domain/services/jina-reader-client.interface';
+import { IChromaClient } from '../../domain/services/chroma-client.interface';
 import { EntityNotFoundError, ValidationError } from '../../domain/errors/domain.error';
 import { MetadataExtractor } from '../../infrastructure/external/metadata-extractor';
 
@@ -43,7 +44,8 @@ export class AnalyzeArticleUseCase {
     private readonly articleRepository: INewsArticleRepository,
     private readonly geminiClient: IGeminiClient,
     private readonly jinaReaderClient: IJinaReaderClient,
-    private readonly metadataExtractor: MetadataExtractor
+    private readonly metadataExtractor: MetadataExtractor,
+    private readonly chromaClient: IChromaClient
   ) {}
 
   /**
@@ -174,6 +176,35 @@ export class AnalyzeArticleUseCase {
     // 5. Update article with analysis
     const analyzedArticle = article.withAnalysis(analysis);
     await this.articleRepository.save(analyzedArticle);
+
+    // 6. Index in ChromaDB for semantic search
+    try {
+      console.log(`   🔗 Indexando en ChromaDB...`);
+
+      // Combine relevant text for embedding
+      const textToEmbed = `${article.title}. ${article.description || ''}. ${analysis.summary || ''}`;
+
+      // Generate embedding with Gemini
+      const embedding = await this.geminiClient.generateEmbedding(textToEmbed);
+
+      // Upsert to ChromaDB
+      await this.chromaClient.upsertItem(
+        article.id,
+        embedding,
+        {
+          title: article.title,
+          source: article.source,
+          publishedAt: article.publishedAt.toISOString(),
+          biasScore: analysis.biasScore,
+        },
+        textToEmbed
+      );
+
+      console.log(`   ✅ Indexado en ChromaDB OK`);
+    } catch (indexError) {
+      // Non-blocking: log error but don't fail the analysis
+      console.warn(`   ⚠️ Indexación ChromaDB falló (análisis completado): ${indexError instanceof Error ? indexError.message : 'Error desconocido'}`);
+    }
 
     return {
       articleId: article.id,

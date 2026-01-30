@@ -40,6 +40,14 @@ export interface IGeminiClient {
   chatWithContext(input: ChatWithContextInput): Promise<ChatResponse>;
 
   /**
+   * Generate embedding vector for text using text-embedding-004
+   * @param text The text to embed
+   * @returns Array of numbers representing the embedding vector
+   * @throws ExternalAPIError if API call fails
+   */
+  generateEmbedding(text: string): Promise<number[]>;
+
+  /**
    * Check if the service is available
    */
   isAvailable(): Promise<boolean>;

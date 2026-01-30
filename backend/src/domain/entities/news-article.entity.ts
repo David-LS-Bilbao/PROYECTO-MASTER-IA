@@ -21,6 +21,8 @@ export interface NewsArticleProps {
   biasScore: number | null;
   analysis: string | null;
   analyzedAt: Date | null;
+  // User features
+  isFavorite: boolean;
   // Metadata
   fetchedAt: Date;
   updatedAt: Date;
@@ -139,6 +141,10 @@ export class NewsArticle {
     return this.props.analyzedAt !== null;
   }
 
+  get isFavorite(): boolean {
+    return this.props.isFavorite;
+  }
+
   /**
    * Get parsed analysis object
    */
@@ -183,6 +189,17 @@ export class NewsArticle {
     return NewsArticle.reconstitute({
       ...this.props,
       urlToImage: imageUrl,
+      updatedAt: new Date(),
+    });
+  }
+
+  /**
+   * Toggle favorite status
+   */
+  withFavoriteToggle(): NewsArticle {
+    return NewsArticle.reconstitute({
+      ...this.props,
+      isFavorite: !this.props.isFavorite,
       updatedAt: new Date(),
     });
   }

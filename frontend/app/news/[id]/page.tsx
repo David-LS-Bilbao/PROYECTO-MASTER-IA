@@ -1,18 +1,16 @@
-import { notFound } from 'next/navigation';
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import Markdown from 'react-markdown';
-import { fetchNewsById } from '@/lib/api';
+import Image from 'next/image';
+import { ArrowLeft, ExternalLink, Clock, User, Tag, Sparkles } from 'lucide-react';
+import { fetchNewsById, analyzeArticle, type NewsArticle, type AnalyzeResponse } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { BiasMeter, BiasExplanation } from '@/components/bias-meter';
-import { ArticleImage } from '@/components/article-image';
-import { NewsChatDrawer } from '@/components/news-chat-drawer';
-
-interface PageProps {
-  params: Promise<{ id: string }>;
-}
+import { Skeleton } from '@/components/ui/skeleton';
 
 /**
  * Format date to readable string
@@ -29,62 +27,142 @@ function formatDate(dateString: string): string {
 }
 
 /**
- * Get sentiment badge variant
+ * Get bias level info
  */
-function getSentimentInfo(sentiment: string): { label: string; variant: 'default' | 'secondary' | 'destructive' } {
+function getBiasInfo(score: number): { label: string; color: string; bg: string } {
+  if (score <= 0.2) return { label: 'Muy Neutral', color: 'text-green-700', bg: 'bg-green-100' };
+  if (score <= 0.4) return { label: 'Ligero Sesgo', color: 'text-blue-700', bg: 'bg-blue-100' };
+  if (score <= 0.6) return { label: 'Sesgo Moderado', color: 'text-amber-700', bg: 'bg-amber-100' };
+  if (score <= 0.8) return { label: 'Sesgo Alto', color: 'text-orange-700', bg: 'bg-orange-100' };
+  return { label: 'Muy Sesgado', color: 'text-red-700', bg: 'bg-red-100' };
+}
+
+/**
+ * Get sentiment info
+ */
+function getSentimentInfo(sentiment: string): { label: string; emoji: string } {
   switch (sentiment) {
-    case 'positive':
-      return { label: 'Positivo', variant: 'default' };
-    case 'negative':
-      return { label: 'Negativo', variant: 'destructive' };
-    default:
-      return { label: 'Neutral', variant: 'secondary' };
+    case 'positive': return { label: 'Positivo', emoji: '😊' };
+    case 'negative': return { label: 'Negativo', emoji: '😟' };
+    default: return { label: 'Neutral', emoji: '😐' };
   }
 }
 
-export default async function NewsDetailPage({ params }: PageProps) {
-  const { id } = await params;
+/**
+ * Loading skeleton for the article
+ */
+function ArticleSkeleton() {
+  return (
+    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
+      <header className="sticky top-0 z-50 border-b bg-white/80 backdrop-blur-sm dark:bg-zinc-900/80 dark:border-zinc-800">
+        <div className="container mx-auto px-4 py-4">
+          <Skeleton className="h-10 w-32" />
+        </div>
+      </header>
+      <main className="container mx-auto px-4 py-8">
+        <div className="flex flex-col md:flex-row gap-8">
+          <div className="flex-1 md:w-[60%]">
+            <Skeleton className="h-64 md:h-96 w-full rounded-xl mb-6" />
+            <Skeleton className="h-10 w-3/4 mb-4" />
+            <Skeleton className="h-6 w-1/2 mb-6" />
+            <div className="space-y-3">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-3/4" />
+            </div>
+          </div>
+          <div className="md:w-[40%]">
+            <Skeleton className="h-96 w-full rounded-xl" />
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
 
-  let article = null;
-  let error = null;
+export default function NewsDetailPage() {
+  const params = useParams();
+  const router = useRouter();
+  const id = params.id as string;
 
-  try {
-    const response = await fetchNewsById(id);
-    article = response.data;
-  } catch (e) {
-    error = e instanceof Error ? e.message : 'Error desconocido';
-    console.error('Error fetching article:', e);
+  const [article, setArticle] = useState<NewsArticle | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadArticle() {
+      if (!id) return;
+
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const response = await fetchNewsById(id);
+        setArticle(response.data);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : 'Error al cargar la noticia';
+        setError(message);
+        if (message.includes('404')) {
+          router.push('/news/not-found');
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    loadArticle();
+  }, [id, router]);
+
+  const handleAnalyze = async () => {
+    if (!article) return;
+
+    setIsAnalyzing(true);
+    setAnalyzeError(null);
+
+    try {
+      const response: AnalyzeResponse = await analyzeArticle(article.id);
+
+      // Update article with analysis data
+      setArticle(prev => prev ? {
+        ...prev,
+        summary: response.data.summary,
+        biasScore: response.data.biasScore,
+        analysis: response.data.analysis,
+        analyzedAt: new Date().toISOString(),
+      } : null);
+    } catch (e) {
+      setAnalyzeError(e instanceof Error ? e.message : 'Error al analizar');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  if (isLoading) {
+    return <ArticleSkeleton />;
   }
 
-  // Handle 404
-  if (!article && error?.includes('404')) {
-    notFound();
-  }
-
-  // Handle other errors
   if (error || !article) {
     return (
-      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
-        <div className="container mx-auto px-4 py-16">
-          <Card className="max-w-2xl mx-auto">
-            <CardContent className="pt-6 text-center">
-              <div className="text-6xl mb-4">😵</div>
-              <h1 className="text-2xl font-bold mb-2">Error al cargar la noticia</h1>
-              <p className="text-muted-foreground mb-6">{error}</p>
-              <Button asChild>
-                <Link href="/">Volver al inicio</Link>
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
+      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex items-center justify-center">
+        <Card className="max-w-md mx-4">
+          <CardContent className="pt-6 text-center">
+            <div className="text-6xl mb-4">😵</div>
+            <h1 className="text-2xl font-bold mb-2">Error al cargar la noticia</h1>
+            <p className="text-muted-foreground mb-6">{error}</p>
+            <Button asChild>
+              <Link href="/">Volver al inicio</Link>
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   const isAnalyzed = article.analyzedAt !== null;
-  const sentimentInfo = article.analysis?.sentiment
-    ? getSentimentInfo(article.analysis.sentiment)
-    : null;
+  const biasInfo = article.biasScore !== null ? getBiasInfo(article.biasScore) : null;
+  const sentimentInfo = article.analysis?.sentiment ? getSentimentInfo(article.analysis.sentiment) : null;
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
@@ -92,191 +170,86 @@ export default async function NewsDetailPage({ params }: PageProps) {
       <header className="sticky top-0 z-50 border-b bg-white/80 backdrop-blur-sm dark:bg-zinc-900/80 dark:border-zinc-800">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-              <span className="text-2xl font-bold text-zinc-900 dark:text-white">
-                Verity News
-              </span>
-            </Link>
-            <Button variant="outline" asChild>
-              <Link href="/">Volver al Dashboard</Link>
+            <Button variant="ghost" asChild className="gap-2">
+              <Link href="/">
+                <ArrowLeft className="h-4 w-4" />
+                Volver
+              </Link>
             </Button>
+            <Link href="/" className="text-xl font-bold text-zinc-900 dark:text-white">
+              Verity News
+            </Link>
           </div>
         </div>
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        <article className="max-w-4xl mx-auto">
-          {/* Article Header */}
-          <header className="mb-8">
-            {/* Image */}
+        {/* Two Column Layout */}
+        <div className="flex flex-col lg:flex-row gap-8">
+          {/* Left Column - Article Content (60%) */}
+          <article className="flex-1 lg:w-[60%]">
+            {/* Cover Image */}
             {article.urlToImage && (
-              <div className="relative h-64 md:h-96 w-full rounded-xl overflow-hidden mb-6">
-                <ArticleImage
+              <div className="relative aspect-video w-full rounded-xl overflow-hidden mb-6 bg-zinc-200 dark:bg-zinc-800">
+                <Image
                   src={article.urlToImage}
                   alt={article.title}
+                  fill
                   className="object-cover"
                   priority
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
                 />
               </div>
             )}
 
-            {/* Meta info */}
-            <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mb-4">
-              <Badge variant="outline">{article.source}</Badge>
-              {article.category && <Badge variant="secondary">{article.category}</Badge>}
-              <span>{formatDate(article.publishedAt)}</span>
-              {article.author && <span>por {article.author}</span>}
-            </div>
-
             {/* Title */}
-            <h1 className="text-3xl md:text-4xl font-bold text-zinc-900 dark:text-white mb-4">
+            <h1 className="text-3xl md:text-4xl font-bold text-zinc-900 dark:text-white mb-4 leading-tight">
               {article.title}
             </h1>
 
-            {/* Description */}
+            {/* Metadata */}
+            <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mb-6">
+              <Badge variant="default" className="font-medium">
+                {article.source}
+              </Badge>
+              {article.category && (
+                <Badge variant="secondary" className="gap-1">
+                  <Tag className="h-3 w-3" />
+                  {article.category}
+                </Badge>
+              )}
+              {article.author && (
+                <span className="flex items-center gap-1">
+                  <User className="h-4 w-4" />
+                  {article.author}
+                </span>
+              )}
+              <span className="flex items-center gap-1">
+                <Clock className="h-4 w-4" />
+                {formatDate(article.publishedAt)}
+              </span>
+            </div>
+
+            <Separator className="my-6" />
+
+            {/* Description / Summary */}
             {article.description && (
-              <p className="text-xl text-muted-foreground leading-relaxed">
-                {article.description}
-              </p>
+              <div className="mb-6">
+                <p className="text-lg text-muted-foreground leading-relaxed">
+                  {article.description}
+                </p>
+              </div>
             )}
-          </header>
 
-          <Separator className="my-8" />
-
-          {/* AI Analysis Section */}
-          {isAnalyzed && article.biasScore !== null && (
-            <>
-              <section className="mb-8">
-                <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
-                  <span className="text-2xl">🤖</span> Análisis de IA
-                </h2>
-
-                <div className="grid gap-6 md:grid-cols-2">
-                  {/* Bias Score Card */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Nivel de Sesgo</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <BiasMeter score={article.biasScore} size="lg" />
-                      <BiasExplanation score={article.biasScore} />
-                    </CardContent>
-                  </Card>
-
-                  {/* Sentiment & Topics Card */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Sentimiento y Temas</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      {sentimentInfo && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-muted-foreground">Sentimiento:</span>
-                          <Badge variant={sentimentInfo.variant}>{sentimentInfo.label}</Badge>
-                        </div>
-                      )}
-
-                      {article.analysis?.mainTopics && article.analysis.mainTopics.length > 0 && (
-                        <div>
-                          <span className="text-sm text-muted-foreground block mb-2">
-                            Temas principales:
-                          </span>
-                          <div className="flex flex-wrap gap-2">
-                            {article.analysis.mainTopics.map((topic, i) => (
-                              <Badge key={i} variant="outline">
-                                {topic}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Summary */}
-                {article.summary && (
-                  <Card className="mt-6 border-l-4 border-l-blue-500">
-                    <CardHeader>
-                      <CardTitle className="text-lg">Resumen del Análisis</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-lg leading-relaxed">{article.summary}</p>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* Bias Indicators */}
-                {article.analysis?.biasIndicators && article.analysis.biasIndicators.length > 0 && (
-                  <Card className="mt-6 border-l-4 border-l-amber-500">
-                    <CardHeader>
-                      <CardTitle className="text-lg">Indicadores de Sesgo Detectados</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-                        {article.analysis.biasIndicators.map((indicator, i) => (
-                          <li key={i}>{indicator}</li>
-                        ))}
-                      </ul>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* Factual Claims */}
-                {article.analysis?.factualClaims && article.analysis.factualClaims.length > 0 && (
-                  <Card className="mt-6 border-l-4 border-l-green-500">
-                    <CardHeader>
-                      <CardTitle className="text-lg">Afirmaciones Factuales</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-                        {article.analysis.factualClaims.map((claim, i) => (
-                          <li key={i}>{claim}</li>
-                        ))}
-                      </ul>
-                    </CardContent>
-                  </Card>
-                )}
-              </section>
-
-              <Separator className="my-8" />
-            </>
-          )}
-
-          {/* Not Analyzed Banner */}
-          {!isAnalyzed && (
-            <>
-              <Card className="mb-8 border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
-                <CardContent className="pt-6">
-                  <div className="flex items-start gap-4">
-                    <span className="text-3xl">⚠️</span>
-                    <div>
-                      <h3 className="font-semibold text-amber-800 dark:text-amber-400 mb-1">
-                        Artículo sin analizar
-                      </h3>
-                      <p className="text-sm text-amber-700 dark:text-amber-300">
-                        Este artículo aún no ha sido procesado por nuestra IA.
-                        Vuelve al dashboard y usa el botón &quot;Analizar con IA&quot;.
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Separator className="my-8" />
-            </>
-          )}
-
-          {/* Article Content */}
-          <section>
-            <h2 className="text-2xl font-bold mb-6">Contenido del Artículo</h2>
-
+            {/* Content */}
             {article.content ? (
-              <div className="prose prose-zinc dark:prose-invert max-w-none">
-                <Markdown>{article.content}</Markdown>
+              <div className="prose prose-zinc dark:prose-invert max-w-none mb-8">
+                <div dangerouslySetInnerHTML={{ __html: article.content }} />
               </div>
             ) : (
-              <Card className="border-dashed">
+              <Card className="border-dashed mb-8">
                 <CardContent className="pt-6 text-center">
                   <p className="text-muted-foreground">
                     El contenido completo no está disponible. Visita la fuente original para leer el artículo.
@@ -284,28 +257,155 @@ export default async function NewsDetailPage({ params }: PageProps) {
                 </CardContent>
               </Card>
             )}
-          </section>
 
-          <Separator className="my-8" />
-
-          {/* Action Buttons */}
-          <footer className="flex flex-wrap gap-4 justify-center">
-            <Button size="lg" asChild>
+            {/* Source Link */}
+            <Button size="lg" className="gap-2" asChild>
               <a href={article.url} target="_blank" rel="noopener noreferrer">
-                Ver fuente original ↗
+                <ExternalLink className="h-4 w-4" />
+                Leer noticia completa en {article.source}
               </a>
             </Button>
-            <Button variant="outline" size="lg" asChild>
-              <Link href="/">Volver al Dashboard</Link>
-            </Button>
-          </footer>
-        </article>
-      </main>
+          </article>
 
-      {/* Chat Drawer - Only show if article has content */}
-      {(article.content || article.description) && (
-        <NewsChatDrawer articleId={article.id} articleTitle={article.title} />
-      )}
+          {/* Right Column - AI Analysis Panel (40%) */}
+          <aside className="lg:w-[40%] lg:sticky lg:top-24 lg:self-start">
+            <Card className="border bg-gray-50 dark:bg-zinc-900">
+              <CardHeader className="pb-4">
+                <CardTitle className="flex items-center gap-2 text-xl">
+                  <Sparkles className="h-5 w-5 text-purple-500" />
+                  Análisis de Verity AI
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {isAnalyzed && biasInfo ? (
+                  <>
+                    {/* Bias Score */}
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium">Nivel de Sesgo</span>
+                        <span className={`text-sm font-semibold px-2 py-1 rounded ${biasInfo.bg} ${biasInfo.color}`}>
+                          {biasInfo.label}
+                        </span>
+                      </div>
+                      <div className="h-3 bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-linear-to-r from-green-500 via-amber-500 to-red-500 rounded-full transition-all"
+                          style={{ width: `${(article.biasScore ?? 0) * 100}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Puntuación: {((article.biasScore ?? 0) * 100).toFixed(0)}% de sesgo detectado
+                      </p>
+                    </div>
+
+                    {/* Sentiment */}
+                    {sentimentInfo && (
+                      <div className="flex items-center justify-between p-3 bg-white dark:bg-zinc-800 rounded-lg">
+                        <span className="text-sm font-medium">Sentimiento</span>
+                        <span className="flex items-center gap-2">
+                          <span className="text-xl">{sentimentInfo.emoji}</span>
+                          <span className="text-sm">{sentimentInfo.label}</span>
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Summary */}
+                    {article.summary && (
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-medium">Resumen IA</h4>
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          {article.summary}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Topics */}
+                    {article.analysis?.mainTopics && article.analysis.mainTopics.length > 0 && (
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-medium">Temas Principales</h4>
+                        <div className="flex flex-wrap gap-2">
+                          {article.analysis.mainTopics.map((topic, i) => (
+                            <Badge key={i} variant="outline" className="text-xs">
+                              {topic}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Bias Indicators */}
+                    {article.analysis?.biasIndicators && article.analysis.biasIndicators.length > 0 && (
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-medium text-amber-600">Indicadores de Sesgo</h4>
+                        <ul className="text-sm text-muted-foreground space-y-1">
+                          {article.analysis.biasIndicators.slice(0, 3).map((indicator, i) => (
+                            <li key={i} className="flex items-start gap-2">
+                              <span className="text-amber-500">•</span>
+                              {indicator}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Re-analyze button */}
+                    <Button
+                      variant="outline"
+                      className="w-full gap-2"
+                      onClick={handleAnalyze}
+                      disabled={isAnalyzing}
+                    >
+                      {isAnalyzing ? (
+                        <>
+                          <span className="animate-spin">⏳</span>
+                          Re-analizando...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-4 w-4" />
+                          Re-analizar
+                        </>
+                      )}
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    {/* Not Analyzed State */}
+                    <div className="text-center py-6">
+                      <div className="text-5xl mb-4">🔍</div>
+                      <h3 className="font-semibold mb-2">Sin analizar</h3>
+                      <p className="text-sm text-muted-foreground mb-6">
+                        Haz clic para analizar esta noticia con nuestra IA y detectar posibles sesgos.
+                      </p>
+                      <Button
+                        size="lg"
+                        className="w-full gap-2"
+                        onClick={handleAnalyze}
+                        disabled={isAnalyzing}
+                      >
+                        {isAnalyzing ? (
+                          <>
+                            <span className="animate-spin">⏳</span>
+                            Analizando...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="h-5 w-5" />
+                            Analizar Veracidad
+                          </>
+                        )}
+                      </Button>
+                      {analyzeError && (
+                        <p className="text-sm text-red-500 mt-3">{analyzeError}</p>
+                      )}
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </aside>
+        </div>
+      </main>
 
       {/* Footer */}
       <footer className="border-t bg-white dark:bg-zinc-900 dark:border-zinc-800 mt-16">

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { Heart } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -14,10 +15,12 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { analyzeArticleAction, type AnalyzeResult } from '@/app/actions';
+import { toggleFavorite } from '@/lib/api';
 import type { NewsArticle } from '@/lib/api';
 
 interface NewsCardProps {
   article: NewsArticle;
+  onFavoriteToggle?: (articleId: string, isFavorite: boolean) => void;
 }
 
 /**
@@ -51,9 +54,11 @@ function formatDate(dateString: string): string {
   });
 }
 
-export function NewsCard({ article }: NewsCardProps) {
+export function NewsCard({ article, onFavoriteToggle }: NewsCardProps) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<AnalyzeResult | null>(null);
+  const [isFavorite, setIsFavorite] = useState(article.isFavorite);
+  const [isTogglingFavorite, setIsTogglingFavorite] = useState(false);
 
   const isAnalyzed = article.analyzedAt !== null;
   const biasInfo = article.biasScore !== null ? getBiasInfo(article.biasScore) : null;
@@ -76,8 +81,52 @@ export function NewsCard({ article }: NewsCardProps) {
     }
   };
 
+  const handleToggleFavorite = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    setIsTogglingFavorite(true);
+    const previousState = isFavorite;
+
+    try {
+      // Optimistic UI update
+      setIsFavorite(!isFavorite);
+      
+      const response = await toggleFavorite(article.id);
+      
+      // Notify parent component
+      if (onFavoriteToggle) {
+        onFavoriteToggle(article.id, response.data.isFavorite);
+      }
+    } catch (error) {
+      // Rollback on error
+      setIsFavorite(previousState);
+      console.error('Failed to toggle favorite:', error);
+    } finally {
+      setIsTogglingFavorite(false);
+    }
+  };
+
   return (
-    <Card className="overflow-hidden hover:shadow-lg transition-shadow group">
+    <Card className="overflow-hidden hover:shadow-lg transition-shadow group relative">
+      {/* Favorite Button - Positioned in top-right */}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="absolute top-2 right-2 z-10 bg-white/90 hover:bg-white dark:bg-black/90 dark:hover:bg-black shadow-sm"
+        onClick={handleToggleFavorite}
+        disabled={isTogglingFavorite}
+        title={isFavorite ? 'Quitar de favoritos' : 'Marcar como favorito'}
+      >
+        <Heart
+          className={`h-5 w-5 transition-colors ${
+            isFavorite
+              ? 'fill-red-500 text-red-500'
+              : 'fill-none text-gray-600 dark:text-gray-300'
+          }`}
+        />
+      </Button>
+
       {/* Clickable Image */}
       {article.urlToImage && (
         <Link href={`/news/${article.id}`} className="block relative h-48 w-full overflow-hidden">
