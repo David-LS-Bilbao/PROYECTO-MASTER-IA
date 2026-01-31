@@ -13,6 +13,17 @@ import {
 // Collection name constant
 const COLLECTION_NAME = 'verity-news-articles';
 
+/**
+ * Type-safe interface for ChromaDB metadata
+ * Security: Eliminates `as any` casting for type safety
+ */
+interface ChromaMetadata {
+  title?: string;
+  source?: string;
+  publishedAt?: string;
+  biasScore?: number;
+}
+
 export class ChromaClient implements IChromaClient {
   private readonly client: ChromaSDK;
   private collection: Collection | null = null;
@@ -211,17 +222,21 @@ export class ChromaClient implements IChromaClient {
       const metadatas = results.metadatas?.[0] || [];
       const distances = results.distances?.[0] || [];
 
-      const queryResults: QueryResult[] = ids.map((id, index) => ({
-        id,
-        document: documents[index] || '',
-        metadata: {
-          title: (metadatas[index] as any)?.title || '',
-          source: (metadatas[index] as any)?.source || '',
-          publishedAt: (metadatas[index] as any)?.publishedAt || '',
-          biasScore: (metadatas[index] as any)?.biasScore,
-        },
-        distance: distances[index] ?? undefined, // Convert null to undefined
-      }));
+      // Security: Type-safe metadata casting (no `as any`)
+      const queryResults: QueryResult[] = ids.map((id, index) => {
+        const meta = metadatas[index] as ChromaMetadata | null;
+        return {
+          id,
+          document: documents[index] || '',
+          metadata: {
+            title: meta?.title || '',
+            source: meta?.source || '',
+            publishedAt: meta?.publishedAt || '',
+            biasScore: meta?.biasScore,
+          },
+          distance: distances[index] ?? undefined,
+        };
+      });
 
       console.log(`[ChromaClient] RAG Query - Encontrados ${queryResults.length} documentos`);
 

@@ -29,6 +29,8 @@ export class DependencyContainer {
 
   public readonly prisma: PrismaClient;
   public readonly chromaClient: ChromaClient;
+  public readonly geminiClient: GeminiClient;
+  public readonly newsRepository: PrismaNewsArticleRepository;
   public readonly ingestController: IngestController;
   public readonly analyzeController: AnalyzeController;
   public readonly newsController: NewsController;
@@ -50,46 +52,46 @@ export class DependencyContainer {
         ? new GoogleNewsRssClient()
         : new DirectSpanishRssClient(); // Default: Direct Spanish RSS
 
-    const geminiClient = new GeminiClient(process.env.GEMINI_API_KEY || '');
+    this.geminiClient = new GeminiClient(process.env.GEMINI_API_KEY || '');
     const jinaReaderClient = new JinaReaderClient(process.env.JINA_API_KEY || '');
     const metadataExtractor = new MetadataExtractor();
     this.chromaClient = new ChromaClient();
-    const articleRepository = new PrismaNewsArticleRepository(this.prisma);
+    this.newsRepository = new PrismaNewsArticleRepository(this.prisma);
 
     // Application Layer
     const ingestNewsUseCase = new IngestNewsUseCase(
       newsAPIClient,
-      articleRepository,
+      this.newsRepository,
       this.prisma
     );
 
     const analyzeArticleUseCase = new AnalyzeArticleUseCase(
-      articleRepository,
-      geminiClient,
+      this.newsRepository,
+      this.geminiClient,
       jinaReaderClient,
       metadataExtractor,
       this.chromaClient
     );
 
     const chatArticleUseCase = new ChatArticleUseCase(
-      articleRepository,
-      geminiClient,
+      this.newsRepository,
+      this.geminiClient,
       this.chromaClient // Añadido para RAG
     );
 
     const searchNewsUseCase = new SearchNewsUseCase(
-      articleRepository,
-      geminiClient,
+      this.newsRepository,
+      this.geminiClient,
       this.chromaClient
     );
 
-    const toggleFavoriteUseCase = new ToggleFavoriteUseCase(articleRepository);
+    const toggleFavoriteUseCase = new ToggleFavoriteUseCase(this.newsRepository);
 
     // Presentation Layer
     this.ingestController = new IngestController(ingestNewsUseCase);
     this.analyzeController = new AnalyzeController(analyzeArticleUseCase);
     this.newsController = new NewsController(
-      articleRepository,
+      this.newsRepository,
       toggleFavoriteUseCase
     );
     this.chatController = new ChatController(chatArticleUseCase);

@@ -95,6 +95,10 @@ export class GeminiClient implements IGeminiClient {
     });
   }
 
+  /**
+   * Analyze article content with AI
+   * Security: Includes retry with exponential backoff for rate limit handling
+   */
   async analyzeArticle(input: AnalyzeContentInput): Promise<ArticleAnalysis> {
     const { title, content, source, language } = input;
 
@@ -117,40 +121,65 @@ export class GeminiClient implements IGeminiClient {
       .replace('{language}', language)
       .replace('{content}', sanitizedContent.substring(0, 10000)); // Limit content length
 
-    try {
-      console.log(`      [GeminiClient] Llamando a API...`);
-      const result = await this.model.generateContent(prompt);
-      const response = result.response;
-      const text = response.text();
-      console.log(`      [GeminiClient] Respuesta recibida OK`);
+    // Resilience: Retry with exponential backoff for transient failures
+    const maxRetries = 3;
+    let lastError: Error | null = null;
 
-      return this.parseAnalysisResponse(text);
-    } catch (error) {
-      const err = error as Error;
-      console.error(`      [GeminiClient] ERROR completo: ${err.message}`);
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`      [GeminiClient] Analizando artículo (intento ${attempt}/${maxRetries})...`);
+        const result = await this.model.generateContent(prompt);
+        const response = result.response;
+        const text = response.text();
+        console.log(`      [GeminiClient] Respuesta recibida OK`);
 
-      if (err.message?.includes('API key')) {
-        throw new ExternalAPIError('Gemini', 'Invalid API key', 401, err);
+        return this.parseAnalysisResponse(text);
+      } catch (error) {
+        lastError = error as Error;
+        console.warn(`      [GeminiClient] Intento ${attempt} falló: ${lastError.message}`);
+
+        // Don't retry on non-transient errors
+        if (lastError.message?.includes('API key') || lastError.message?.includes('401')) {
+          throw new ExternalAPIError('Gemini', 'Invalid API key', 401, lastError);
+        }
+
+        if (lastError.message?.includes('404') || lastError.message?.includes('not found')) {
+          throw new ExternalAPIError('Gemini', `Model not found: ${lastError.message}`, 404, lastError);
+        }
+
+        // Retry on rate limit (429) with exponential backoff
+        const isRateLimited = lastError.message?.includes('quota') ||
+          lastError.message?.includes('RESOURCE_EXHAUSTED') ||
+          lastError.message?.includes('429') ||
+          lastError.message?.includes('Too Many Requests');
+
+        if (isRateLimited && attempt < maxRetries) {
+          const delay = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
+          console.log(`      [GeminiClient] Rate limit - esperando ${delay}ms antes de reintentar...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+
+        // If rate limited on last attempt, throw specific error
+        if (isRateLimited) {
+          throw new ExternalAPIError('Gemini', 'Rate limit exceeded after retries', 429, lastError);
+        }
+
+        // For other errors, retry with backoff
+        if (attempt < maxRetries) {
+          const delay = Math.pow(2, attempt) * 500; // 1s, 2s
+          console.log(`      [GeminiClient] Esperando ${delay}ms antes de reintentar...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
       }
-
-      // Detectar modelo no encontrado (404)
-      if (err.message?.includes('404') || err.message?.includes('not found')) {
-        throw new ExternalAPIError('Gemini', `Model not found: ${err.message}`, 404, err);
-      }
-
-      // Detectar rate limit
-      if (err.message?.includes('quota') || err.message?.includes('RESOURCE_EXHAUSTED') ||
-          err.message?.includes('429') || err.message?.includes('Too Many Requests')) {
-        throw new ExternalAPIError('Gemini', 'Rate limit exceeded', 429, err);
-      }
-
-      throw new ExternalAPIError(
-        'Gemini',
-        `Analysis failed: ${err.message}`,
-        500,
-        err
-      );
     }
+
+    throw new ExternalAPIError(
+      'Gemini',
+      `Analysis failed after ${maxRetries} attempts: ${lastError?.message}`,
+      500,
+      lastError || undefined
+    );
   }
 
   async isAvailable(): Promise<boolean> {

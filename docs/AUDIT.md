@@ -10,14 +10,14 @@
 
 El proyecto Verity News sigue una arquitectura Clean Architecture bien estructurada con separación clara de capas. Se identificaron algunos problemas de seguridad críticos y áreas de mejora.
 
-### Puntuación General
+### Puntuación General (Actualizado)
 
 | Área | Puntuación | Estado |
 |------|------------|--------|
 | Arquitectura | 8/10 | Buena |
-| Seguridad | 5/10 | Requiere atención |
-| Tipos/TypeScript | 7/10 | Aceptable |
-| Manejo de errores | 7/10 | Aceptable |
+| Seguridad | 8/10 | ✅ Corregido |
+| Tipos/TypeScript | 8/10 | ✅ Mejorado |
+| Manejo de errores | 8/10 | ✅ Mejorado |
 | Código limpio | 8/10 | Buena |
 
 ---
@@ -67,9 +67,9 @@ frontend/
 
 ---
 
-## 2. Problemas de Seguridad
+## 2. Problemas de Seguridad (✅ CORREGIDOS)
 
-### CRÍTICO: Exposición de Credenciales
+### ~~CRÍTICO~~: Exposición de Credenciales ✅
 
 **Archivo:** `backend/.env`
 
@@ -278,18 +278,18 @@ app.get('/health', (req, res) => {
 
 ## 7. Checklist de Acciones
 
-### Urgentes (Seguridad)
+### Urgentes (Seguridad) - ✅ COMPLETADOS
 
-- [ ] Verificar `.env` en `.gitignore`
-- [ ] Sanitizar HTML con DOMPurify en frontend
-- [ ] Configurar CORS restrictivo
-- [ ] Implementar rate limiting
+- [x] Verificar `.env` en `.gitignore` ✅ (ya incluido)
+- [x] Sanitizar HTML con DOMPurify en frontend ✅ (`frontend/app/news/[id]/page.tsx`)
+- [x] Configurar CORS restrictivo ✅ (`backend/src/infrastructure/http/server.ts`)
+- [x] Implementar rate limiting ✅ (100 req/15min por IP)
 
-### Importantes (Calidad)
+### Importantes (Calidad) - ✅ COMPLETADOS
 
-- [ ] Reemplazar `as any` con tipos apropiados
-- [ ] Agregar retry automático en analyzeArticle
-- [ ] Mejorar endpoint /health
+- [x] Reemplazar `as any` con tipos apropiados ✅ (interfaz `ChromaMetadata`)
+- [x] Agregar retry automático en analyzeArticle ✅ (exponential backoff, 3 intentos)
+- [x] Mejorar endpoint /health ✅ (muestra estado de database, chromadb, gemini)
 
 ### Deseables (Futuro)
 
