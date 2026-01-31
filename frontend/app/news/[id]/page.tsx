@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ReliabilityBadge } from '@/components/reliability-badge';
 
 /**
  * Format date to readable string
@@ -297,6 +298,16 @@ export default function NewsDetailPage() {
                         Puntuación: {((article.biasScore ?? 0) * 100).toFixed(0)}% de sesgo detectado
                       </p>
                     </div>
+
+                    {/* Reliability Score - Detector de Bulos */}
+                    {article.analysis?.reliabilityScore !== undefined && (
+                      <div className="p-4 border rounded-lg bg-white dark:bg-zinc-800">
+                        <ReliabilityBadge
+                          score={article.analysis.reliabilityScore}
+                          reasoning={article.analysis.factCheck?.reasoning}
+                        />
+                      </div>
+                    )}
 
                     {/* Sentiment */}
                     {sentimentInfo && (

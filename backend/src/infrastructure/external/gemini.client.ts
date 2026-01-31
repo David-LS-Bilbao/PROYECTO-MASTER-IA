@@ -16,34 +16,61 @@ import {
   ConfigurationError,
 } from '../../domain/errors/infrastructure.error';
 
-const ANALYSIS_PROMPT = `Eres un analista de noticias experto. Analiza el siguiente artículo y proporciona un análisis estructurado en formato JSON.
+const ANALYSIS_PROMPT = `Actúa como un analista de veracidad de noticias experto. Analiza el siguiente artículo de forma objetiva y rigurosa.
 
-IMPORTANTE: Responde SOLO con el JSON, sin texto adicional ni markdown.
+IMPORTANTE: Responde SOLO con el JSON, sin texto adicional, sin markdown, sin backticks.
 
 Artículo a analizar:
-Título: {title}
-Fuente: {source}
-Idioma: {language}
+TÍTULO: {title}
+FUENTE: {source}
+IDIOMA: {language}
 
-Contenido:
+CONTENIDO:
 {content}
 
-Proporciona el análisis con la siguiente estructura JSON:
+Devuelve un JSON estricto con este formato exacto:
 {
-  "summary": "Resumen conciso del artículo en 2-3 oraciones",
-  "biasScore": 0.0 a 1.0 (0 = neutral, 1 = muy sesgado),
-  "biasIndicators": ["lista de indicadores de sesgo encontrados"],
-  "sentiment": "positive" | "negative" | "neutral",
-  "mainTopics": ["tema1", "tema2", "tema3"],
-  "factualClaims": ["afirmación factual 1", "afirmación factual 2"]
+  "summary": "Resumen objetivo en máximo 50 palabras",
+  "biasScore": number,
+  "biasIndicators": ["indicador1", "indicador2"],
+  "clickbaitScore": number,
+  "reliabilityScore": number,
+  "sentiment": "positive" | "neutral" | "negative",
+  "mainTopics": ["Tema1", "Tema2", "Tema3"],
+  "factCheck": {
+    "claims": ["Afirmación 1 detectada", "Afirmación 2 detectada"],
+    "verdict": "Verified" | "Mixed" | "Unproven" | "False",
+    "reasoning": "Explicación breve del veredicto"
+  }
 }
 
-Criterios para el biasScore:
-- 0.0-0.2: Neutral, factual, múltiples perspectivas
-- 0.2-0.4: Ligero sesgo, lenguaje mayormente neutral
-- 0.4-0.6: Sesgo moderado, omisión de perspectivas
-- 0.6-0.8: Sesgo significativo, lenguaje emocional
-- 0.8-1.0: Altamente sesgado, propaganda o desinformación`;
+CRITERIOS DE PUNTUACIÓN:
+
+biasScore (-10 a +10):
+- -10 a -6: Extrema izquierda (lenguaje muy ideológico progresista)
+- -5 a -2: Izquierda moderada
+- -1 a +1: Neutral/Centro (factual, múltiples perspectivas)
+- +2 a +5: Derecha moderada
+- +6 a +10: Extrema derecha (lenguaje muy ideológico conservador)
+
+clickbaitScore (0 a 100):
+- 0-20: Titular serio y descriptivo
+- 21-50: Algo sensacionalista pero informativo
+- 51-80: Claramente clickbait, exagerado
+- 81-100: Clickbait extremo, engañoso
+
+reliabilityScore (0 a 100):
+- 0-20: Bulo, desinformación clara, sin fuentes
+- 21-40: Opinión presentada como hecho, fuentes dudosas
+- 41-60: Parcialmente verificable, algunas fuentes
+- 61-80: Mayormente fiable, fuentes identificables
+- 81-100: Altamente contrastado, fuentes oficiales/múltiples
+
+factCheck.verdict:
+- "Verified": Afirmaciones verificables con fuentes oficiales
+- "Mixed": Algunas afirmaciones verificadas, otras no
+- "Unproven": No hay suficiente información para verificar
+- "False": Contiene afirmaciones demostrablemente falsas`;
 
 export class GeminiClient implements IGeminiClient {
   private readonly model: GenerativeModel;
@@ -254,6 +281,68 @@ export class GeminiClient implements IGeminiClient {
   }
 
   /**
+   * Generate a chat response using RAG context
+   * Uses a focused system prompt that only answers from provided context
+   * NO Google Search Grounding - pure RAG response
+   */
+  async generateChatResponse(context: string, question: string): Promise<string> {
+    if (!context || context.trim().length === 0) {
+      throw new ExternalAPIError('Gemini', 'Context is required for RAG response', 400);
+    }
+
+    if (!question || question.trim().length === 0) {
+      throw new ExternalAPIError('Gemini', 'Question is required', 400);
+    }
+
+    const ragPrompt = `Eres un asistente de noticias objetivo. Responde a la pregunta del usuario basándote ÚNICAMENTE en el contexto proporcionado.
+
+REGLAS ESTRICTAS:
+1. SOLO usa información del contexto proporcionado abajo.
+2. Si la respuesta NO está en el contexto, responde: "No encuentro esa información en el artículo."
+3. Sé conciso y directo.
+4. Responde en español.
+5. No inventes información ni uses conocimiento externo.
+
+=== CONTEXTO ===
+${context}
+
+=== PREGUNTA DEL USUARIO ===
+${question}
+
+=== TU RESPUESTA ===`;
+
+    try {
+      console.log(`      [GeminiClient] RAG Chat - Generando respuesta...`);
+      // Use base model (no Google Search) for pure RAG
+      const result = await this.model.generateContent(ragPrompt);
+      const response = result.response;
+      const text = response.text().trim();
+
+      console.log(`      [GeminiClient] RAG Chat - Respuesta OK (${text.length} chars)`);
+      return text;
+    } catch (error) {
+      const err = error as Error;
+      console.error(`      [GeminiClient] RAG Chat ERROR: ${err.message}`);
+
+      if (err.message?.includes('API key')) {
+        throw new ExternalAPIError('Gemini', 'Invalid API key', 401, err);
+      }
+
+      if (err.message?.includes('quota') || err.message?.includes('RESOURCE_EXHAUSTED') ||
+          err.message?.includes('429') || err.message?.includes('Too Many Requests')) {
+        throw new ExternalAPIError('Gemini', 'Rate limit exceeded', 429, err);
+      }
+
+      throw new ExternalAPIError(
+        'Gemini',
+        `RAG Chat failed: ${err.message}`,
+        500,
+        err
+      );
+    }
+  }
+
+  /**
    * Sanitize input to prevent prompt injection
    */
   private sanitizeInput(input: string): string {
@@ -267,6 +356,7 @@ export class GeminiClient implements IGeminiClient {
 
   /**
    * Parse the JSON response from Gemini
+   * Handles new analysis format with clickbait, reliability, and factCheck
    */
   private parseAnalysisResponse(text: string): ArticleAnalysis {
     // Clean up potential markdown formatting
@@ -293,33 +383,67 @@ export class GeminiClient implements IGeminiClient {
         throw new Error('Missing or invalid summary');
       }
 
-      if (typeof parsed.biasScore !== 'number' || parsed.biasScore < 0 || parsed.biasScore > 1) {
-        parsed.biasScore = 0.5; // Default to neutral if invalid
+      // biasScore: now -10 to +10, normalize to 0-1 for UI compatibility
+      let biasRaw = 0;
+      if (typeof parsed.biasScore === 'number') {
+        // Clamp to valid range
+        biasRaw = Math.max(-10, Math.min(10, parsed.biasScore));
       }
+      // Normalize: abs(biasRaw)/10 gives 0-1 where 0 is neutral, 1 is extreme
+      const biasScoreNormalized = Math.abs(biasRaw) / 10;
 
       if (!Array.isArray(parsed.biasIndicators)) {
         parsed.biasIndicators = [];
       }
 
-      if (!['positive', 'negative', 'neutral'].includes(parsed.sentiment)) {
-        parsed.sentiment = 'neutral';
+      // clickbaitScore: 0-100
+      let clickbaitScore = 50; // Default to moderate
+      if (typeof parsed.clickbaitScore === 'number') {
+        clickbaitScore = Math.max(0, Math.min(100, parsed.clickbaitScore));
+      }
+
+      // reliabilityScore: 0-100
+      let reliabilityScore = 50; // Default to moderate
+      if (typeof parsed.reliabilityScore === 'number') {
+        reliabilityScore = Math.max(0, Math.min(100, parsed.reliabilityScore));
+      }
+
+      // Normalize sentiment to lowercase
+      let sentiment: 'positive' | 'negative' | 'neutral' = 'neutral';
+      const sentimentRaw = String(parsed.sentiment || 'neutral').toLowerCase();
+      if (['positive', 'negative', 'neutral'].includes(sentimentRaw)) {
+        sentiment = sentimentRaw as 'positive' | 'negative' | 'neutral';
       }
 
       if (!Array.isArray(parsed.mainTopics)) {
         parsed.mainTopics = [];
       }
 
-      if (!Array.isArray(parsed.factualClaims)) {
-        parsed.factualClaims = [];
-      }
+      // Parse factCheck object
+      const factCheck = {
+        claims: Array.isArray(parsed.factCheck?.claims) ? parsed.factCheck.claims : [],
+        verdict: this.validateVerdict(parsed.factCheck?.verdict),
+        reasoning: typeof parsed.factCheck?.reasoning === 'string'
+          ? parsed.factCheck.reasoning
+          : 'Sin información suficiente para verificar',
+      };
+
+      // Legacy factualClaims for backwards compatibility
+      const factualClaims = factCheck.claims.length > 0
+        ? factCheck.claims
+        : (Array.isArray(parsed.factualClaims) ? parsed.factualClaims : []);
 
       return {
         summary: parsed.summary,
-        biasScore: parsed.biasScore,
+        biasScore: biasScoreNormalized,
+        biasRaw,
         biasIndicators: parsed.biasIndicators,
-        sentiment: parsed.sentiment,
+        clickbaitScore,
+        reliabilityScore,
+        sentiment,
         mainTopics: parsed.mainTopics,
-        factualClaims: parsed.factualClaims,
+        factCheck,
+        factualClaims,
       };
     } catch (error) {
       throw new ExternalAPIError(
@@ -328,5 +452,16 @@ export class GeminiClient implements IGeminiClient {
         500
       );
     }
+  }
+
+  /**
+   * Validate and normalize factCheck verdict
+   */
+  private validateVerdict(verdict: unknown): 'Verified' | 'Mixed' | 'Unproven' | 'False' {
+    const validVerdicts = ['Verified', 'Mixed', 'Unproven', 'False'];
+    if (typeof verdict === 'string' && validVerdicts.includes(verdict)) {
+      return verdict as 'Verified' | 'Mixed' | 'Unproven' | 'False';
+    }
+    return 'Unproven'; // Default if invalid
   }
 }

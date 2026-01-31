@@ -10,6 +10,16 @@ export interface ArticleVectorMetadata {
   biasScore?: number;
 }
 
+/**
+ * Result from a ChromaDB query including document content
+ */
+export interface QueryResult {
+  id: string;
+  document: string;
+  metadata: ArticleVectorMetadata;
+  distance?: number;
+}
+
 export interface IChromaClient {
   /**
    * Initialize the collection, creating it if it doesn't exist
@@ -44,4 +54,13 @@ export interface IChromaClient {
    * @returns Array of article IDs ordered by similarity (most similar first)
    */
   querySimilar(queryVector: number[], limit?: number): Promise<string[]>;
+
+  /**
+   * Query similar documents and return full results with document content
+   * Used for RAG (Retrieval-Augmented Generation)
+   * @param queryVector The embedding vector to search with
+   * @param limit Maximum number of results (default 5)
+   * @returns Array of QueryResult with documents and metadata
+   */
+  querySimilarWithDocuments(queryVector: number[], limit?: number): Promise<QueryResult[]>;
 }

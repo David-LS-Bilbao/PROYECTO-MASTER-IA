@@ -6,11 +6,24 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
 export interface ArticleAnalysis {
   summary: string;
+  // biasScore normalizado 0-1 para UI (0 = neutral, 1 = extremo)
   biasScore: number;
+  // biasRaw: -10 (Extrema Izquierda) a +10 (Extrema Derecha)
+  biasRaw: number;
   biasIndicators: string[];
+  // clickbaitScore: 0 (Serio) a 100 (Clickbait extremo)
+  clickbaitScore: number;
+  // reliabilityScore: 0 (Bulo/Falso) a 100 (Altamente Contrastado)
+  reliabilityScore: number;
   sentiment: 'positive' | 'negative' | 'neutral';
   mainTopics: string[];
-  factualClaims: string[];
+  factCheck: {
+    claims: string[];
+    verdict: 'Verified' | 'Mixed' | 'Unproven' | 'False';
+    reasoning: string;
+  };
+  // Legacy field
+  factualClaims?: string[];
 }
 
 export interface NewsArticle {

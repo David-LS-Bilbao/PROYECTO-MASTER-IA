@@ -4,7 +4,7 @@
  */
 
 import { ChromaClient as ChromaSDK, Collection } from 'chromadb';
-import { IChromaClient, ArticleVectorMetadata } from '../../domain/services/chroma-client.interface';
+import { IChromaClient, ArticleVectorMetadata, QueryResult } from '../../domain/services/chroma-client.interface';
 import {
   ExternalAPIError,
   ConfigurationError,
@@ -178,6 +178,61 @@ export class ChromaClient implements IChromaClient {
       throw new ExternalAPIError(
         'ChromaDB',
         `Failed to query similar items: ${err.message}`,
+        500,
+        err
+      );
+    }
+  }
+
+  /**
+   * Query similar documents and return full results with document content
+   * Used for RAG (Retrieval-Augmented Generation)
+   */
+  async querySimilarWithDocuments(queryVector: number[], limit: number = 5): Promise<QueryResult[]> {
+    if (!this.collection) {
+      throw new ExternalAPIError(
+        'ChromaDB',
+        'Collection not initialized. Call initCollection() first.',
+        500
+      );
+    }
+
+    try {
+      console.log(`[ChromaClient] RAG Query - Buscando ${limit} documentos con contenido...`);
+
+      const results = await this.collection.query({
+        queryEmbeddings: [queryVector],
+        nResults: limit,
+        include: ['documents', 'metadatas', 'distances'],
+      });
+
+      const ids = results.ids[0] || [];
+      const documents = results.documents?.[0] || [];
+      const metadatas = results.metadatas?.[0] || [];
+      const distances = results.distances?.[0] || [];
+
+      const queryResults: QueryResult[] = ids.map((id, index) => ({
+        id,
+        document: documents[index] || '',
+        metadata: {
+          title: (metadatas[index] as any)?.title || '',
+          source: (metadatas[index] as any)?.source || '',
+          publishedAt: (metadatas[index] as any)?.publishedAt || '',
+          biasScore: (metadatas[index] as any)?.biasScore,
+        },
+        distance: distances[index] ?? undefined, // Convert null to undefined
+      }));
+
+      console.log(`[ChromaClient] RAG Query - Encontrados ${queryResults.length} documentos`);
+
+      return queryResults;
+    } catch (error) {
+      const err = error as Error;
+      console.error(`[ChromaClient] Error en RAG query: ${err.message}`);
+
+      throw new ExternalAPIError(
+        'ChromaDB',
+        `Failed to query with documents: ${err.message}`,
         500,
         err
       );

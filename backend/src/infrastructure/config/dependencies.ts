@@ -73,7 +73,8 @@ export class DependencyContainer {
 
     const chatArticleUseCase = new ChatArticleUseCase(
       articleRepository,
-      geminiClient
+      geminiClient,
+      this.chromaClient // Añadido para RAG
     );
 
     const searchNewsUseCase = new SearchNewsUseCase(

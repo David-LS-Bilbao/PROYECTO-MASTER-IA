@@ -28,12 +28,34 @@ export interface NewsArticleProps {
   updatedAt: Date;
 }
 
+/**
+ * Fact-checking result for an article
+ */
+export interface FactCheck {
+  claims: string[];
+  verdict: 'Verified' | 'Mixed' | 'Unproven' | 'False';
+  reasoning: string;
+}
+
+/**
+ * Complete AI analysis of a news article
+ */
 export interface ArticleAnalysis {
   summary: string;
+  // biasScore: -10 (Extrema Izquierda) a +10 (Extrema Derecha), 0 es Neutral
+  // Stored normalized to 0-1 for UI compatibility (abs(biasScore)/10)
   biasScore: number;
+  // Raw bias score from -10 to +10 for detailed display
+  biasRaw: number;
   biasIndicators: string[];
+  // clickbaitScore: 0 (Serio) a 100 (Clickbait extremo)
+  clickbaitScore: number;
+  // reliabilityScore: 0 (Bulo/Falso) a 100 (Altamente Contrastado/Oficial)
+  reliabilityScore: number;
   sentiment: 'positive' | 'negative' | 'neutral';
   mainTopics: string[];
+  factCheck: FactCheck;
+  // Legacy field for backwards compatibility
   factualClaims: string[];
 }
 
