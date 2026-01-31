@@ -117,6 +117,16 @@ export default function NewsDetailPage() {
     loadArticle();
   }, [id, router]);
 
+  // Sanitize HTML content to prevent XSS attacks
+  // Must be before any conditional returns to follow Rules of Hooks
+  const sanitizedContent = useMemo(() => {
+    if (!article?.content) return '';
+    return DOMPurify.sanitize(article.content, {
+      ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'em', 'strong', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'img'],
+      ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'class'],
+    });
+  }, [article?.content]);
+
   const handleAnalyze = async () => {
     if (!article) return;
 
@@ -165,15 +175,6 @@ export default function NewsDetailPage() {
   const isAnalyzed = article.analyzedAt !== null;
   const biasInfo = article.biasScore !== null ? getBiasInfo(article.biasScore) : null;
   const sentimentInfo = article.analysis?.sentiment ? getSentimentInfo(article.analysis.sentiment) : null;
-
-  // Sanitize HTML content to prevent XSS attacks
-  const sanitizedContent = useMemo(() => {
-    if (!article.content) return '';
-    return DOMPurify.sanitize(article.content, {
-      ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'em', 'strong', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'img'],
-      ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'class'],
-    });
-  }, [article.content]);
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
