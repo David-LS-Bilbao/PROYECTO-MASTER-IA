@@ -6,6 +6,20 @@
 import { Request, Response } from 'express';
 import { INewsArticleRepository } from '../../../domain/repositories/news-article.repository';
 import { ToggleFavoriteUseCase } from '../../../application/use-cases/toggle-favorite.usecase';
+import { NewsArticle } from '../../../domain/entities/news-article.entity';
+
+/**
+ * Transform domain article to HTTP response format
+ * Parses the analysis JSON string into an object for frontend consumption
+ */
+function toHttpResponse(article: NewsArticle) {
+  const json = article.toJSON();
+  return {
+    ...json,
+    // Parse analysis from JSON string to object (if exists)
+    analysis: json.analysis ? JSON.parse(json.analysis) : null,
+  };
+}
 
 export class NewsController {
   constructor(
@@ -38,9 +52,12 @@ export class NewsController {
         ? await this.repository.countFiltered({ category, onlyFavorites })
         : await this.repository.count();
 
+      // Transform articles to HTTP response format (parse analysis JSON)
+      const data = news.map(toHttpResponse);
+
       res.json({
         success: true,
-        data: news,
+        data,
         pagination: {
           total,
           limit,
@@ -85,7 +102,7 @@ export class NewsController {
 
       res.json({
         success: true,
-        data: article,
+        data: toHttpResponse(article),
       });
     } catch (error) {
       console.error('Error fetching article:', error);
@@ -119,7 +136,7 @@ export class NewsController {
 
       res.json({
         success: true,
-        data: result.article,
+        data: toHttpResponse(result.article),
         isFavorite: result.isFavorite,
       });
     } catch (error: any) {

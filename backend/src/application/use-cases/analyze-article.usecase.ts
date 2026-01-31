@@ -3,7 +3,7 @@
  * Con logs detallados para encontrar el fallo.
  */
 
-import { ArticleAnalysis } from '../../domain/entities/news-article.entity';
+import { ArticleAnalysis, NewsArticle } from '../../domain/entities/news-article.entity';
 import { INewsArticleRepository } from '../../domain/repositories/news-article.repository';
 import { IGeminiClient } from '../../domain/services/gemini-client.interface';
 import { IJinaReaderClient } from '../../domain/services/jina-reader-client.interface';
@@ -173,8 +173,18 @@ export class AnalyzeArticleUseCase {
     });
     console.log(`   ✅ Gemini OK. Score: ${analysis.biasScore} | Summary: ${analysis.summary.substring(0, 30)}...`);
 
-    // 5. Update article with analysis
-    const analyzedArticle = article.withAnalysis(analysis);
+    // 5. Update article with analysis + auto-favorite (user invested credits in analysis)
+    let analyzedArticle = article.withAnalysis(analysis);
+
+    // Auto-mark as favorite when user analyzes an article
+    if (!analyzedArticle.isFavorite) {
+      analyzedArticle = NewsArticle.reconstitute({
+        ...analyzedArticle.toJSON(),
+        isFavorite: true,
+      });
+      console.log(`   ⭐ Auto-favorito activado.`);
+    }
+
     await this.articleRepository.save(analyzedArticle);
 
     // 6. Index in ChromaDB for semantic search

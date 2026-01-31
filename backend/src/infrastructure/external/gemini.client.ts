@@ -30,7 +30,7 @@ CONTENIDO:
 
 Devuelve un JSON estricto con este formato exacto:
 {
-  "summary": "Resumen objetivo en máximo 50 palabras",
+  "summary": "Resumen estructurado, fácil de leer. Máximo 60 palabras. Ve directo al grano. Evita frases largas.",
   "biasScore": number,
   "biasIndicators": ["indicador1", "indicador2"],
   "clickbaitScore": number,
@@ -43,6 +43,13 @@ Devuelve un JSON estricto con este formato exacto:
     "reasoning": "Explicación breve del veredicto"
   }
 }
+
+INSTRUCCIONES PARA EL SUMMARY:
+- Genera un resumen ESTRUCTURADO y muy FÁCIL DE LEER.
+- Usa frases cortas y directas (máximo 15 palabras por frase).
+- Ve al grano: ¿Qué pasó? ¿Quién? ¿Cuándo?
+- Máximo 60 palabras total.
+- NO uses jerga técnica innecesaria.
 
 CRITERIOS DE PUNTUACIÓN:
 
@@ -323,22 +330,34 @@ export class GeminiClient implements IGeminiClient {
       throw new ExternalAPIError('Gemini', 'Question is required', 400);
     }
 
-    const ragPrompt = `Eres un asistente de noticias objetivo. Responde a la pregunta del usuario basándote ÚNICAMENTE en el contexto proporcionado.
+    const ragPrompt = `Eres **Verity AI**, un asistente de noticias inteligente y visual.
 
-REGLAS ESTRICTAS:
-1. SOLO usa información del contexto proporcionado abajo.
-2. Si la respuesta NO está en el contexto, responde: "No encuentro esa información en el artículo."
-3. Sé conciso y directo.
-4. Responde en español.
-5. No inventes información ni uses conocimiento externo.
+## FUENTES DE INFORMACIÓN (por orden de prioridad):
+1. **CONTEXTO** (Prioridad alta): Fragmentos del artículo proporcionados abajo.
+2. **CONOCIMIENTO GENERAL** (Fallback): Tu entrenamiento base.
 
-=== CONTEXTO ===
+## ALGORITMO DE RESPUESTA:
+1. Si la respuesta está en el CONTEXTO → úsalo directamente.
+2. Si NO está en el contexto → usa tu conocimiento general, pero **siempre avisa** empezando con:
+   - *"El artículo no lo menciona, pero..."*
+   - *"En un contexto más amplio..."*
+   - *"Según información general..."*
+
+## FORMATO OBLIGATORIO (UX):
+- **NO uses bloques de texto densos.**
+- Usa **listas con viñetas (bullets)** para enumerar datos o puntos clave.
+- Usa **negritas** para resaltar nombres, fechas, cifras o conceptos importantes.
+- Párrafos máximos de 2-3 líneas.
+- Tu objetivo es que la lectura sea **escaneable y ligera**.
+- Responde siempre en español.
+
+=== CONTEXTO DEL ARTÍCULO ===
 ${context}
 
 === PREGUNTA DEL USUARIO ===
 ${question}
 
-=== TU RESPUESTA ===`;
+=== TU RESPUESTA (formato visual) ===`;
 
     try {
       console.log(`      [GeminiClient] RAG Chat - Generando respuesta...`);

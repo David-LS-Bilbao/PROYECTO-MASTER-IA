@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ReliabilityBadge } from '@/components/reliability-badge';
+import { NewsChatDrawer } from '@/components/news-chat-drawer';
 
 /**
  * Format date to readable string
@@ -438,6 +439,9 @@ export default function NewsDetailPage() {
           </p>
         </div>
       </footer>
+
+      {/* Floating Chat Button - RAG-powered conversation with the article */}
+      <NewsChatDrawer articleId={article.id} articleTitle={article.title} />
     </div>
   );
 }

@@ -1,10 +1,10 @@
 # Estado del Proyecto - Verity News
 
-> Última actualización: Sprint 7.1 - Chat RAG + Seguridad + Auditoría (2026-01-31) - **PRODUCCIÓN READY ✅**
+> Última actualización: Sprint 7.2 - UX + Chat Híbrido + Auto-Favoritos (2026-01-31) - **PRODUCCIÓN READY ✅**
 
 ---
 
-## Estado Actual: SPRINT 7.1 COMPLETADO - SEGURIDAD + RAG + DETECTOR DE BULOS ✅
+## Estado Actual: SPRINT 7.2 COMPLETADO - UX MEJORADA + CHAT HÍBRIDO ✅
 
 | Componente | Estado | Notas |
 |------------|--------|-------|
@@ -28,7 +28,8 @@
 | 5.2 | Categorías RSS (8 categorías) | ✅ | 2026-01-30 |
 | 6 | Página de Detalle + Análisis IA | ✅ | 2026-01-30 |
 | 6.3 | Sistema de Favoritos | ✅ | 2026-01-30 |
-| **7.1** | **Chat RAG + Seguridad + Auditoría** | ✅ | **2026-01-31** |
+| 7.1 | Chat RAG + Seguridad + Auditoría | ✅ | 2026-01-31 |
+| **7.2** | **UX + Chat Híbrido + Auto-Favoritos** | ✅ | **2026-01-31** |
 
 ---
 
@@ -103,6 +104,52 @@ interface ArticleAnalysis {
   "timestamp": "2026-01-31T12:00:00.000Z"
 }
 ```
+
+---
+
+## Sprint 7.2: UX + Chat Híbrido + Auto-Favoritos
+
+### 1. Correcciones de UX
+
+| Problema | Solución | Archivo |
+|----------|----------|---------|
+| **NewsChatDrawer desaparecido** | Restaurado el componente flotante de chat | `frontend/app/news/[id]/page.tsx` |
+| **Análisis no persiste al recargar** | JSON parsing en controller (string → object) | `backend/src/infrastructure/http/controllers/news.controller.ts` |
+| **Auto-favoritos** | Al analizar, el artículo se marca como favorito automáticamente | `backend/src/application/use-cases/analyze-article.usecase.ts` |
+
+### 2. Chat Híbrido (Contexto + Conocimiento General)
+
+**Nuevo comportamiento en `generateChatResponse()`:**
+```
+1. Si la respuesta está en el CONTEXTO → úsalo directamente
+2. Si NO está en el contexto → usa conocimiento general con aviso:
+   - "El artículo no lo menciona, pero..."
+   - "En un contexto más amplio..."
+   - "Según información general..."
+```
+
+**Formato Markdown obligatorio:**
+- Listas con viñetas (bullets) para datos clave
+- Negritas para nombres, fechas y cifras
+- Párrafos máximos de 2-3 líneas
+- Lectura escaneable y ligera
+
+### 3. Resúmenes Estructurados
+
+**Mejora en prompt de análisis:**
+- Frases cortas (máximo 15 palabras por frase)
+- Máximo 60 palabras total
+- Directo al grano: ¿Qué? ¿Quién? ¿Cuándo?
+- Sin jerga técnica innecesaria
+
+### 4. Archivos Modificados Sprint 7.2
+
+| Archivo | Cambio |
+|---------|--------|
+| `backend/src/infrastructure/http/controllers/news.controller.ts` | `toHttpResponse()` con JSON.parse para analysis |
+| `backend/src/application/use-cases/analyze-article.usecase.ts` | Auto-favorite al analizar |
+| `backend/src/infrastructure/external/gemini.client.ts` | Prompt mejorado + Chat híbrido |
+| `frontend/app/news/[id]/page.tsx` | NewsChatDrawer restaurado |
 
 ---
 
@@ -262,9 +309,10 @@ interface ArticleAnalysis {
 
 ---
 
-## Commits de Sprint 7.1
+## Commits de Sprint 7.1 y 7.2
 
 ```
+58ba39a feat: Sprint 7.2 - UX + Chat Híbrido + Auto-Favoritos
 864d8c7 fix(quality): Completar correcciones de auditoría Sprint 7.1
 e67b0b9 fix(security): Corregir vulnerabilidades críticas
 ef50b05 feat: Sprint 7.1 - Chat RAG + Detector de Bulos + Auditoría
@@ -279,11 +327,12 @@ ef50b05 feat: Sprint 7.1 - Chat RAG + Detector de Bulos + Auditoría
 3. ✅ **Detector de Bulos**: reliabilityScore 0-100 + factCheck con verdict
 4. ✅ **Clickbait Score**: Detección de titulares sensacionalistas 0-100
 5. ✅ **Búsqueda Semántica**: Por significado con embeddings 768d
-6. ✅ **Chat RAG**: Respuestas basadas solo en contexto del artículo
+6. ✅ **Chat RAG Híbrido**: Contexto prioritario + conocimiento general con aviso
 7. ✅ **Chat Grounding**: Respuestas con Google Search para info externa
 8. ✅ **Dashboard Analítico**: KPIs y distribución de sesgo
-9. ✅ **Sistema de Favoritos**: Toggle + filtro + persistencia
+9. ✅ **Sistema de Favoritos**: Toggle + filtro + auto-favorito al analizar
 10. ✅ **Seguridad**: XSS, CORS, Rate Limiting, Retry, Health Checks
+11. ✅ **UX Optimizada**: Resúmenes estructurados, chat con formato Markdown
 
 ---
 
@@ -291,7 +340,7 @@ ef50b05 feat: Sprint 7.1 - Chat RAG + Detector de Bulos + Auditoría
 
 | Métrica | Valor |
 |---------|-------|
-| **Sprints completados** | 8 |
+| **Sprints completados** | 9 |
 | **Archivos TypeScript** | ~80 |
 | **Líneas de código** | ~12,000 |
 | **Tests unitarios** | 41 |
@@ -325,12 +374,13 @@ ef50b05 feat: Sprint 7.1 - Chat RAG + Detector de Bulos + Auditoría
 
 ## Conclusión
 
-**Verity News Sprint 7.1** representa un sistema RAG Full Stack completo con:
+**Verity News Sprint 7.2** representa un sistema RAG Full Stack completo con:
 
-- **Cerebro IA** (Gemini 2.5 Flash) - Análisis + Chat + RAG
+- **Cerebro IA** (Gemini 2.5 Flash) - Análisis + Chat Híbrido + RAG
 - **Memoria Vectorial** (ChromaDB) - Búsqueda semántica
 - **Detector de Bulos** - reliabilityScore + factCheck
 - **Seguridad Producción** - XSS, CORS, Rate Limit, Health Checks
+- **UX Optimizada** - Resúmenes estructurados, formato Markdown, auto-favoritos
 
 **Status:** MVP completo, auditado y listo para producción.
 
