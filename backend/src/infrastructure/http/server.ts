@@ -1,6 +1,7 @@
 import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { DependencyContainer } from '../config/dependencies';
 import { createIngestRoutes } from './routes/ingest.routes';
 import { createAnalyzeRoutes } from './routes/analyze.routes';
@@ -14,18 +15,23 @@ export function createServer(): Application {
   // Initialize dependencies
   const container = DependencyContainer.getInstance();
 
-  // TEST: Minimal server with just PATCH route
-  app.patch('/api/test-patch', (_req: Request, res: Response) => {
-    console.log('🔧 Test PATCH route called!');
-    res.json({ success: true, message: 'PATCH works!' });
-  });
-
   // Security middleware
   app.use(helmet());
 
-  // CORS configuration - Allow frontend origins
+  // Rate limiting - prevent abuse
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // limit each IP to 100 requests per windowMs
+    message: { error: 'Too many requests, please try again later.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+  app.use('/api/', limiter);
+
+  // CORS configuration - Allow frontend origins with explicit methods
   app.use(cors({
     origin: process.env.CORS_ORIGIN || ['http://localhost:3001', 'http://localhost:5173'],
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: true,
   }));
 
@@ -44,13 +50,7 @@ export function createServer(): Application {
 
   // API Routes
   console.log('📚 Registrando rutas...');
-  
-  // Test PATCH route to diagnose issue
-  app.patch('/api/test-patch', (_req: Request, res: Response) => {
-    console.log('🔧 Test PATCH route called!');
-    res.json({ success: true, message: 'PATCH works!' });
-  });
-  
+
   app.use('/api/news', createNewsRoutes(container.newsController));
   app.use('/api/ingest', createIngestRoutes(container.ingestController));
   app.use('/api/analyze', createAnalyzeRoutes(container.analyzeController));

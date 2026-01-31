@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
+import DOMPurify from 'dompurify';
 import { ArrowLeft, ExternalLink, Clock, User, Tag, Sparkles } from 'lucide-react';
 import { fetchNewsById, analyzeArticle, type NewsArticle, type AnalyzeResponse } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
@@ -165,6 +166,15 @@ export default function NewsDetailPage() {
   const biasInfo = article.biasScore !== null ? getBiasInfo(article.biasScore) : null;
   const sentimentInfo = article.analysis?.sentiment ? getSentimentInfo(article.analysis.sentiment) : null;
 
+  // Sanitize HTML content to prevent XSS attacks
+  const sanitizedContent = useMemo(() => {
+    if (!article.content) return '';
+    return DOMPurify.sanitize(article.content, {
+      ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'em', 'strong', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'img'],
+      ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'class'],
+    });
+  }, [article.content]);
+
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
       {/* Header */}
@@ -244,10 +254,10 @@ export default function NewsDetailPage() {
               </div>
             )}
 
-            {/* Content */}
-            {article.content ? (
+            {/* Content - Sanitized to prevent XSS */}
+            {sanitizedContent ? (
               <div className="prose prose-zinc dark:prose-invert max-w-none mb-8">
-                <div dangerouslySetInnerHTML={{ __html: article.content }} />
+                <div dangerouslySetInnerHTML={{ __html: sanitizedContent }} />
               </div>
             ) : (
               <Card className="border-dashed mb-8">
