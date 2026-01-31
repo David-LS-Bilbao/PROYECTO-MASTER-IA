@@ -23,7 +23,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es">
+    // suppressHydrationWarning: Prevents hydration mismatch errors caused by
+    // browser extensions (like Dark Reader) that inject attributes into the HTML
+    <html lang="es" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-zinc-50 dark:bg-zinc-950`}
       >
