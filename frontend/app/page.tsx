@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { useAuth } from '@/context/AuthContext';
 import {
   fetchNews,
   fetchDashboardStats,
@@ -19,6 +20,7 @@ import { Badge } from '@/components/ui/badge';
 import { CategoryPills, type CategoryId, CATEGORIES } from '@/components/category-pills';
 
 export default function Home() {
+  const { user, loading: authLoading } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
   const urlCategory = searchParams.get('category') as CategoryId | null;
@@ -66,6 +68,16 @@ export default function Home() {
       setIsLoading(false);
     }
   }, []);
+
+  // =========================================================================
+  // PROTECCIÓN DE RUTA: Redirigir a /login si no hay usuario autenticado
+  // =========================================================================
+  useEffect(() => {
+    if (!authLoading && !user) {
+      console.log('🔒 Usuario no autenticado. Redirigiendo a /login...');
+      router.push('/login');
+    }
+  }, [authLoading, user, router]);
 
   useEffect(() => {
     (async () => {
@@ -134,6 +146,31 @@ export default function Home() {
     ? stats.biasDistribution
     : biasDistribution;
 
+  // =========================================================================
+  // LOADING STATE: Mostrar esqueleto mientras se verifica autenticación
+  // =========================================================================
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-zinc-50 dark:bg-zinc-950">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-xl font-semibold text-zinc-900 dark:text-white">Cargando Verity...</p>
+          <p className="text-sm text-muted-foreground mt-2">Verificando sesión</p>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // NO AUTENTICADO: No renderizar nada (el useEffect redirige a /login)
+  // =========================================================================
+  if (!user) {
+    return null;
+  }
+
+  // =========================================================================
+  // AUTENTICADO: Renderizar Dashboard completo
+  // =========================================================================
   return (
     <div className="flex h-screen bg-zinc-50 dark:bg-zinc-950">
       {/* Sidebar */}

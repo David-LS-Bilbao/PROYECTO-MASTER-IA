@@ -10,10 +10,13 @@ import {
   Heart,
   Settings,
   Rss,
+  LogOut,
+  User,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SearchBar } from '@/components/search-bar';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/context/AuthContext';
 
 interface SidebarProps {
   onOpenDashboard?: () => void;
@@ -22,6 +25,7 @@ interface SidebarProps {
 
 export function Sidebar({ onOpenDashboard, onOpenSources }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const { user, logout } = useAuth();
 
   const navItems = [
     {
@@ -102,7 +106,7 @@ export function Sidebar({ onOpenDashboard, onOpenSources }: SidebarProps) {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-3 py-6 space-y-2">
+        <nav className="px-3 py-6 space-y-2">
           {navItems.map((item, index) => {
             const Icon = item.icon;
             const isClickable = 'onClick' in item;
@@ -135,7 +139,7 @@ export function Sidebar({ onOpenDashboard, onOpenSources }: SidebarProps) {
         </nav>
 
         {/* Settings Button */}
-        <div className="px-3 py-6 border-t border-zinc-200 dark:border-zinc-800">
+        <div className="px-3 py-4 border-t border-zinc-200 dark:border-zinc-800">
           <Button
             variant="outline"
             className="w-full justify-start gap-3"
@@ -144,6 +148,50 @@ export function Sidebar({ onOpenDashboard, onOpenSources }: SidebarProps) {
             <Settings className="h-4 w-4" />
             <span className="text-sm">Ajustes de IA</span>
           </Button>
+        </div>
+
+        {/* User Profile & Logout */}
+        <div className="px-3 py-4 border-t border-zinc-200 dark:border-zinc-800 mt-auto">
+          <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-zinc-50 dark:bg-zinc-900">
+            {/* Avatar */}
+            <div className="shrink-0 w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center">
+              {user?.photoURL ? (
+                <img
+                  src={user.photoURL}
+                  alt={user.displayName || 'Usuario'}
+                  className="w-full h-full rounded-full object-cover"
+                />
+              ) : (
+                <User className="h-5 w-5 text-white" />
+              )}
+            </div>
+
+            {/* User Info */}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-zinc-900 dark:text-white truncate">
+                {user?.displayName || 'Usuario'}
+              </p>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate">
+                {user?.email || 'Sin email'}
+              </p>
+            </div>
+
+            {/* Logout Button */}
+            <button
+              onClick={async () => {
+                try {
+                  await logout();
+                  setIsOpen(false);
+                } catch (error) {
+                  console.error('Error al cerrar sesión:', error);
+                }
+              }}
+              className="shrink-0 p-2 rounded-lg text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white transition-colors"
+              title="Cerrar sesión"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </aside>
 
