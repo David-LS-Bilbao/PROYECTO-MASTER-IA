@@ -1,6 +1,6 @@
 # Estado del Proyecto - Verity News
 
-> Última actualización: Sprint 8 - Optimización de Costes Gemini (2026-02-02) - **PRODUCCIÓN READY ✅**
+> Última actualización: Sprint 8.1 - Suite de Tests de Carga k6 (2026-02-02) - **PRODUCCIÓN READY ✅**
 
 ---
 
@@ -31,7 +31,8 @@
 | 6.3 | Sistema de Favoritos | ✅ | 2026-01-30 |
 | 7.1 | Chat RAG + Seguridad + Auditoría | ✅ | 2026-01-31 |
 | 7.2 | UX + Chat Híbrido + Auto-Favoritos | ✅ | 2026-01-31 |
-| **8** | **Optimización de Costes Gemini** | ✅ | **2026-02-02** |
+| 8 | Optimización de Costes Gemini | ✅ | 2026-02-02 |
+| **8.1** | **Suite de Tests de Carga (k6)** | ✅ | **2026-02-02** |
 
 ---
 
@@ -251,6 +252,62 @@ if (article.isAnalyzed) {
 
 ---
 
+## Sprint 8.1: Suite de Tests de Carga (k6)
+
+### Objetivo
+Implementar pruebas de rendimiento y validación del rate limiting usando k6.
+
+### Estructura Creada
+
+```
+tests/
+└── performance/
+    └── stress-test.js
+```
+
+### Configuración del Test
+
+| Fase | VUs | Duración | Objetivo |
+|------|-----|----------|----------|
+| **Calentamiento** | 10 | 10s | Establecer baseline de rendimiento |
+| **Ataque Rate Limit** | 50 | 30s | Validar límite de 100 req/15min |
+
+### Métricas Personalizadas
+
+| Métrica | Tipo | Descripción |
+|---------|------|-------------|
+| `rate_limit_hits_429` | Counter | Respuestas 429 detectadas |
+| `successful_requests_200` | Counter | Peticiones exitosas |
+| `rate_limit_detection_rate` | Rate | Tasa de detección del rate limiter |
+| `success_response_time` | Trend | Tiempo de respuesta para 200s |
+
+### Thresholds
+
+- **p(95) < 500ms** - 95% de peticiones normales responden rápido
+- **Errores reales < 5%** - Excluyendo 429 (esperados)
+- **429 detectados > 0** - Valida que el rate limiter funciona
+
+### Ejecución
+
+```bash
+# Básico
+k6 run tests/performance/stress-test.js
+
+# Con URL personalizada
+k6 run -e BASE_URL=http://localhost:3000 tests/performance/stress-test.js
+
+# Con dashboard web
+k6 run --out web-dashboard tests/performance/stress-test.js
+```
+
+### Archivos Añadidos Sprint 8.1
+
+| Archivo | Descripción |
+|---------|-------------|
+| `tests/performance/stress-test.js` | Suite completa de stress test con k6 |
+
+---
+
 ## Stack Tecnológico Final
 
 | Capa | Tecnología | Versión |
@@ -267,6 +324,7 @@ if (article.isAnalyzed) {
 | **Ingesta** | Direct Spanish RSS | 9 medios, 8 categorías |
 | **Sanitización** | DOMPurify | 3.x |
 | **Rate Limiting** | express-rate-limit | 7.x |
+| **Load Testing** | k6 | latest |
 
 ---
 
@@ -432,6 +490,7 @@ ef50b05 feat: Sprint 7.1 - Chat RAG + Detector de Bulos + Auditoría
 10. ✅ **Seguridad**: XSS, CORS, Rate Limiting, Retry, Health Checks
 11. ✅ **UX Optimizada**: Resúmenes estructurados, chat con formato Markdown
 12. ✅ **Optimización de Costes IA**: Prompts compactados (-64%), ventana deslizante, límites defensivos
+13. ✅ **Testing de Carga**: Suite k6 con validación de rate limiting y thresholds de rendimiento
 
 ---
 
@@ -439,7 +498,7 @@ ef50b05 feat: Sprint 7.1 - Chat RAG + Detector de Bulos + Auditoría
 
 | Métrica | Valor |
 |---------|-------|
-| **Sprints completados** | 10 |
+| **Sprints completados** | 11 |
 | **Archivos TypeScript** | ~80 |
 | **Líneas de código** | ~12,500 |
 | **Tests unitarios** | 41 |
@@ -454,7 +513,7 @@ ef50b05 feat: Sprint 7.1 - Chat RAG + Detector de Bulos + Auditoría
 ## Próximos Pasos (Post-MVP)
 
 ### Auditoría Final
-- [ ] Testing de carga (k6 o Artillery)
+- [x] Testing de carga (k6) - Suite implementada en `tests/performance/`
 - [ ] Performance audit (Lighthouse, Web Vitals)
 - [ ] Penetration testing
 
