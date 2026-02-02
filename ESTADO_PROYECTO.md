@@ -1,20 +1,21 @@
 # Estado del Proyecto - Verity News
 
-> Última actualización: Sprint 10 - Firebase Authentication (2026-02-02) - **PRODUCCIÓN READY ✅**
+> Última actualización: Sprint 10.1 - Token Monitoring & User Profiles (2026-02-02) - **PRODUCCIÓN READY ✅**
 
 ---
 
-## Estado Actual: SPRINT 10 COMPLETADO - FIREBASE AUTHENTICATION ✅
+## Estado Actual: SPRINT 10.1 COMPLETADO - TOKEN MONITORING & USER PROFILES ✅
 
 | Componente | Estado | Notas |
 |------------|--------|-------|
-| **Arquitectura** | ✅ 9/10 | Clean Architecture + Auth Layer |
-| **Seguridad** | ✅ 9/10 | Firebase Auth + JWT + Rutas protegidas |
-| **Tipos/TypeScript** | ✅ 8/10 | Sin `as any`, interfaces tipadas |
-| **Manejo de errores** | ✅ 8/10 | Retry con backoff, health checks |
+| **Arquitectura** | ✅ 9/10 | Clean Architecture + Auth + Cost Monitoring |
+| **Seguridad** | ✅ 9/10 | Firebase Auth + JWT + Token Refresh |
+| **Tipos/TypeScript** | ✅ 9/10 | Sin `as any`, validaciones de seguridad |
+| **Manejo de errores** | ✅ 9/10 | Retry automático + token refresh |
 | **Código limpio** | ✅ 8/10 | Documentado y auditado |
-| **Optimización IA** | ✅ 9/10 | Prompts compactados, límites defensivos, caché documentado |
-| **Autenticación** | ✅ 9/10 | Firebase Auth + Google Sign-In + JWT |
+| **Optimización IA** | ✅ 9/10 | Prompts compactados + monitoreo de costes |
+| **Autenticación** | ✅ 9/10 | Firebase Auth + Auto-renovación de tokens |
+| **Transparencia** | ✅ 9/10 | Tracking de tokens + costes en tiempo real |
 
 ---
 
@@ -35,7 +36,68 @@
 | 8 | Optimización de Costes Gemini | ✅ | 2026-02-02 |
 | 8.1 | Suite de Tests de Carga (k6) | ✅ | 2026-02-02 |
 | 8.2 | Token Taximeter Completo | ✅ | 2026-02-02 |
-| 9 | Gestor de Fuentes RSS con IA | ✅ | 2026-02-02 |
+| 10 | Firebase Authentication | ✅ | 2026-02-02 |
+| **10.1** | **Token Monitoring & User Profiles** | ✅ | **2026-02-02** |
+
+---
+
+## Sprint 10.1: Sistema de Monitorización de Tokens + Perfiles de Usuario
+
+### Objetivo
+Implementar sistema completo de monitorización de uso de tokens de Gemini API con visibilidad en UI, y gestión de perfiles de usuario.
+
+### 1. Backend - Sistema de Perfiles y Monitoreo
+
+**Endpoints nuevos:**
+- `GET /api/user/me` - Obtener perfil completo del usuario
+- `PATCH /api/user/me` - Actualizar nombre y preferencias  
+- `GET /api/user/token-usage` - Estadísticas de uso de tokens
+
+**Archivos creados/modificados:**
+- `backend/src/infrastructure/http/controllers/user.controller.ts` - UserController completo
+- `backend/src/infrastructure/http/routes/user.routes.ts` - Rutas protegidas de usuario
+- `backend/src/infrastructure/external/gemini.client.ts` - Método `getSessionCostReport()`
+- `backend/src/infrastructure/http/middleware/auth.middleware.ts` - Logs mejorados
+- `backend/scripts/test-firebase-auth.ts` - Script de diagnóstico
+
+**Características del monitoreo:**
+- ✅ Tracking de tokens por tipo de operación (análisis, RAG chat, grounding chat)
+- ✅ Cálculo automático de costes en EUR (Gemini 2.5 Flash pricing: $0.075/$0.30 por 1M tokens)
+- ✅ Contadores de operaciones y tokens (input/output)
+- ✅ Timestamp de sesión y uptime
+- ✅ Método `getSessionCostReport()` para acceso programático
+
+### 2. Frontend - UI de Perfiles y Visualización
+
+**Archivos creados:**
+- `frontend/app/profile/page.tsx` - Página de perfil profesional con estadísticas
+- `frontend/components/token-usage-card.tsx` - Componente de visualización de tokens
+- `frontend/components/ui/label.tsx` - Componente Radix UI
+- `frontend/components/ui/checkbox.tsx` - Componente Radix UI  
+- `frontend/components/ui/progress.tsx` - Componente Radix UI
+
+**Características de la UI:**
+- ✅ Dashboard de perfil con estadísticas de uso
+- ✅ Tarjeta de uso de tokens con desglose por operación
+- ✅ Progress bars para límites de plan
+- ✅ Selección de categorías preferidas
+- ✅ Validaciones de seguridad contra valores undefined
+- ✅ Formato de moneda y números localizados
+
+### 3. Mejoras de Autenticación
+
+**Auto-renovación de tokens:**
+- ✅ Token refresh automático al cargar perfil (`forceRefresh: true`)
+- ✅ Reintento con token renovado si falla el primero
+- ✅ Mensajes de error claros con botón de acción
+- ✅ Fix de loading infinito con `setLoading(false)` en todos los paths
+- ✅ Dependencias optimizadas en useEffect
+
+### 4. Documentación
+
+**Guías creadas:**
+- `docs/TOKEN_USAGE_MONITORING.md` - Sistema completo de monitoreo
+- `docs/TROUBLESHOOTING_AUTH.md` - Solución de problemas de autenticación
 | **10** | **Firebase Authentication** | ✅ | **2026-02-02** |
 
 ---
@@ -835,6 +897,8 @@ interface TokenUsage {
 | `docs/INSTRUCCIONES_REANALISIS_MANUAL.md` | Instrucciones de reanálisis |
 | `docs/SPRINT_3_RSS_DIRECTOS.md` | RSS directos Sprint 3 |
 | `docs/VALIDACION_RSS_DIRECTOS_FINAL.md` | Validación final RSS |
+| `docs/TOKEN_USAGE_MONITORING.md` | **Sistema de monitorización de tokens** |
+| `docs/TROUBLESHOOTING_AUTH.md` | **Solución de problemas de autenticación** |
 
 ---
 
@@ -867,17 +931,19 @@ ef50b05 feat: Sprint 7.1 - Chat RAG + Detector de Bulos + Auditoría
 14. ✅ **Token Taximeter**: Auditoría de costes en tiempo real para análisis, chat RAG y chat grounding
 15. ✅ **Gestor de Fuentes RSS**: Auto-discovery con IA, 64 medios, persistencia localStorage
 16. ✅ **Autenticación Firebase**: Email/Password + Google Sign-In + JWT + Rutas protegidas
+17. ✅ **Monitorización de Tokens**: Tracking de costes por operación con UI en tiempo real
+18. ✅ **Perfiles de Usuario**: Dashboard con estadísticas, preferencias y progreso
 
 ---
 
 ## Métricas de Desarrollo
 
-| Métrica | Valor |
-|---------|-------|
-| **Sprints completados** | 13 |
-| **Archivos TypeScript** | ~90 |
-| **Líneas de código** | ~14,000 |
+| Métrica | Valor |4 |
+| **Archivos TypeScript** | ~95 |
+| **Líneas de código** | ~15,500 |
 | **Tests unitarios** | 41 |
+| **Endpoints API** | 15 |
+| **Componentes React** | ~32
 | **Endpoints API** | 12 |
 | **Componentes React** | ~28 |
 | **TypeScript Errors** | 0 |
@@ -898,8 +964,9 @@ ef50b05 feat: Sprint 7.1 - Chat RAG + Detector de Bulos + Auditoría
 - [ ] Conclusiones y limitaciones
 - [ ] Recomendaciones futuras
 
-### Mejoras Futuras
-- [x] Autenticación de usuarios (Firebase Auth) - **COMPLETADO Sprint 10**
+###x] Monitorización de tokens y costes - **COMPLETADO Sprint 10.1**
+- [x] Perfiles de usuario con preferencias - **COMPLETADO Sprint 10.1**
+- [ ] Tracking histórico de tokens por usuario
 - [ ] Historial de búsquedas semánticas
 - [ ] Alertas personalizadas por tema
 - [ ] Exportación de reportes de sesgo
@@ -910,16 +977,20 @@ ef50b05 feat: Sprint 7.1 - Chat RAG + Detector de Bulos + Auditoría
 
 ## Conclusión
 
-**Verity News Sprint 10** representa un sistema RAG Full Stack completo, optimizado y seguro:
+**Verity News Sprint 10.1** representa un sistema RAG Full Stack completo, optimizado, seguro y transparente:
 
 - **Cerebro IA** (Gemini 2.5 Flash) - Análisis + Chat Híbrido + RAG + Auto-Discovery RSS
 - **Memoria Vectorial** (ChromaDB) - Búsqueda semántica
 - **Detector de Bulos** - reliabilityScore + factCheck
-- **Autenticación Firebase** - Email/Password + Google Sign-In + JWT + Rutas protegidas
+- **Autenticación Firebase** - Email/Password + Google Sign-In + JWT + Auto-refresh
+- **Monitorización de Tokens** - Tracking en tiempo real con costes por operación
+- **Perfiles de Usuario** - Dashboard profesional con estadísticas y preferencias
 - **Seguridad Producción** - XSS, CORS, Rate Limit, Health Checks, Firebase Auth
 - **UX Optimizada** - Resúmenes estructurados, formato Markdown, auto-favoritos
-- **Costes Optimizados** - 64% reducción en tokens de Gemini API
+- **Costes Optimizados** - 64% reducción + monitoreo en tiempo real
 - **Gestor de Fuentes** - 64 medios españoles + búsqueda inteligente con IA
+
+**Status:** MVP completo, auditado, optimizado, autenticado, monitoriz inteligente con IA
 
 **Status:** MVP completo, auditado, optimizado, autenticado y listo para producción.
 
