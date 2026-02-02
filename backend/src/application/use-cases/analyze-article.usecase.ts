@@ -1,6 +1,18 @@
 /**
- * AnalyzeArticleUseCase (DEBUG VERSION)
- * Con logs detallados para encontrar el fallo.
+ * AnalyzeArticleUseCase (Application Layer)
+ * Analiza artículos con Gemini AI para detectar sesgo, veracidad y generar resúmenes.
+ *
+ * === COST OPTIMIZATION (Sprint 8) ===
+ *
+ * CACHÉ DE ANÁLISIS (ya implementado):
+ * - Los análisis se persisten en PostgreSQL (campos: summary, biasScore, analysis, analyzedAt)
+ * - Si article.isAnalyzed === true, se devuelve el análisis cacheado SIN llamar a Gemini
+ * - Ubicación del caché: líneas 70-83 (check isAnalyzed → return cached)
+ *
+ * LÍMITES DEFENSIVOS:
+ * - Batch limit: máximo 100 artículos por lote (línea 234)
+ * - No hay llamadas a Gemini dentro de bucles sin control
+ * - El bucle de batch solo procesa artículos NO analizados (findUnanalyzed)
  */
 
 import { ArticleAnalysis, NewsArticle } from '../../domain/entities/news-article.entity';
@@ -10,6 +22,22 @@ import { IJinaReaderClient } from '../../domain/services/jina-reader-client.inte
 import { IChromaClient } from '../../domain/services/chroma-client.interface';
 import { EntityNotFoundError, ValidationError } from '../../domain/errors/domain.error';
 import { MetadataExtractor } from '../../infrastructure/external/metadata-extractor';
+
+// ============================================================================
+// COST OPTIMIZATION CONSTANTS
+// ============================================================================
+
+/**
+ * Máximo de artículos por lote en análisis batch.
+ * Límite defensivo para evitar costes inesperados.
+ */
+const MAX_BATCH_LIMIT = 100;
+
+/**
+ * Mínimo de caracteres para considerar contenido válido.
+ * Contenido muy corto no justifica una llamada a Gemini.
+ */
+const MIN_CONTENT_LENGTH = 100;
 
 
 export interface AnalyzeArticleInput {
@@ -67,11 +95,17 @@ export class AnalyzeArticleUseCase {
 
     console.log(`\n🔍 [Análisis] Iniciando noticia: "${article.title}"`);
 
-    // 2. Check if already analyzed
+    // =========================================================================
+    // COST OPTIMIZATION: CACHÉ DE ANÁLISIS EN BASE DE DATOS
+    // =========================================================================
+    // Si el artículo ya fue analizado (analyzedAt !== null), devolvemos el
+    // análisis cacheado en PostgreSQL SIN llamar a Gemini.
+    // Esto evita pagar dos veces por el mismo análisis.
+    // =========================================================================
     if (article.isAnalyzed) {
       const existingAnalysis = article.getParsedAnalysis();
       if (existingAnalysis) {
-        console.log(`   ⏭️ Ya analizada previamente. Saltando.`);
+        console.log(`   ⏭️ CACHE HIT: Análisis ya existe en BD. Gemini NO llamado.`);
         return {
           articleId: article.id,
           summary: article.summary!,
@@ -87,10 +121,11 @@ export class AnalyzeArticleUseCase {
     let scrapedContentLength = contentToAnalyze?.length || 0;
     let usedFallback = false;
 
-    // Verificar si el contenido es válido
-    const isContentInvalid = 
-      !contentToAnalyze || 
-      contentToAnalyze.length < 100 || 
+    // COST OPTIMIZATION: Verificar si el contenido justifica una llamada a Gemini
+    // Contenido muy corto (<MIN_CONTENT_LENGTH chars) no vale la pena analizar
+    const isContentInvalid =
+      !contentToAnalyze ||
+      contentToAnalyze.length < MIN_CONTENT_LENGTH ||
       contentToAnalyze.includes('JinaReader API Error');
 
     if (isContentInvalid) {
@@ -99,7 +134,7 @@ export class AnalyzeArticleUseCase {
       try {
         const scrapedData = await this.jinaReaderClient.scrapeUrl(article.url);
         
-        if (scrapedData.content && scrapedData.content.length >= 100) {
+        if (scrapedData.content && scrapedData.content.length >= MIN_CONTENT_LENGTH) {
           contentToAnalyze = scrapedData.content;
           scrapedContentLength = scrapedData.content.length;
           console.log(`   ✅ Scraping OK (${scrapedContentLength} caracteres).`);
@@ -227,11 +262,17 @@ export class AnalyzeArticleUseCase {
 
   /**
    * Analyze multiple unanalyzed articles in batch
+   *
+   * COST OPTIMIZATION: Límites defensivos
+   * - Máximo MAX_BATCH_LIMIT artículos por lote
+   * - Solo procesa artículos NO analizados (findUnanalyzed)
+   * - Cada artículo individual tiene su propio caché check
    */
   async executeBatch(input: AnalyzeBatchInput): Promise<AnalyzeBatchOutput> {
     const { limit } = input;
 
-    if (limit <= 0 || limit > 100) {
+    // COST OPTIMIZATION: Límite defensivo para evitar costes inesperados
+    if (limit <= 0 || limit > MAX_BATCH_LIMIT) {
       throw new ValidationError('Batch limit must be between 1 and 100');
     }
 

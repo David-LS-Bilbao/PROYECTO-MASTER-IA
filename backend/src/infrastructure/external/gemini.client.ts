@@ -1,6 +1,12 @@
 /**
  * GeminiClient Implementation (Infrastructure Layer)
  * Uses Google's Gemini API for article analysis
+ *
+ * === COST OPTIMIZATION (Sprint 8) ===
+ * - Prompts compactados para reducir tokens de entrada (~67% menos)
+ * - Límites explícitos de output para controlar tokens de salida
+ * - Ventana deslizante de historial para evitar crecimiento exponencial
+ * - Documentación de decisiones de optimización
  */
 
 import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
@@ -16,68 +22,67 @@ import {
   ConfigurationError,
 } from '../../domain/errors/infrastructure.error';
 
-const ANALYSIS_PROMPT = `Actúa como un analista de veracidad de noticias experto. Analiza el siguiente artículo de forma objetiva y rigurosa.
+// ============================================================================
+// COST OPTIMIZATION CONSTANTS
+// ============================================================================
 
-IMPORTANTE: Responde SOLO con el JSON, sin texto adicional, sin markdown, sin backticks.
+/**
+ * Máximo de mensajes enviados a Gemini en chat con historial.
+ *
+ * RAZÓN DE OPTIMIZACIÓN:
+ * - Sin límite, cada mensaje reenvía TODO el historial anterior
+ * - Mensaje 50 incluye los 49 anteriores = coste exponencial
+ * - Con ventana de 6 mensajes (3 turnos), el coste es constante
+ * - Ahorro estimado: ~70% en conversaciones largas
+ *
+ * VALOR: 6 mensajes = últimos 3 turnos (user→assistant→user→assistant→user→assistant)
+ */
+const MAX_CHAT_HISTORY_MESSAGES = 6;
 
-Artículo a analizar:
+/**
+ * Límite de caracteres para contenido de artículo en análisis.
+ * Evita enviar artículos enormes que consumen tokens innecesarios.
+ */
+const MAX_ARTICLE_CONTENT_LENGTH = 8000;
+
+/**
+ * Límite de caracteres para texto de embedding.
+ * El modelo text-embedding-004 tiene límite de ~8000 tokens.
+ */
+const MAX_EMBEDDING_TEXT_LENGTH = 6000;
+
+// ============================================================================
+// OPTIMIZED PROMPTS
+// ============================================================================
+
+/**
+ * ANALYSIS_PROMPT - Versión optimizada
+ *
+ * CAMBIOS vs versión anterior:
+ * - Eliminado rol verboso ("Actúa como un analista experto...")
+ * - Eliminado campo IDIOMA (se infiere del contenido)
+ * - Escalas compactadas en una línea cada una
+ * - Eliminados ejemplos en arrays (["indicador1", "indicador2"])
+ * - Añadidos límites explícitos (max 3, max 50 palabras, 1 frase)
+ * - Reducido summary de 60 a 50 palabras
+ *
+ * AHORRO: ~700 tokens → ~250 tokens (~65% reducción)
+ */
+const ANALYSIS_PROMPT = `Analiza esta noticia. Responde SOLO con JSON válido (sin markdown, sin backticks).
+
 TÍTULO: {title}
 FUENTE: {source}
-IDIOMA: {language}
-
 CONTENIDO:
 {content}
 
-Devuelve un JSON estricto con este formato exacto:
-{
-  "summary": "Resumen estructurado, fácil de leer. Máximo 60 palabras. Ve directo al grano. Evita frases largas.",
-  "biasScore": number,
-  "biasIndicators": ["indicador1", "indicador2"],
-  "clickbaitScore": number,
-  "reliabilityScore": number,
-  "sentiment": "positive" | "neutral" | "negative",
-  "mainTopics": ["Tema1", "Tema2", "Tema3"],
-  "factCheck": {
-    "claims": ["Afirmación 1 detectada", "Afirmación 2 detectada"],
-    "verdict": "Verified" | "Mixed" | "Unproven" | "False",
-    "reasoning": "Explicación breve del veredicto"
-  }
-}
+Devuelve este JSON exacto:
+{"summary":"<max 50 palabras: qué, quién, cuándo>","biasScore":<-10 a +10>,"biasIndicators":["<max 3 indicadores>"],"clickbaitScore":<0-100>,"reliabilityScore":<0-100>,"sentiment":"positive|neutral|negative","mainTopics":["<max 3>"],"factCheck":{"claims":["<max 2 afirmaciones clave>"],"verdict":"Verified|Mixed|Unproven|False","reasoning":"<1 frase explicativa>"}}
 
-INSTRUCCIONES PARA EL SUMMARY:
-- Genera un resumen ESTRUCTURADO y muy FÁCIL DE LEER.
-- Usa frases cortas y directas (máximo 15 palabras por frase).
-- Ve al grano: ¿Qué pasó? ¿Quién? ¿Cuándo?
-- Máximo 60 palabras total.
-- NO uses jerga técnica innecesaria.
-
-CRITERIOS DE PUNTUACIÓN:
-
-biasScore (-10 a +10):
-- -10 a -6: Extrema izquierda (lenguaje muy ideológico progresista)
-- -5 a -2: Izquierda moderada
-- -1 a +1: Neutral/Centro (factual, múltiples perspectivas)
-- +2 a +5: Derecha moderada
-- +6 a +10: Extrema derecha (lenguaje muy ideológico conservador)
-
-clickbaitScore (0 a 100):
-- 0-20: Titular serio y descriptivo
-- 21-50: Algo sensacionalista pero informativo
-- 51-80: Claramente clickbait, exagerado
-- 81-100: Clickbait extremo, engañoso
-
-reliabilityScore (0 a 100):
-- 0-20: Bulo, desinformación clara, sin fuentes
-- 21-40: Opinión presentada como hecho, fuentes dudosas
-- 41-60: Parcialmente verificable, algunas fuentes
-- 61-80: Mayormente fiable, fuentes identificables
-- 81-100: Altamente contrastado, fuentes oficiales/múltiples
-
-factCheck.verdict:
-- "Verified": Afirmaciones verificables con fuentes oficiales
-- "Mixed": Algunas afirmaciones verificadas, otras no
-- "Unproven": No hay suficiente información para verificar
-- "False": Contiene afirmaciones demostrablemente falsas`;
+ESCALAS:
+- biasScore: -10=izquierda extrema, 0=neutral, +10=derecha extrema
+- clickbaitScore: 0=serio, 50=sensacionalista, 100=engañoso
+- reliabilityScore: 0=bulo, 50=parcial, 100=verificado con fuentes oficiales
+- verdict: Verified=comprobado, Mixed=parcial, Unproven=sin datos, False=falso`;
 
 export class GeminiClient implements IGeminiClient {
   private readonly model: GenerativeModel;
@@ -107,7 +112,8 @@ export class GeminiClient implements IGeminiClient {
    * Security: Includes retry with exponential backoff for rate limit handling
    */
   async analyzeArticle(input: AnalyzeContentInput): Promise<ArticleAnalysis> {
-    const { title, content, source, language } = input;
+    // COST OPTIMIZATION: 'language' eliminado del prompt (se infiere del contenido)
+    const { title, content, source } = input;
 
     // Validate input
     if (!content || content.trim().length < 50) {
@@ -123,10 +129,10 @@ export class GeminiClient implements IGeminiClient {
     const sanitizedContent = this.sanitizeInput(content);
     const sanitizedSource = this.sanitizeInput(source);
 
+    // COST OPTIMIZATION: Limitar contenido para reducir tokens de entrada
     const prompt = ANALYSIS_PROMPT.replace('{title}', sanitizedTitle)
       .replace('{source}', sanitizedSource)
-      .replace('{language}', language)
-      .replace('{content}', sanitizedContent.substring(0, 10000)); // Limit content length
+      .replace('{content}', sanitizedContent.substring(0, MAX_ARTICLE_CONTENT_LENGTH));
 
     // Resilience: Retry with exponential backoff for transient failures
     const maxRetries = 3;
@@ -207,8 +213,9 @@ export class GeminiClient implements IGeminiClient {
       throw new ExternalAPIError('Gemini', 'Text is required for embedding generation', 400);
     }
 
-    // Truncate text to avoid token limits (max ~8000 tokens for embedding model)
-    const truncatedText = text.substring(0, 8000);
+    // COST OPTIMIZATION: Truncar texto para evitar tokens innecesarios
+    // El modelo soporta ~8000 tokens pero usamos 6000 para margen de seguridad
+    const truncatedText = text.substring(0, MAX_EMBEDDING_TEXT_LENGTH);
     const maxRetries = 3;
     let lastError: Error | null = null;
 
@@ -252,6 +259,11 @@ export class GeminiClient implements IGeminiClient {
   /**
    * Chat with context injection for article Q&A
    * Uses Google Search Grounding for hybrid responses (article + external info)
+   *
+   * COST OPTIMIZATION: Ventana deslizante de historial
+   * - Solo se envían los últimos MAX_CHAT_HISTORY_MESSAGES mensajes
+   * - Evita crecimiento exponencial de tokens en conversaciones largas
+   * - Ahorro estimado: ~70% en conversaciones de 20+ mensajes
    */
   async chatWithContext(input: ChatWithContextInput): Promise<ChatResponse> {
     const { systemContext, messages } = input;
@@ -260,21 +272,28 @@ export class GeminiClient implements IGeminiClient {
       throw new ExternalAPIError('Gemini', 'At least one message is required', 400);
     }
 
-    // Build the conversation with system context
+    // COST OPTIMIZATION: Ventana deslizante - solo últimos N mensajes
+    // Esto evita que el coste crezca exponencialmente con cada mensaje
+    const recentMessages = messages.slice(-MAX_CHAT_HISTORY_MESSAGES);
+
+    if (messages.length > MAX_CHAT_HISTORY_MESSAGES) {
+      console.log(`      [GeminiClient] Chat - Historial truncado: ${messages.length} → ${recentMessages.length} mensajes`);
+    }
+
+    // Build the conversation with system context (formato compacto)
     const conversationParts: string[] = [];
 
     // Add system context as the foundation
-    conversationParts.push(`CONTEXTO DEL SISTEMA:\n${systemContext}\n`);
-    conversationParts.push('---\nHISTORIAL DE CONVERSACIÓN:\n');
+    conversationParts.push(`[CONTEXTO]\n${systemContext}`);
+    conversationParts.push('\n[HISTORIAL]');
 
-    // Add message history
-    for (const msg of messages) {
-      const roleLabel = msg.role === 'user' ? 'Usuario' : 'Asistente';
+    // Add message history (formato compacto: U/A en lugar de Usuario/Asistente)
+    for (const msg of recentMessages) {
+      const roleLabel = msg.role === 'user' ? 'U' : 'A';
       conversationParts.push(`${roleLabel}: ${msg.content}`);
     }
 
-    // Instruction moved to use case (system prompt)
-    conversationParts.push('\n---\nResponde a la última pregunta del usuario.');
+    conversationParts.push('\nResponde a la última pregunta.');
 
     const prompt = conversationParts.join('\n');
 
@@ -320,6 +339,13 @@ export class GeminiClient implements IGeminiClient {
    * Generate a chat response using RAG context
    * Uses a focused system prompt that only answers from provided context
    * NO Google Search Grounding - pure RAG response
+   *
+   * COST OPTIMIZATION: Prompt compactado
+   * - Eliminado markdown decorativo en instrucciones
+   * - Reducidos ejemplos de fallback (3 → 1)
+   * - Headers simplificados
+   * - Añadido límite de output (max 150 palabras)
+   * - Ahorro estimado: ~70% en tokens de instrucciones
    */
   async generateChatResponse(context: string, question: string): Promise<string> {
     if (!context || context.trim().length === 0) {
@@ -330,34 +356,18 @@ export class GeminiClient implements IGeminiClient {
       throw new ExternalAPIError('Gemini', 'Question is required', 400);
     }
 
-    const ragPrompt = `Eres **Verity AI**, un asistente de noticias inteligente y visual.
+    // COST OPTIMIZATION: Prompt compacto (antes ~370 tokens, ahora ~120 tokens)
+    const ragPrompt = `Asistente de noticias. Responde en español, max 150 palabras.
 
-## FUENTES DE INFORMACIÓN (por orden de prioridad):
-1. **CONTEXTO** (Prioridad alta): Fragmentos del artículo proporcionados abajo.
-2. **CONOCIMIENTO GENERAL** (Fallback): Tu entrenamiento base.
+REGLAS:
+- Prioriza el CONTEXTO. Si no está ahí, usa conocimiento general con prefijo "Según información general..."
+- Formato: bullets para listas, **negrita** para datos clave, párrafos cortos (2-3 líneas max)
 
-## ALGORITMO DE RESPUESTA:
-1. Si la respuesta está en el CONTEXTO → úsalo directamente.
-2. Si NO está en el contexto → usa tu conocimiento general, pero **siempre avisa** empezando con:
-   - *"El artículo no lo menciona, pero..."*
-   - *"En un contexto más amplio..."*
-   - *"Según información general..."*
-
-## FORMATO OBLIGATORIO (UX):
-- **NO uses bloques de texto densos.**
-- Usa **listas con viñetas (bullets)** para enumerar datos o puntos clave.
-- Usa **negritas** para resaltar nombres, fechas, cifras o conceptos importantes.
-- Párrafos máximos de 2-3 líneas.
-- Tu objetivo es que la lectura sea **escaneable y ligera**.
-- Responde siempre en español.
-
-=== CONTEXTO DEL ARTÍCULO ===
+[CONTEXTO]
 ${context}
 
-=== PREGUNTA DEL USUARIO ===
-${question}
-
-=== TU RESPUESTA (formato visual) ===`;
+[PREGUNTA]
+${question}`;
 
     try {
       console.log(`      [GeminiClient] RAG Chat - Generando respuesta...`);

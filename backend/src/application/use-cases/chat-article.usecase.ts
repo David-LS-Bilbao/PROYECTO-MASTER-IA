@@ -8,12 +8,41 @@
  * 3. Query ChromaDB for relevant context
  * 4. Combine retrieved documents as context
  * 5. Generate response using Gemini with context
+ *
+ * === COST OPTIMIZATION (Sprint 8) ===
+ * - Contexto compactado: eliminados headers verbosos y duplicados
+ * - Límite de documentos RAG: máximo 3 fragmentos
+ * - Límite de caracteres por fragmento: 2000 chars
+ * - Formato compacto para metadatos
  */
 
 import { INewsArticleRepository } from '../../domain/repositories/news-article.repository';
 import { IGeminiClient, ChatMessage } from '../../domain/services/gemini-client.interface';
 import { IChromaClient, QueryResult } from '../../domain/services/chroma-client.interface';
 import { EntityNotFoundError, ValidationError } from '../../domain/errors/domain.error';
+
+// ============================================================================
+// COST OPTIMIZATION CONSTANTS
+// ============================================================================
+
+/**
+ * Máximo de documentos recuperados de ChromaDB.
+ * Más documentos = más contexto = más tokens = más coste.
+ * 3 documentos es suficiente para la mayoría de preguntas.
+ */
+const MAX_RAG_DOCUMENTS = 3;
+
+/**
+ * Máximo de caracteres por fragmento de documento.
+ * Evita que un solo documento consuma demasiados tokens.
+ */
+const MAX_DOCUMENT_CHARS = 2000;
+
+/**
+ * Máximo de caracteres para contenido de fallback.
+ * Cuando ChromaDB no está disponible, limitar el contenido del artículo.
+ */
+const MAX_FALLBACK_CONTENT_CHARS = 3000;
 
 export interface ChatArticleInput {
   articleId: string;
@@ -97,17 +126,22 @@ export class ChatArticleUseCase {
   /**
    * RETRIEVAL STEP: Query ChromaDB for relevant context
    * Generates embedding of question and searches for similar documents
+   *
+   * COST OPTIMIZATION:
+   * - Límite de documentos: MAX_RAG_DOCUMENTS (3)
+   * - Límite de caracteres por documento: MAX_DOCUMENT_CHARS (2000)
+   * - Formato compacto sin headers verbosos
    */
   private async retrieveContext(question: string, articleId: string): Promise<string> {
     // Generate embedding for the user's question
     console.log(`   🧠 Generando embedding de la pregunta...`);
     const questionEmbedding = await this.geminiClient.generateEmbedding(question);
 
-    // Query ChromaDB for similar documents (nResults = 3 as specified)
-    console.log(`   🔎 Buscando en ChromaDB...`);
+    // COST OPTIMIZATION: Límite de documentos recuperados
+    console.log(`   🔎 Buscando en ChromaDB (max ${MAX_RAG_DOCUMENTS} docs)...`);
     const results: QueryResult[] = await this.chromaClient.querySimilarWithDocuments(
       questionEmbedding,
-      3 // nResults = 3 as per specification
+      MAX_RAG_DOCUMENTS
     );
 
     if (results.length === 0) {
@@ -118,17 +152,18 @@ export class ChatArticleUseCase {
     // Prioritize the requested article if found in results
     const sortedResults = this.prioritizeArticle(results, articleId);
 
-    // Combine documents into context string
+    // COST OPTIMIZATION: Formato compacto para contexto
+    // - Eliminados headers verbosos ("--- Fragmento X ---")
+    // - Eliminada nota de relevancia redundante
+    // - Truncado de documentos largos
     const contextParts = sortedResults.map((result, index) => {
-      const relevanceNote = result.id === articleId
-        ? '(Artículo actual)'
-        : '(Artículo relacionado)';
+      // Truncar documento si es muy largo
+      const truncatedDoc = result.document.length > MAX_DOCUMENT_CHARS
+        ? result.document.substring(0, MAX_DOCUMENT_CHARS) + '...'
+        : result.document;
 
-      return `--- Fragmento ${index + 1} ${relevanceNote} ---
-Título: ${result.metadata.title}
-Fuente: ${result.metadata.source}
-Contenido:
-${result.document}`;
+      // Formato compacto: [N] Título | Fuente \n Contenido
+      return `[${index + 1}] ${result.metadata.title} | ${result.metadata.source}\n${truncatedDoc}`;
     });
 
     return contextParts.join('\n\n');
@@ -152,6 +187,12 @@ ${result.document}`;
 
   /**
    * AUGMENTATION STEP: Enhance context with article metadata
+   *
+   * COST OPTIMIZATION:
+   * - Formato compacto en una línea para metadatos
+   * - Eliminados headers verbosos ("=== INFORMACIÓN ===")
+   * - Fecha en formato ISO corto (YYYY-MM-DD)
+   * - Eliminada duplicación de título (ya está en retrievedContext)
    */
   private augmentContext(
     retrievedContext: string,
@@ -166,35 +207,21 @@ ${result.document}`;
   ): string {
     const parts: string[] = [];
 
-    // Article metadata header
-    parts.push('=== INFORMACIÓN DEL ARTÍCULO ===');
-    parts.push(`Título: ${article.title}`);
-    parts.push(`Fuente: ${article.source}`);
-    if (article.author) {
-      parts.push(`Autor: ${article.author}`);
-    }
-    parts.push(`Fecha: ${article.publishedAt.toLocaleDateString('es-ES', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    })}`);
+    // COST OPTIMIZATION: Metadatos en formato compacto (una línea)
+    const dateStr = article.publishedAt.toISOString().split('T')[0]; // YYYY-MM-DD
+    parts.push(`[META] ${article.title} | ${article.source} | ${dateStr}`);
 
-    // Include AI analysis if available
-    if (article.summary || article.biasScore !== null) {
-      parts.push('\n=== ANÁLISIS PREVIO ===');
-      if (article.summary) {
-        parts.push(`Resumen IA: ${article.summary}`);
-      }
-      if (article.biasScore !== null) {
-        const biasLevel = this.getBiasLevel(article.biasScore);
-        parts.push(`Sesgo detectado: ${Math.round(article.biasScore * 100)}% (${biasLevel})`);
-      }
+    // Include AI analysis if available (formato compacto)
+    if (article.summary) {
+      parts.push(`[RESUMEN] ${article.summary}`);
+    }
+    if (article.biasScore !== null) {
+      parts.push(`[SESGO] ${Math.round(article.biasScore * 100)}%`);
     }
 
     // Add retrieved context
     if (retrievedContext) {
-      parts.push('\n=== CONTENIDO RECUPERADO ===');
-      parts.push(retrievedContext);
+      parts.push(`\n${retrievedContext}`);
     }
 
     return parts.join('\n');
@@ -203,6 +230,10 @@ ${result.document}`;
   /**
    * Build fallback context when ChromaDB is unavailable
    * Uses article content from the database
+   *
+   * COST OPTIMIZATION:
+   * - Límite de contenido: MAX_FALLBACK_CONTENT_CHARS
+   * - Formato compacto sin headers verbosos
    */
   private buildFallbackContext(article: {
     title: string;
@@ -215,42 +246,25 @@ ${result.document}`;
     biasScore: number | null;
   }): string {
     const parts: string[] = [];
+    const dateStr = article.publishedAt.toISOString().split('T')[0];
 
-    parts.push('=== ARTÍCULO ===');
-    parts.push(`Título: ${article.title}`);
-    parts.push(`Fuente: ${article.source}`);
+    // COST OPTIMIZATION: Formato compacto
+    parts.push(`[META] ${article.title} | ${article.source} | ${dateStr}`);
 
-    if (article.author) {
-      parts.push(`Autor: ${article.author}`);
-    }
-
-    parts.push(`Fecha: ${article.publishedAt.toLocaleDateString('es-ES', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    })}`);
-
+    // COST OPTIMIZATION: Truncar contenido largo
     if (article.content) {
-      parts.push(`\nContenido:\n${article.content}`);
+      const truncatedContent = article.content.length > MAX_FALLBACK_CONTENT_CHARS
+        ? article.content.substring(0, MAX_FALLBACK_CONTENT_CHARS) + '...'
+        : article.content;
+      parts.push(`\n${truncatedContent}`);
     } else if (article.description) {
-      parts.push(`\nDescripción:\n${article.description}`);
+      parts.push(`\n${article.description}`);
     }
 
     if (article.summary) {
-      parts.push(`\nResumen IA: ${article.summary}`);
+      parts.push(`\n[RESUMEN] ${article.summary}`);
     }
 
     return parts.join('\n');
-  }
-
-  /**
-   * Get human-readable bias level
-   */
-  private getBiasLevel(score: number): string {
-    if (score < 0.2) return 'Muy bajo - Neutral';
-    if (score < 0.4) return 'Bajo';
-    if (score < 0.6) return 'Moderado';
-    if (score < 0.8) return 'Alto';
-    return 'Muy alto';
   }
 }
