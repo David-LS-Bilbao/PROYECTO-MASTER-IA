@@ -16,11 +16,31 @@ import {
   ChatWithContextInput,
   ChatResponse,
 } from '../../domain/services/gemini-client.interface';
-import { ArticleAnalysis } from '../../domain/entities/news-article.entity';
+import { ArticleAnalysis, TokenUsage } from '../../domain/entities/news-article.entity';
 import {
   ExternalAPIError,
   ConfigurationError,
 } from '../../domain/errors/infrastructure.error';
+
+// ============================================================================
+// TOKEN TAXIMETER - PRICING CONSTANTS (Gemini 2.5 Flash)
+// ============================================================================
+
+/**
+ * Precio por 1 millón de tokens de entrada (USD)
+ * Fuente: https://ai.google.dev/pricing
+ */
+const PRICE_INPUT_1M = 0.075;
+
+/**
+ * Precio por 1 millón de tokens de salida (USD)
+ */
+const PRICE_OUTPUT_1M = 0.30;
+
+/**
+ * Ratio de conversión EUR/USD
+ */
+const EUR_USD_RATE = 0.95;
 
 // ============================================================================
 // COST OPTIMIZATION CONSTANTS
@@ -144,9 +164,47 @@ export class GeminiClient implements IGeminiClient {
         const result = await this.model.generateContent(prompt);
         const response = result.response;
         const text = response.text();
-        console.log(`      [GeminiClient] Respuesta recibida OK`);
 
-        return this.parseAnalysisResponse(text);
+        // TOKEN TAXIMETER: Capturar uso de tokens
+        const usageMetadata = response.usageMetadata;
+        let tokenUsage: TokenUsage | undefined;
+
+        if (usageMetadata) {
+          const promptTokens = usageMetadata.promptTokenCount || 0;
+          const completionTokens = usageMetadata.candidatesTokenCount || 0;
+          const totalTokens = usageMetadata.totalTokenCount || (promptTokens + completionTokens);
+
+          // Calcular coste en USD
+          const costInputUSD = (promptTokens / 1_000_000) * PRICE_INPUT_1M;
+          const costOutputUSD = (completionTokens / 1_000_000) * PRICE_OUTPUT_1M;
+          const costTotalUSD = costInputUSD + costOutputUSD;
+
+          // Convertir a EUR
+          const costEstimated = costTotalUSD * EUR_USD_RATE;
+
+          tokenUsage = {
+            promptTokens,
+            completionTokens,
+            totalTokens,
+            costEstimated,
+          };
+
+          // TOKEN TAXIMETER: Log visual
+          const titlePreview = sanitizedTitle.substring(0, 50) + (sanitizedTitle.length > 50 ? '...' : '');
+          console.log(`\n      🧾 ═══════════════════════════════════════════════════════════`);
+          console.log(`      🧾 TOKEN TAXIMETER - Análisis de Noticia`);
+          console.log(`      🧾 ═══════════════════════════════════════════════════════════`);
+          console.log(`      📰 Título: "${titlePreview}"`);
+          console.log(`      🧠 Tokens entrada:  ${promptTokens.toLocaleString('es-ES')}`);
+          console.log(`      🧠 Tokens salida:   ${completionTokens.toLocaleString('es-ES')}`);
+          console.log(`      🧠 Tokens TOTAL:    ${totalTokens.toLocaleString('es-ES')}`);
+          console.log(`      💰 Coste estimado:  €${costEstimated.toFixed(6)}`);
+          console.log(`      🧾 ═══════════════════════════════════════════════════════════\n`);
+        } else {
+          console.log(`      [GeminiClient] Respuesta recibida OK (sin metadata de tokens)`);
+        }
+
+        return this.parseAnalysisResponse(text, tokenUsage);
       } catch (error) {
         lastError = error as Error;
         console.warn(`      [GeminiClient] Intento ${attempt} falló: ${lastError.message}`);
@@ -415,8 +473,9 @@ ${question}`;
   /**
    * Parse the JSON response from Gemini
    * Handles new analysis format with clickbait, reliability, and factCheck
+   * Includes optional token usage for cost tracking
    */
-  private parseAnalysisResponse(text: string): ArticleAnalysis {
+  private parseAnalysisResponse(text: string, tokenUsage?: TokenUsage): ArticleAnalysis {
     // Clean up potential markdown formatting
     let cleanText = text
       .replace(/```json\n?/g, '')
@@ -502,6 +561,8 @@ ${question}`;
         mainTopics: parsed.mainTopics,
         factCheck,
         factualClaims,
+        // Token Taximeter: Include usage if available
+        ...(tokenUsage && { usage: tokenUsage }),
       };
     } catch (error) {
       throw new ExternalAPIError(

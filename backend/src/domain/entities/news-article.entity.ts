@@ -38,6 +38,16 @@ export interface FactCheck {
 }
 
 /**
+ * Token usage and cost information from Gemini API
+ */
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  costEstimated: number; // En Euros
+}
+
+/**
  * Complete AI analysis of a news article
  */
 export interface ArticleAnalysis {
@@ -57,6 +67,8 @@ export interface ArticleAnalysis {
   factCheck: FactCheck;
   // Legacy field for backwards compatibility
   factualClaims: string[];
+  // Token Taximeter: Cost tracking (Sprint 8.2)
+  usage?: TokenUsage;
 }
 
 export class NewsArticle {
