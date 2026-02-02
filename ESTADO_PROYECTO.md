@@ -1,19 +1,20 @@
 # Estado del Proyecto - Verity News
 
-> Última actualización: Sprint 9 - Gestor de Fuentes RSS con IA (2026-02-02) - **PRODUCCIÓN READY ✅**
+> Última actualización: Sprint 10 - Firebase Authentication (2026-02-02) - **PRODUCCIÓN READY ✅**
 
 ---
 
-## Estado Actual: SPRINT 9 COMPLETADO - GESTOR DE FUENTES RSS CON AUTO-DISCOVERY IA ✅
+## Estado Actual: SPRINT 10 COMPLETADO - FIREBASE AUTHENTICATION ✅
 
 | Componente | Estado | Notas |
 |------------|--------|-------|
-| **Arquitectura** | ✅ 8/10 | Clean Architecture validada y robusta |
-| **Seguridad** | ✅ 8/10 | XSS, CORS, Rate Limiting corregidos |
+| **Arquitectura** | ✅ 9/10 | Clean Architecture + Auth Layer |
+| **Seguridad** | ✅ 9/10 | Firebase Auth + JWT + Rutas protegidas |
 | **Tipos/TypeScript** | ✅ 8/10 | Sin `as any`, interfaces tipadas |
 | **Manejo de errores** | ✅ 8/10 | Retry con backoff, health checks |
 | **Código limpio** | ✅ 8/10 | Documentado y auditado |
 | **Optimización IA** | ✅ 9/10 | Prompts compactados, límites defensivos, caché documentado |
+| **Autenticación** | ✅ 9/10 | Firebase Auth + Google Sign-In + JWT |
 
 ---
 
@@ -34,10 +35,161 @@
 | 8 | Optimización de Costes Gemini | ✅ | 2026-02-02 |
 | 8.1 | Suite de Tests de Carga (k6) | ✅ | 2026-02-02 |
 | 8.2 | Token Taximeter Completo | ✅ | 2026-02-02 |
-| **9** | **Gestor de Fuentes RSS con IA** | ✅ | **2026-02-02** |
+| 9 | Gestor de Fuentes RSS con IA | ✅ | 2026-02-02 |
+| **10** | **Firebase Authentication** | ✅ | **2026-02-02** |
 
 ---
-9: Gestor de Fuentes RSS con Auto-Discovery IA
+
+## Sprint 10: Firebase Authentication
+
+### Objetivo
+Implementar sistema completo de autenticación con Firebase para proteger rutas del backend y permitir gestión de usuarios.
+
+### 1. Backend - Firebase Admin SDK
+
+**Archivos creados/modificados:**
+- `backend/src/infrastructure/external/firebase.admin.ts` - Singleton Firebase Admin con lazy loading
+- `backend/src/infrastructure/http/middleware/auth.middleware.ts` - Middleware de autenticación JWT
+- `backend/src/infrastructure/persistence/prisma.client.ts` - Singleton PrismaClient
+- `backend/prisma/schema.prisma` - Modelo User con Firebase UID
+- `backend/src/infrastructure/config/dependencies.ts` - Actualizado para usar singleton Prisma
+
+**Características:**
+- ✅ Lazy initialization de Firebase Admin (no requiere credenciales al inicio)
+- ✅ Verificación de JWT con Firebase Admin SDK
+- ✅ Sincronización automática de usuarios en PostgreSQL (upsert)
+- ✅ Middleware `authenticate` para rutas protegidas
+- ✅ Middleware `optionalAuthenticate` para rutas públicas con auth opcional
+- ✅ Middleware `requirePlan` para control de acceso por plan
+
+**Modelo de datos:**
+```typescript
+enum UserPlan {
+  FREE
+  QUOTA
+  PAY_AS_YOU_GO
+}
+
+model User {
+  id            String    @id  // Firebase UID
+  email         String    @unique
+  name          String?
+  picture       String?
+  plan          UserPlan  @default(FREE)
+  preferences   Json?
+  usageStats    Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+```
+
+### 2. Frontend - Firebase Client SDK
+
+**Archivos creados/modificados:**
+- `frontend/lib/firebase.ts` - Singleton Firebase Client con validación
+- `frontend/context/AuthContext.tsx` - React Context con onAuthStateChanged
+- `frontend/app/layout.tsx` - Integración de AuthProvider
+- `frontend/app/login/page.tsx` - Página de login/registro
+
+**Características:**
+- ✅ Email/Password authentication
+- ✅ Google Sign-In con popup
+- ✅ AuthContext global con hooks helper
+- ✅ Loading states y manejo de errores en español
+- ✅ Redirección automática tras login exitoso
+- ✅ Validación de configuración Firebase
+
+**Hooks disponibles:**
+```typescript
+useAuth()           // Contexto completo
+useIsAuthenticated() // Boolean
+useUserEmail()      // Email del usuario
+useUserId()         // UID de Firebase
+```
+
+### 3. Rutas Protegidas
+
+**Backend:**
+- ✅ `POST /api/analyze/article` - Requiere autenticación
+
+**Flujo de autenticación:**
+```
+Usuario login → Firebase Auth → Token JWT
+    ↓
+Frontend incluye token en headers
+    ↓
+Backend verifica token con Firebase Admin
+    ↓
+Sincroniza usuario en PostgreSQL
+    ↓
+Inyecta req.user en request
+    ↓
+Controlador accede a req.user
+```
+
+### 4. Optimizaciones
+
+**Lazy Loading:**
+- Firebase Admin solo se inicializa cuando se usa el middleware
+- PrismaClient usa singleton pattern compartido
+- Servidor puede arrancar sin credenciales de Firebase
+
+**Singleton Pattern:**
+- `getPrismaClient()` - Instancia única de Prisma
+- `getFirebaseApp()` - Instancia única de Firebase Admin
+- `firebaseAuth` - Wrapper con métodos lazy
+
+### 5. Migraciones de Base de Datos
+
+```sql
+-- 20260202181313_add_user_fields_firebase
+ALTER TABLE users ADD COLUMN name TEXT;
+ALTER TABLE users ADD COLUMN picture TEXT;
+ALTER TABLE users ADD COLUMN plan TEXT DEFAULT 'FREE';
+ALTER TABLE users ADD COLUMN preferences JSONB;
+ALTER TABLE users ADD COLUMN usageStats JSONB;
+```
+
+### 6. Variables de Entorno
+
+**Backend (.env):**
+```env
+# Opción 1: Variables de entorno (producción)
+FIREBASE_PROJECT_ID=...
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk-...@....iam.gserviceaccount.com
+
+# Opción 2: Archivo local (desarrollo)
+# backend/service-account.json
+```
+
+**Frontend (.env.local):**
+```env
+NEXT_PUBLIC_FIREBASE_API_KEY=...
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=...
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=...
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=...
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=...
+NEXT_PUBLIC_FIREBASE_APP_ID=...
+```
+
+### 7. Archivos Creados Sprint 10
+
+| Archivo | Descripción |
+|---------|-------------|
+| **Backend** | |
+| `backend/src/infrastructure/external/firebase.admin.ts` | Firebase Admin SDK con lazy loading |
+| `backend/src/infrastructure/http/middleware/auth.middleware.ts` | Middleware de autenticación JWT |
+| `backend/src/infrastructure/persistence/prisma.client.ts` | Singleton PrismaClient |
+| `backend/prisma/migrations/20260202181313_add_user_fields_firebase/` | Migración de User model |
+| **Frontend** | |
+| `frontend/lib/firebase.ts` | Firebase Client SDK |
+| `frontend/context/AuthContext.tsx` | React Context de autenticación |
+| `frontend/app/login/page.tsx` | Página de login/registro |
+
+---
+
+## Sprint 9: Gestor de Fuentes RSS con Auto-Discovery IA
 
 ### Objetivo
 Permitir a los usuarios gestionar sus fuentes RSS favoritas con un buscador inteligente que usa IA (Gemini) para encontrar automáticamente las URLs de feeds RSS.
@@ -533,12 +685,13 @@ interface TokenUsage {
 | **Backend** | Node.js + Express + Clean Architecture | 22 / 4.x |
 | **Base de Datos** | PostgreSQL + Prisma | 16 / 7 |
 | **Vector Store** | ChromaDB | 0.5.x |
+| **Autenticación** | Firebase Auth (Client + Admin) | latest |
 | **IA - Análisis** | Gemini 2.5 Flash | Pay-As-You-Go |
 | **IA - Embeddings** | Gemini text-embedding-004 | 768 dimensiones |
 | **IA - Chat RAG** | Gemini 2.5 Flash | Sin Google Search |
 | **IA - Chat Grounding** | Gemini 2.5 Flash + Google Search | Con fuentes web |
 | **Scraping** | Jina Reader API | v1 |
-| **Ingesta** | Direct Spanish RSS | 9 medios, 8 categorías |
+| **Ingesta** | Direct Spanish RSS | 64 medios, 8 categorías |
 | **Sanitización** | DOMPurify | 3.x |
 | **Rate Limiting** | express-rate-limit | 7.x |
 | **Load Testing** | k6 | latest |
@@ -698,7 +851,7 @@ ef50b05 feat: Sprint 7.1 - Chat RAG + Detector de Bulos + Auditoría
 
 ## Capacidades del Sistema
 
-1. ✅ **Ingesta Multi-fuente**: 8 categorías, 9 medios españoles via RSS
+1. ✅ **Ingesta Multi-fuente**: 8 categorías, 64 medios españoles via RSS
 2. ✅ **Análisis de Sesgo IA**: Puntuación -10/+10 con normalización 0-1
 3. ✅ **Detector de Bulos**: reliabilityScore 0-100 + factCheck con verdict
 4. ✅ **Clickbait Score**: Detección de titulares sensacionalistas 0-100
@@ -712,6 +865,8 @@ ef50b05 feat: Sprint 7.1 - Chat RAG + Detector de Bulos + Auditoría
 12. ✅ **Optimización de Costes IA**: Prompts compactados (-64%), ventana deslizante, límites defensivos
 13. ✅ **Testing de Carga**: Suite k6 con validación de rate limiting y thresholds de rendimiento
 14. ✅ **Token Taximeter**: Auditoría de costes en tiempo real para análisis, chat RAG y chat grounding
+15. ✅ **Gestor de Fuentes RSS**: Auto-discovery con IA, 64 medios, persistencia localStorage
+16. ✅ **Autenticación Firebase**: Email/Password + Google Sign-In + JWT + Rutas protegidas
 
 ---
 
@@ -719,12 +874,12 @@ ef50b05 feat: Sprint 7.1 - Chat RAG + Detector de Bulos + Auditoría
 
 | Métrica | Valor |
 |---------|-------|
-| **Sprints completados** | 12 |
-| **Archivos TypeScript** | ~80 |
-| **Líneas de código** | ~12,500 |
+| **Sprints completados** | 13 |
+| **Archivos TypeScript** | ~90 |
+| **Líneas de código** | ~14,000 |
 | **Tests unitarios** | 41 |
-| **Endpoints API** | 11 |
-| **Componentes React** | ~25 |
+| **Endpoints API** | 12 |
+| **Componentes React** | ~28 |
 | **TypeScript Errors** | 0 |
 | **Vulnerabilidades** | 0 críticas |
 | **Reducción coste IA** | -64% |
@@ -744,25 +899,28 @@ ef50b05 feat: Sprint 7.1 - Chat RAG + Detector de Bulos + Auditoría
 - [ ] Recomendaciones futuras
 
 ### Mejoras Futuras
-- [ ] Autenticación de usuarios (Firebase Auth)
+- [x] Autenticación de usuarios (Firebase Auth) - **COMPLETADO Sprint 10**
 - [ ] Historial de búsquedas semánticas
 - [ ] Alertas personalizadas por tema
 - [ ] Exportación de reportes de sesgo
 - [ ] Compartir análisis en redes sociales
+- [ ] Sistema de planes y cuotas (FREE, QUOTA, PAY_AS_YOU_GO)
 
 ---
 
 ## Conclusión
 
-**Verity News Sprint 8** representa un sistema RAG Full Stack completo y optimizado:
+**Verity News Sprint 10** representa un sistema RAG Full Stack completo, optimizado y seguro:
 
-- **Cerebro IA** (Gemini 2.5 Flash) - Análisis + Chat Híbrido + RAG
+- **Cerebro IA** (Gemini 2.5 Flash) - Análisis + Chat Híbrido + RAG + Auto-Discovery RSS
 - **Memoria Vectorial** (ChromaDB) - Búsqueda semántica
 - **Detector de Bulos** - reliabilityScore + factCheck
-- **Seguridad Producción** - XSS, CORS, Rate Limit, Health Checks
+- **Autenticación Firebase** - Email/Password + Google Sign-In + JWT + Rutas protegidas
+- **Seguridad Producción** - XSS, CORS, Rate Limit, Health Checks, Firebase Auth
 - **UX Optimizada** - Resúmenes estructurados, formato Markdown, auto-favoritos
 - **Costes Optimizados** - 64% reducción en tokens de Gemini API
+- **Gestor de Fuentes** - 64 medios españoles + búsqueda inteligente con IA
 
-**Status:** MVP completo, auditado, optimizado y listo para producción.
+**Status:** MVP completo, auditado, optimizado, autenticado y listo para producción.
 
 **Repositorio:** https://github.com/David-LS-Bilbao/PROYECTO-MASTER-IA

@@ -13,12 +13,20 @@ datasource db {
 // USER MANAGEMENT
 // ==========================================
 
+enum UserPlan {
+  FREE
+  QUOTA
+  PAY_AS_YOU_GO
+}
+
 model User {
-  id            String    @id @default(uuid())
-  firebaseUid   String    @unique
+  id            String    @id  // Firebase UID como ID primario
   email         String    @unique
-  displayName   String?
-  photoURL      String?
+  name          String?
+  picture       String?
+  plan          UserPlan  @default(FREE)
+  preferences   Json?     // User preferences (theme, notifications, etc.)
+  usageStats    Json?     // Usage tracking (queries, chats, analyses)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -78,7 +86,6 @@ model Article {
 // ==========================================
 
 model Favorite {
-  id          String    @id @default(uuid())
   userId      String
   articleId   String
   createdAt   DateTime  @default(now())
@@ -87,7 +94,7 @@ model Favorite {
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   article     Article   @relation(fields: [articleId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, articleId])
+  @@id([userId, articleId])  // Clave primaria compuesta
   @@map("favorites")
 }
 

@@ -5,16 +5,18 @@
 
 import { Router } from 'express';
 import { AnalyzeController } from '../controllers/analyze.controller';
+import { authenticate } from '../middleware/auth.middleware';
 
 export function createAnalyzeRoutes(controller: AnalyzeController): Router {
   const router = Router();
 
   /**
    * POST /api/analyze/article
-   * Analyze a single article by ID
+   * Analyze a single article by ID (Protected - requires authentication)
    * Body: { articleId: string (UUID) }
+   * Headers: Authorization: Bearer <firebase-token>
    */
-  router.post('/article', (req, res) => controller.analyzeArticle(req, res));
+  router.post('/article', authenticate, (req, res) => controller.analyzeArticle(req, res));
 
   /**
    * POST /api/analyze/batch

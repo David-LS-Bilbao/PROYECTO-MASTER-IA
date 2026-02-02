@@ -4,7 +4,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
+import { getPrismaClient } from '../persistence/prisma.client';
 import { NewsAPIClient } from '../external/newsapi.client';
 import { GoogleNewsRssClient } from '../external/google-news-rss.client';
 import { DirectSpanishRssClient } from '../external/direct-spanish-rss.client';
@@ -40,9 +40,8 @@ export class DependencyContainer {
   public readonly sourcesController: SourcesController;
 
   private constructor() {
-    // Infrastructure Layer - Prisma 7 requires adapter for database connection
-    const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
-    this.prisma = new PrismaClient({ adapter });
+    // Use singleton Prisma instance
+    this.prisma = getPrismaClient();
 
     // Use Direct Spanish RSS as primary client (clean URLs, no Google obfuscation)
     // This allows MetadataExtractor to work properly with direct media links
