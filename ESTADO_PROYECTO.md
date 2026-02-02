@@ -1,6 +1,6 @@
 # Estado del Proyecto - Verity News
 
-> Última actualización: Sprint 8.1 - Suite de Tests de Carga k6 (2026-02-02) - **PRODUCCIÓN READY ✅**
+> Última actualización: Sprint 8.2 - Token Taximeter Completo (2026-02-02) - **PRODUCCIÓN READY ✅**
 
 ---
 
@@ -32,7 +32,8 @@
 | 7.1 | Chat RAG + Seguridad + Auditoría | ✅ | 2026-01-31 |
 | 7.2 | UX + Chat Híbrido + Auto-Favoritos | ✅ | 2026-01-31 |
 | 8 | Optimización de Costes Gemini | ✅ | 2026-02-02 |
-| **8.1** | **Suite de Tests de Carga (k6)** | ✅ | **2026-02-02** |
+| 8.1 | Suite de Tests de Carga (k6) | ✅ | 2026-02-02 |
+| **8.2** | **Token Taximeter Completo** | ✅ | **2026-02-02** |
 
 ---
 
@@ -308,6 +309,87 @@ k6 run --out web-dashboard tests/performance/stress-test.js
 
 ---
 
+## Sprint 8.2: Token Taximeter Completo
+
+### Objetivo
+Implementar auditoría de costes en tiempo real para TODAS las operaciones de Gemini API.
+
+### Operaciones Monitorizadas
+
+| Operación | Método | Modelo |
+|-----------|--------|--------|
+| **Análisis de Noticias** | `analyzeArticle()` | gemini-2.5-flash |
+| **Chat RAG** | `generateChatResponse()` | gemini-2.5-flash |
+| **Chat Grounding** | `chatWithContext()` | gemini-2.5-flash + Google Search |
+
+### Constantes de Precio
+
+```typescript
+PRICE_INPUT_1M = 0.075   // USD por 1M tokens entrada
+PRICE_OUTPUT_1M = 0.30   // USD por 1M tokens salida
+EUR_USD_RATE = 0.95      // Ratio conversión
+```
+
+### Acumulador de Sesión
+
+El sistema mantiene un acumulador que rastrea costes desde el inicio del servidor:
+
+```typescript
+interface SessionCostAccumulator {
+  analysisCount: number;        // Número de análisis
+  analysisTotalTokens: number;  // Tokens totales en análisis
+  analysisTotalCost: number;    // Coste acumulado análisis
+  ragChatCount: number;         // Número de chats RAG
+  ragChatTotalTokens: number;   // Tokens totales en RAG
+  ragChatTotalCost: number;     // Coste acumulado RAG
+  groundingChatCount: number;   // Número de chats Grounding
+  groundingChatTotalTokens: number;
+  groundingChatTotalCost: number;
+  sessionStart: Date;           // Inicio de sesión
+}
+```
+
+### Ejemplo de Log en Consola
+
+```
+🧾 ═══════════════════════════════════════════════════════════
+🧾 TOKEN TAXIMETER - ANÁLISIS
+🧾 ═══════════════════════════════════════════════════════════
+📰 Título: "El Gobierno anuncia nuevas medidas económicas..."
+🧠 Tokens entrada:  1.234
+🧠 Tokens salida:   456
+🧠 Tokens TOTAL:    1.690
+💰 Coste operación: €0.000223
+🧾 ───────────────────────────────────────────────────────────
+📊 SESIÓN ACUMULADA (desde 10:30:45):
+📊 Análisis: 5 ops | 8.450 tokens | €0.001115
+📊 Chat RAG: 12 ops | 15.230 tokens | €0.002010
+📊 Grounding: 3 ops | 4.520 tokens | €0.000596
+💰 TOTAL SESIÓN: 20 ops | 28.200 tokens | €0.003721
+🧾 ═══════════════════════════════════════════════════════════
+```
+
+### Entidad TokenUsage
+
+```typescript
+interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  costEstimated: number; // En Euros
+}
+```
+
+### Archivos Modificados Sprint 8.2
+
+| Archivo | Cambio |
+|---------|--------|
+| `backend/src/domain/entities/news-article.entity.ts` | Interfaz `TokenUsage` + campo `usage?` en `ArticleAnalysis` |
+| `backend/src/infrastructure/external/gemini.client.ts` | Constantes precio, acumulador sesión, tracking en 3 métodos |
+| `PROJECT_CONTEXT.md` | Documentación actualizada |
+
+---
+
 ## Stack Tecnológico Final
 
 | Capa | Tecnología | Versión |
@@ -491,6 +573,7 @@ ef50b05 feat: Sprint 7.1 - Chat RAG + Detector de Bulos + Auditoría
 11. ✅ **UX Optimizada**: Resúmenes estructurados, chat con formato Markdown
 12. ✅ **Optimización de Costes IA**: Prompts compactados (-64%), ventana deslizante, límites defensivos
 13. ✅ **Testing de Carga**: Suite k6 con validación de rate limiting y thresholds de rendimiento
+14. ✅ **Token Taximeter**: Auditoría de costes en tiempo real para análisis, chat RAG y chat grounding
 
 ---
 
@@ -498,7 +581,7 @@ ef50b05 feat: Sprint 7.1 - Chat RAG + Detector de Bulos + Auditoría
 
 | Métrica | Valor |
 |---------|-------|
-| **Sprints completados** | 11 |
+| **Sprints completados** | 12 |
 | **Archivos TypeScript** | ~80 |
 | **Líneas de código** | ~12,500 |
 | **Tests unitarios** | 41 |

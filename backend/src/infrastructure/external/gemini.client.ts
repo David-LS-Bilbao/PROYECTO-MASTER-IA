@@ -43,6 +43,86 @@ const PRICE_OUTPUT_1M = 0.30;
 const EUR_USD_RATE = 0.95;
 
 // ============================================================================
+// TOKEN TAXIMETER - SESSION ACCUMULATOR
+// ============================================================================
+
+/**
+ * Acumulador de costes por sesión del servidor
+ * Se reinicia cuando se reinicia el servidor
+ */
+interface SessionCostAccumulator {
+  analysisCount: number;
+  analysisTotalTokens: number;
+  analysisTotalCost: number;
+  ragChatCount: number;
+  ragChatTotalTokens: number;
+  ragChatTotalCost: number;
+  groundingChatCount: number;
+  groundingChatTotalTokens: number;
+  groundingChatTotalCost: number;
+  sessionStart: Date;
+}
+
+const sessionCosts: SessionCostAccumulator = {
+  analysisCount: 0,
+  analysisTotalTokens: 0,
+  analysisTotalCost: 0,
+  ragChatCount: 0,
+  ragChatTotalTokens: 0,
+  ragChatTotalCost: 0,
+  groundingChatCount: 0,
+  groundingChatTotalTokens: 0,
+  groundingChatTotalCost: 0,
+  sessionStart: new Date(),
+};
+
+/**
+ * Calcula el coste en EUR a partir de tokens
+ */
+function calculateCostEUR(promptTokens: number, completionTokens: number): number {
+  const costInputUSD = (promptTokens / 1_000_000) * PRICE_INPUT_1M;
+  const costOutputUSD = (completionTokens / 1_000_000) * PRICE_OUTPUT_1M;
+  return (costInputUSD + costOutputUSD) * EUR_USD_RATE;
+}
+
+/**
+ * Muestra el log visual del taxímetro
+ */
+function logTaximeter(
+  operationType: 'ANÁLISIS' | 'CHAT RAG' | 'CHAT GROUNDING',
+  title: string,
+  promptTokens: number,
+  completionTokens: number,
+  totalTokens: number,
+  costEUR: number
+): void {
+  const emoji = operationType === 'ANÁLISIS' ? '📰' : operationType === 'CHAT RAG' ? '💬' : '🌐';
+  const titlePreview = title.substring(0, 45) + (title.length > 45 ? '...' : '');
+
+  console.log(`\n      🧾 ═══════════════════════════════════════════════════════════`);
+  console.log(`      🧾 TOKEN TAXIMETER - ${operationType}`);
+  console.log(`      🧾 ═══════════════════════════════════════════════════════════`);
+  console.log(`      ${emoji} ${operationType === 'ANÁLISIS' ? 'Título' : 'Pregunta'}: "${titlePreview}"`);
+  console.log(`      🧠 Tokens entrada:  ${promptTokens.toLocaleString('es-ES')}`);
+  console.log(`      🧠 Tokens salida:   ${completionTokens.toLocaleString('es-ES')}`);
+  console.log(`      🧠 Tokens TOTAL:    ${totalTokens.toLocaleString('es-ES')}`);
+  console.log(`      💰 Coste operación: €${costEUR.toFixed(6)}`);
+  console.log(`      🧾 ───────────────────────────────────────────────────────────`);
+
+  // Mostrar acumulado de sesión
+  const totalSessionCost = sessionCosts.analysisTotalCost + sessionCosts.ragChatTotalCost + sessionCosts.groundingChatTotalCost;
+  const totalSessionTokens = sessionCosts.analysisTotalTokens + sessionCosts.ragChatTotalTokens + sessionCosts.groundingChatTotalTokens;
+  const totalOperations = sessionCosts.analysisCount + sessionCosts.ragChatCount + sessionCosts.groundingChatCount;
+
+  console.log(`      📊 SESIÓN ACUMULADA (desde ${sessionCosts.sessionStart.toLocaleTimeString('es-ES')}):`);
+  console.log(`      📊 Análisis: ${sessionCosts.analysisCount} ops | ${sessionCosts.analysisTotalTokens.toLocaleString('es-ES')} tokens | €${sessionCosts.analysisTotalCost.toFixed(6)}`);
+  console.log(`      📊 Chat RAG: ${sessionCosts.ragChatCount} ops | ${sessionCosts.ragChatTotalTokens.toLocaleString('es-ES')} tokens | €${sessionCosts.ragChatTotalCost.toFixed(6)}`);
+  console.log(`      📊 Grounding: ${sessionCosts.groundingChatCount} ops | ${sessionCosts.groundingChatTotalTokens.toLocaleString('es-ES')} tokens | €${sessionCosts.groundingChatTotalCost.toFixed(6)}`);
+  console.log(`      💰 TOTAL SESIÓN: ${totalOperations} ops | ${totalSessionTokens.toLocaleString('es-ES')} tokens | €${totalSessionCost.toFixed(6)}`);
+  console.log(`      🧾 ═══════════════════════════════════════════════════════════\n`);
+}
+
+// ============================================================================
 // COST OPTIMIZATION CONSTANTS
 // ============================================================================
 
@@ -173,14 +253,7 @@ export class GeminiClient implements IGeminiClient {
           const promptTokens = usageMetadata.promptTokenCount || 0;
           const completionTokens = usageMetadata.candidatesTokenCount || 0;
           const totalTokens = usageMetadata.totalTokenCount || (promptTokens + completionTokens);
-
-          // Calcular coste en USD
-          const costInputUSD = (promptTokens / 1_000_000) * PRICE_INPUT_1M;
-          const costOutputUSD = (completionTokens / 1_000_000) * PRICE_OUTPUT_1M;
-          const costTotalUSD = costInputUSD + costOutputUSD;
-
-          // Convertir a EUR
-          const costEstimated = costTotalUSD * EUR_USD_RATE;
+          const costEstimated = calculateCostEUR(promptTokens, completionTokens);
 
           tokenUsage = {
             promptTokens,
@@ -189,17 +262,13 @@ export class GeminiClient implements IGeminiClient {
             costEstimated,
           };
 
-          // TOKEN TAXIMETER: Log visual
-          const titlePreview = sanitizedTitle.substring(0, 50) + (sanitizedTitle.length > 50 ? '...' : '');
-          console.log(`\n      🧾 ═══════════════════════════════════════════════════════════`);
-          console.log(`      🧾 TOKEN TAXIMETER - Análisis de Noticia`);
-          console.log(`      🧾 ═══════════════════════════════════════════════════════════`);
-          console.log(`      📰 Título: "${titlePreview}"`);
-          console.log(`      🧠 Tokens entrada:  ${promptTokens.toLocaleString('es-ES')}`);
-          console.log(`      🧠 Tokens salida:   ${completionTokens.toLocaleString('es-ES')}`);
-          console.log(`      🧠 Tokens TOTAL:    ${totalTokens.toLocaleString('es-ES')}`);
-          console.log(`      💰 Coste estimado:  €${costEstimated.toFixed(6)}`);
-          console.log(`      🧾 ═══════════════════════════════════════════════════════════\n`);
+          // Actualizar acumulador de sesión
+          sessionCosts.analysisCount++;
+          sessionCosts.analysisTotalTokens += totalTokens;
+          sessionCosts.analysisTotalCost += costEstimated;
+
+          // Log visual
+          logTaximeter('ANÁLISIS', sanitizedTitle, promptTokens, completionTokens, totalTokens, costEstimated);
         } else {
           console.log(`      [GeminiClient] Respuesta recibida OK (sin metadata de tokens)`);
         }
@@ -368,7 +437,26 @@ export class GeminiClient implements IGeminiClient {
         console.log(`      [GeminiClient] Chat - Google Search utilizado para grounding`);
       }
 
-      console.log(`      [GeminiClient] Chat - Respuesta recibida OK`);
+      // TOKEN TAXIMETER: Capturar uso de tokens para chat grounding
+      const usageMetadata = response.usageMetadata;
+      if (usageMetadata) {
+        const promptTokens = usageMetadata.promptTokenCount || 0;
+        const completionTokens = usageMetadata.candidatesTokenCount || 0;
+        const totalTokens = usageMetadata.totalTokenCount || (promptTokens + completionTokens);
+        const costEstimated = calculateCostEUR(promptTokens, completionTokens);
+
+        // Actualizar acumulador de sesión
+        sessionCosts.groundingChatCount++;
+        sessionCosts.groundingChatTotalTokens += totalTokens;
+        sessionCosts.groundingChatTotalCost += costEstimated;
+
+        // Obtener la última pregunta del usuario para el log
+        const lastUserMessage = messages.filter(m => m.role === 'user').pop();
+        const questionPreview = lastUserMessage?.content || 'Conversación';
+
+        // Log visual
+        logTaximeter('CHAT GROUNDING', questionPreview, promptTokens, completionTokens, totalTokens, costEstimated);
+      }
 
       return { message: text.trim() };
     } catch (error) {
@@ -434,7 +522,23 @@ ${question}`;
       const response = result.response;
       const text = response.text().trim();
 
-      console.log(`      [GeminiClient] RAG Chat - Respuesta OK (${text.length} chars)`);
+      // TOKEN TAXIMETER: Capturar uso de tokens para RAG chat
+      const usageMetadata = response.usageMetadata;
+      if (usageMetadata) {
+        const promptTokens = usageMetadata.promptTokenCount || 0;
+        const completionTokens = usageMetadata.candidatesTokenCount || 0;
+        const totalTokens = usageMetadata.totalTokenCount || (promptTokens + completionTokens);
+        const costEstimated = calculateCostEUR(promptTokens, completionTokens);
+
+        // Actualizar acumulador de sesión
+        sessionCosts.ragChatCount++;
+        sessionCosts.ragChatTotalTokens += totalTokens;
+        sessionCosts.ragChatTotalCost += costEstimated;
+
+        // Log visual
+        logTaximeter('CHAT RAG', question, promptTokens, completionTokens, totalTokens, costEstimated);
+      }
+
       return text;
     } catch (error) {
       const err = error as Error;
