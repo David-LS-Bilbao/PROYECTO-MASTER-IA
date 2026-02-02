@@ -38,9 +38,10 @@ interface AuthContextType {
 
   /**
    * Obtiene el token JWT del usuario actual
+   * @param forceRefresh - Si true, fuerza la renovación del token
    * @returns Token JWT o null si no hay usuario
    */
-  getToken: () => Promise<string | null>;
+  getToken: (forceRefresh?: boolean) => Promise<string | null>;
 }
 
 /**
@@ -126,17 +127,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
   /**
    * Obtiene el token JWT del usuario actual
    * 
+   * @param forceRefresh - Si true, fuerza la renovación del token aunque no haya expirado
    * @returns Token JWT o null si no hay usuario autenticado
    */
-  const getToken = async (): Promise<string | null> => {
-    if (!user) {
+  const getToken = async (forceRefresh: boolean = false): Promise<string | null> => {
+    const currentUser = auth.currentUser;
+    
+    if (!currentUser) {
       console.warn('⚠️ No hay usuario autenticado. No se puede obtener token.');
       return null;
     }
 
     try {
-      const token = await user.getIdToken();
-      console.log('✅ Token JWT obtenido correctamente');
+      const token = await currentUser.getIdToken(forceRefresh);
+      console.log('✅ Token JWT obtenido correctamente', forceRefresh ? '(renovado)' : '');
       return token;
     } catch (error) {
       console.error('❌ Error al obtener token:', error);

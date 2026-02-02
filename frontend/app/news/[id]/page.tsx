@@ -7,6 +7,7 @@ import Image from 'next/image';
 import DOMPurify from 'dompurify';
 import { ArrowLeft, ExternalLink, Clock, User, Tag, Sparkles } from 'lucide-react';
 import { fetchNewsById, analyzeArticle, type NewsArticle, type AnalyzeResponse } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -86,6 +87,7 @@ function ArticleSkeleton() {
 export default function NewsDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { getToken } = useAuth();
   const id = params.id as string;
 
   const [article, setArticle] = useState<NewsArticle | null>(null);
@@ -135,7 +137,14 @@ export default function NewsDetailPage() {
     setAnalyzeError(null);
 
     try {
-      const response: AnalyzeResponse = await analyzeArticle(article.id);
+      // Get authentication token
+      const token = await getToken();
+      if (!token) {
+        setAnalyzeError('No se pudo obtener el token de autenticación');
+        return;
+      }
+
+      const response: AnalyzeResponse = await analyzeArticle(article.id, token);
 
       // Update article with analysis data
       setArticle(prev => prev ? {

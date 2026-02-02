@@ -150,49 +150,59 @@ export function Sidebar({ onOpenDashboard, onOpenSources }: SidebarProps) {
           </Button>
         </div>
 
-        {/* User Profile & Logout */}
-        <div className="px-3 py-4 border-t border-zinc-200 dark:border-zinc-800 mt-auto">
-          <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-zinc-50 dark:bg-zinc-900">
-            {/* Avatar */}
-            <div className="shrink-0 w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center">
-              {user?.photoURL ? (
-                <img
-                  src={user.photoURL}
-                  alt={user.displayName || 'Usuario'}
-                  className="w-full h-full rounded-full object-cover"
-                />
-              ) : (
-                <User className="h-5 w-5 text-white" />
-              )}
-            </div>
+        {/* User Profile & Logout - Solo mostrar si hay usuario autenticado */}
+        {user && (
+          <div className="mt-auto px-4 py-4 border-t border-zinc-200 dark:border-zinc-800">
+            <div className="flex items-center gap-3">
+              {/* Avatar o icono de usuario - Clickeable para ir al perfil */}
+              <Link
+                href="/profile"
+                onClick={() => setIsOpen(false)}
+                className="shrink-0 w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer"
+                title="Ver perfil"
+              >
+                {user.photoURL ? (
+                  <img
+                    src={user.photoURL}
+                    alt={user.displayName || 'Usuario'}
+                    className="w-full h-full rounded-full object-cover"
+                  />
+                ) : (
+                  <User className="h-5 w-5 text-white" />
+                )}
+              </Link>
 
-            {/* User Info */}
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-zinc-900 dark:text-white truncate">
-                {user?.displayName || 'Usuario'}
-              </p>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate">
-                {user?.email || 'Sin email'}
-              </p>
-            </div>
+              {/* Email del usuario truncado - También clickeable */}
+              <Link
+                href="/profile"
+                onClick={() => setIsOpen(false)}
+                className="flex-1 min-w-0 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+              >
+                <p className="text-sm text-zinc-900 dark:text-white truncate">
+                  {user.email}
+                </p>
+              </Link>
 
-            {/* Logout Button */}
-            <button
-              onClick={async () => {
-                try {
-                  await logout();
-                  setIsOpen(false);
-                } catch (error) {
-                  console.error('Error al cerrar sesión:', error);
-                }
-              }}
-              className="shrink-0 p-2 rounded-lg text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white transition-colors"
-              title="Cerrar sesión"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
+              {/* Botón de Logout */}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={async () => {
+                  try {
+                    await logout();
+                    setIsOpen(false);
+                  } catch (error) {
+                    console.error('Error al cerrar sesión:', error);
+                  }
+                }}
+                title="Cerrar sesión"
+                className="shrink-0"
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
       </aside>
 
       {/* Spacer for desktop */}

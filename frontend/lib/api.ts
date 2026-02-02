@@ -116,19 +116,21 @@ export async function fetchNewsById(id: string): Promise<{ success: boolean; dat
 
 /**
  * Analyze a single article with AI
+ * Requires authentication token
  */
-export async function analyzeArticle(articleId: string): Promise<AnalyzeResponse> {
+export async function analyzeArticle(articleId: string, token: string): Promise<AnalyzeResponse> {
   const res = await fetch(`${API_BASE_URL}/api/analyze/article`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
     },
     body: JSON.stringify({ articleId }),
   });
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.message || `Failed to analyze article: ${res.status}`);
+    throw new Error(errorData.message || errorData.error || `Failed to analyze article: ${res.status}`);
   }
 
   return res.json();
@@ -393,4 +395,156 @@ export async function discoverRssSource(name: string): Promise<string> {
   }
 
   return data.data!.rssUrl;
+}
+
+/**
+ * User Profile Management
+ * FEATURE: USER PROFILES (Sprint 10)
+ */
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  name: string | null;
+  picture: string | null;
+  plan: 'FREE' | 'QUOTA' | 'PAY_AS_YOU_GO';
+  preferences: {
+    categories?: string[];
+    theme?: string;
+    notifications?: boolean;
+  };
+  usageStats: {
+    articlesAnalyzed: number;
+    searchesPerformed: number;
+    chatMessages: number;
+  };
+  counts: {
+    favorites: number;
+    searchHistory: number;
+    chats: number;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserProfileResponse {
+  success: boolean;
+  data: UserProfile;
+}
+
+/**
+ * Get current user's complete profile
+ * Requires authentication token
+ */
+export async function getUserProfile(token: string): Promise<UserProfile> {
+  console.log('📡 getUserProfile - Token length:', token?.length);
+  console.log('📡 getUserProfile - API URL:', `${API_BASE_URL}/api/user/me`);
+  
+  const res = await fetch(`${API_BASE_URL}/api/user/me`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+    cache: 'no-store',
+  });
+
+  console.log('📡 getUserProfile - Response status:', res.status, res.statusText);
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    console.error('📡 getUserProfile - Error response:', errorText);
+    throw new Error(`Failed to fetch user profile: ${res.status} ${res.statusText}`);
+  }
+
+  const response: UserProfileResponse = await res.json();
+  console.log('📡 getUserProfile - Success:', response.data);
+  return response.data;
+}
+
+/**
+ * Update user profile (name and preferences)
+ * Requires authentication token
+ */
+export async function updateUserProfile(
+  token: string,
+  data: { name?: string; preferences?: any }
+): Promise<UserProfile> {
+  const res = await fetch(`${API_BASE_URL}/api/user/me`, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to update user profile: ${res.status} ${res.statusText}`);
+  }
+
+  const response: UserProfileResponse = await res.json();
+  return response.data;
+}
+
+/**
+ * Token Usage Statistics Interface
+ */
+export interface TokenUsageStats {
+  analysis: {
+    count: number;
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    cost: number;
+  };
+  ragChat: {
+    count: number;
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    cost: number;
+  };
+  groundingChat: {
+    count: number;
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    cost: number;
+  };
+  total: {
+    operations: number;
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    cost: number;
+  };
+  sessionStart: string;
+  uptime: string;
+}
+
+export interface TokenUsageResponse {
+  success: boolean;
+  data: {
+    session: TokenUsageStats;
+    note: string;
+  };
+}
+
+/**
+ * Get Gemini API token usage statistics for the current session
+ * Requires authentication token
+ */
+export async function getTokenUsage(token: string): Promise<TokenUsageStats> {
+  const res = await fetch(`${API_BASE_URL}/api/user/token-usage`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+    cache: 'no-store',
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to fetch token usage: ${res.status} ${res.statusText}`);
+  }
+
+  const response: TokenUsageResponse = await res.json();
+  return response.data.session;
 }

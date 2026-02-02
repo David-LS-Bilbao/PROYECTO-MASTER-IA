@@ -9,6 +9,7 @@ import { createNewsRoutes } from './routes/news.routes';
 import { createChatRoutes } from './routes/chat.routes';
 import { createSearchRoutes } from './routes/search.routes';
 import { createSourcesRoutes } from './routes/sources.routes';
+import { createUserRoutes } from './routes/user.routes';
 
 export function createServer(): Application {
   const app = express();
@@ -92,6 +93,7 @@ export function createServer(): Application {
   app.use('/api/chat', createChatRoutes(container.chatController));
   app.use('/api/search', createSearchRoutes(container.searchController));
   app.use('/api/sources', createSourcesRoutes(container.sourcesController));
+  app.use('/api/user', createUserRoutes(container.userController));
 
   // 404 handler
   app.use((_req: Request, res: Response) => {

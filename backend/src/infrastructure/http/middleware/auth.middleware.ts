@@ -94,9 +94,18 @@ export async function authenticate(
     // =========================================================================
     let decodedToken;
     try {
+      console.log('🔐 Verificando token con Firebase Admin...');
       decodedToken = await firebaseAuth.verifyIdToken(token);
+      console.log('✅ Token verificado correctamente. UID:', decodedToken.uid);
     } catch (error) {
       console.error('❌ Error verificando token Firebase:', error);
+      
+      // Log más detallado del error
+      if (error instanceof Error) {
+        console.error('  - Error message:', error.message);
+        console.error('  - Error stack:', error.stack);
+      }
+      
       res.status(401).json({
         success: false,
         error: 'Token de autenticación inválido o expirado',

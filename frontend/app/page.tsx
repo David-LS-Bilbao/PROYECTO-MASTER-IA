@@ -49,14 +49,34 @@ export default function Home() {
       } else if (cat === 'general') {
         newsResponse = await fetchNews(50, 0);
       } else {
-        setIsIngesting(true);
-        try {
-          await ingestByCategory(cat, 20);
-        } catch (ingestError) {
-          console.warn(`Ingesta fallida para ${cat}, mostrando datos existentes:`, ingestError);
-        } finally {
-          setIsIngesting(false);
+        // =========================================================================
+        // OPTIMIZATION: Cache control to prevent excessive API calls
+        // Only refresh news if last refresh was more than 15 minutes ago
+        // =========================================================================
+        const CACHE_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+        const CACHE_KEY = `last_news_refresh_${cat}`;
+        
+        const lastRefreshStr = sessionStorage.getItem(CACHE_KEY);
+        const lastRefresh = lastRefreshStr ? parseInt(lastRefreshStr, 10) : 0;
+        const timeSinceLastRefresh = Date.now() - lastRefresh;
+        const shouldRefresh = timeSinceLastRefresh >= CACHE_DURATION_MS;
+
+        if (!shouldRefresh && lastRefresh > 0) {
+          console.log(`⚡ Noticias frescas (caché) para "${cat}" - Última actualización hace ${Math.round(timeSinceLastRefresh / 60000)} minutos. Saltando ingesta.`);
+        } else {
+          setIsIngesting(true);
+          try {
+            console.log(`🔄 Actualizando noticias para "${cat}" - Cache expirado o primera carga.`);
+            await ingestByCategory(cat, 20);
+            // Update cache timestamp after successful ingestion
+            sessionStorage.setItem(CACHE_KEY, Date.now().toString());
+          } catch (ingestError) {
+            console.warn(`Ingesta fallida para ${cat}, mostrando datos existentes:`, ingestError);
+          } finally {
+            setIsIngesting(false);
+          }
         }
+        
         newsResponse = await fetchNewsByCategory(cat, 50, 0);
       }
 

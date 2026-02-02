@@ -18,6 +18,9 @@ import { NewsArticle } from '../../domain/entities/news-article.entity';
 import { ValidationError } from '../../domain/errors/domain.error';
 import { PrismaClient } from '@prisma/client';
 
+// OPTIMIZATION: Limit items per source to avoid flooding the database
+const MAX_ITEMS_PER_SOURCE = 5;
+
 // Valid categories (Spanish)
 const VALID_CATEGORIES = [
   'general',
@@ -88,7 +91,11 @@ export class IngestNewsUseCase {
         page: 1,
       });
 
-      totalFetched = result.articles.length;
+      // OPTIMIZATION: Limit to MAX_ITEMS_PER_SOURCE to reduce database load
+      const limitedArticles = result.articles.slice(0, MAX_ITEMS_PER_SOURCE);
+      totalFetched = limitedArticles.length;
+
+      console.log(`📥 Ingesta: Recibidos ${result.articles.length} artículos, procesando ${totalFetched} (límite: ${MAX_ITEMS_PER_SOURCE})`);
 
       if (totalFetched === 0) {
         return this.createResponse(
@@ -102,20 +109,25 @@ export class IngestNewsUseCase {
         );
       }
 
+      // OPTIMIZATION: Batch check for existing URLs to avoid N+1 queries
+      const incomingUrls = limitedArticles.map(a => a.url);
+      const existingUrls = await this.getExistingUrls(incomingUrls);
+      
+      console.log(`🔍 Verificación de duplicados: ${existingUrls.size} URLs ya existen en la base de datos`);
+
       // Transform to domain entities and filter duplicates
       const articlesToSave: NewsArticle[] = [];
 
-      for (const apiArticle of result.articles) {
+      for (const apiArticle of limitedArticles) {
         try {
-          // Check if article already exists
-          const exists = await this.articleRepository.existsByUrl(apiArticle.url);
-
-          if (exists) {
+          // OPTIMIZATION: Check against in-memory Set instead of database query
+          if (existingUrls.has(apiArticle.url)) {
             duplicates++;
             continue;
           }
 
           // Create domain entity with normalized category
+          // IMPORTANT: Only raw data is saved here, NO AI analysis
           const article = NewsArticle.create({
             id: randomUUID(),
             title: apiArticle.title || 'Untitled',
@@ -149,7 +161,10 @@ export class IngestNewsUseCase {
       if (articlesToSave.length > 0) {
         await this.articleRepository.saveMany(articlesToSave);
         newArticles = articlesToSave.length;
+        console.log(`✅ Ingesta completada: Ignoradas ${duplicates} noticias por duplicidad. Insertando ${newArticles} nuevas.`);
         console.log(`[IngestNewsUseCase] Saved ${newArticles} articles with category: "${normalizedCategory}"`);
+      } else {
+        console.log(`⚠️ Ingesta completada: Todas las ${duplicates} noticias ya existían en la base de datos.`);
       }
 
       // Record ingestion metadata
@@ -180,6 +195,25 @@ export class IngestNewsUseCase {
 
       throw error;
     }
+  }
+
+  /**
+   * OPTIMIZATION: Batch check for existing URLs
+   * Fetches all matching URLs in a single query instead of N queries
+   */
+  private async getExistingUrls(urls: string[]): Promise<Set<string>> {
+    const existingArticles = await this.prisma.article.findMany({
+      where: {
+        url: {
+          in: urls
+        }
+      },
+      select: {
+        url: true
+      }
+    });
+
+    return new Set(existingArticles.map(a => a.url));
   }
 
   /**

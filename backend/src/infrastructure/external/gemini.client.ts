@@ -727,4 +727,38 @@ ${question}`;
       return null;
     }
   }
+
+  /**
+   * Obtiene el reporte de costes acumulados de la sesión
+   */
+  getSessionCostReport() {
+    const totalSessionCost = sessionCosts.analysisTotalCost + sessionCosts.ragChatTotalCost + sessionCosts.groundingChatTotalCost;
+    const totalSessionTokens = sessionCosts.analysisTotalTokens + sessionCosts.ragChatTotalTokens + sessionCosts.groundingChatTotalTokens;
+    const totalOperations = sessionCosts.analysisCount + sessionCosts.ragChatCount + sessionCosts.groundingChatCount;
+
+    return {
+      analysis: {
+        count: sessionCosts.analysisCount,
+        tokens: sessionCosts.analysisTotalTokens,
+        cost: sessionCosts.analysisTotalCost,
+      },
+      ragChat: {
+        count: sessionCosts.ragChatCount,
+        tokens: sessionCosts.ragChatTotalTokens,
+        cost: sessionCosts.ragChatTotalCost,
+      },
+      groundingChat: {
+        count: sessionCosts.groundingChatCount,
+        tokens: sessionCosts.groundingChatTotalTokens,
+        cost: sessionCosts.groundingChatTotalCost,
+      },
+      total: {
+        operations: totalOperations,
+        tokens: totalSessionTokens,
+        cost: totalSessionCost,
+      },
+      sessionStart: sessionCosts.sessionStart,
+      uptime: Date.now() - sessionCosts.sessionStart.getTime(),
+    };
+  }
 }

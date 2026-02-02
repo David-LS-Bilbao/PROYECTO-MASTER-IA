@@ -14,8 +14,8 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { analyzeArticleAction, type AnalyzeResult } from '@/app/actions';
-import { toggleFavorite } from '@/lib/api';
+import { analyzeArticle, toggleFavorite } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
 import type { NewsArticle } from '@/lib/api';
 
 interface NewsCardProps {
@@ -55,8 +55,9 @@ function formatDate(dateString: string): string {
 }
 
 export function NewsCard({ article, onFavoriteToggle }: NewsCardProps) {
+  const { getToken } = useAuth();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [result, setResult] = useState<AnalyzeResult | null>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [isFavorite, setIsFavorite] = useState(article.isFavorite);
   const [isTogglingFavorite, setIsTogglingFavorite] = useState(false);
 
@@ -65,17 +66,23 @@ export function NewsCard({ article, onFavoriteToggle }: NewsCardProps) {
 
   const handleAnalyze = async () => {
     setIsAnalyzing(true);
-    setResult(null);
+    setAnalysisError(null);
 
     try {
-      const analysisResult = await analyzeArticleAction(article.id);
-      setResult(analysisResult);
+      // Get authentication token
+      const token = await getToken();
+      if (!token) {
+        setAnalysisError('No se pudo obtener el token de autenticación');
+        return;
+      }
+
+      const analysisResult = await analyzeArticle(article.id, token);
+      
+      // Reload the page to show updated analysis
+      window.location.reload();
     } catch (error) {
-      setResult({
-        success: false,
-        message: 'Error al analizar',
-        error: String(error),
-      });
+      console.error('Error analyzing article:', error);
+      setAnalysisError(error instanceof Error ? error.message : 'Error al analizar');
     } finally {
       setIsAnalyzing(false);
     }
@@ -184,16 +191,10 @@ export function NewsCard({ article, onFavoriteToggle }: NewsCardProps) {
           </div>
         )}
 
-        {/* Result message */}
-        {result && (
-          <div
-            className={`p-3 rounded-lg text-sm ${
-              result.success
-                ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
-                : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
-            }`}
-          >
-            {result.message}
+        {/* Error message */}
+        {analysisError && (
+          <div className="p-3 rounded-lg text-sm bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
+            {analysisError}
           </div>
         )}
       </CardContent>
