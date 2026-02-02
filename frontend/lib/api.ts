@@ -357,3 +357,40 @@ export async function fetchNewsByCategory(
 
   return res.json();
 }
+
+/**
+ * RSS Auto-Discovery Response
+ */
+export interface DiscoverRssResponse {
+  success: boolean;
+  data?: {
+    query: string;
+    rssUrl: string;
+  };
+  error?: string;
+}
+
+/**
+ * Discover RSS URL for a media name using AI
+ * FEATURE: RSS AUTO-DISCOVERY (Sprint 9)
+ * 
+ * @param name Nombre del medio (e.g., "El País", "BBC News")
+ * @returns La URL del RSS encontrada o lanza un error
+ */
+export async function discoverRssSource(name: string): Promise<string> {
+  const res = await fetch(`${API_BASE_URL}/api/sources/discover`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ query: name }),
+  });
+
+  const data: DiscoverRssResponse = await res.json();
+
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || 'No se pudo encontrar el RSS');
+  }
+
+  return data.data!.rssUrl;
+}

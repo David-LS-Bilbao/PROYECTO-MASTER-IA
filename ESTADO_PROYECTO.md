@@ -1,10 +1,10 @@
 # Estado del Proyecto - Verity News
 
-> Última actualización: Sprint 8.2 - Token Taximeter Completo (2026-02-02) - **PRODUCCIÓN READY ✅**
+> Última actualización: Sprint 9 - Gestor de Fuentes RSS con IA (2026-02-02) - **PRODUCCIÓN READY ✅**
 
 ---
 
-## Estado Actual: SPRINT 8 COMPLETADO - OPTIMIZACIÓN DE COSTES IA ✅
+## Estado Actual: SPRINT 9 COMPLETADO - GESTOR DE FUENTES RSS CON AUTO-DISCOVERY IA ✅
 
 | Componente | Estado | Notas |
 |------------|--------|-------|
@@ -33,10 +33,145 @@
 | 7.2 | UX + Chat Híbrido + Auto-Favoritos | ✅ | 2026-01-31 |
 | 8 | Optimización de Costes Gemini | ✅ | 2026-02-02 |
 | 8.1 | Suite de Tests de Carga (k6) | ✅ | 2026-02-02 |
-| **8.2** | **Token Taximeter Completo** | ✅ | **2026-02-02** |
+| 8.2 | Token Taximeter Completo | ✅ | 2026-02-02 |
+| **9** | **Gestor de Fuentes RSS con IA** | ✅ | **2026-02-02** |
+
+---
+9: Gestor de Fuentes RSS con Auto-Discovery IA
+
+### Objetivo
+Permitir a los usuarios gestionar sus fuentes RSS favoritas con un buscador inteligente que usa IA (Gemini) para encontrar automáticamente las URLs de feeds RSS.
+
+### 1. Auto-Discovery de RSS con Gemini
+
+**Backend:**
+- Nuevo método `discoverRssUrl()` en GeminiClient
+- Endpoint POST `/api/sources/discover` con validación Zod (2-100 caracteres)
+- SourcesController + SourcesRoutes
+- Prompt especializado para búsqueda de RSS
+
+**Frontend:**
+- Función `discoverRssSource()` en api.ts
+- Componente SourcesDrawer con búsqueda inteligente
+- Auto-añadir fuente cuando se encuentra el RSS
+
+### 2. Catálogo de 60+ Medios Españoles
+
+**Categorías configuradas (8):**
+- General (10 medios) - El País, El Mundo, 20 Minutos, ABC, La Vanguardia...
+- Economía (10 medios) - El Economista, Cinco Días, Expansión, Invertia...
+- Deportes (10 medios) - Marca, AS, Mundo Deportivo, Sport...
+- Tecnología (10 medios) - Xataka, Genbeta, Applesfera, Computer Hoy...
+- Ciencia (8 medios) - Agencia SINC, Muy Interesante, Nat Geo...
+- Política (8 medios) - Europa Press, EFE Política, InfoLibre...
+- Internacional (8 medios) - EFE Internacional, BBC Mundo, CNN...
+- Cultura (8 medios) - El Cultural, Cinemanía, Fotogramas...
+
+**Activación por defecto:**
+- Solo 4 primeras fuentes activas por categoría
+- Total: 32 fuentes activas de 64 disponibles
+- Resto disponibles para activación manual
+
+### 3. UX Simplificada
+
+**Eliminado:**
+- ❌ Desplegable de categoría (redundante con botones de filtro)
+- ❌ Campo manual de URL (el buscador IA lo hace automático)
+
+**Añadido:**
+- ✅ Botón "Seleccionar todas / Deseleccionar todas"
+- ✅ Búsqueda directa: nombre → buscar → auto-añadir
+- ✅ Filtros por categoría con badges
+- ✅ Persistencia en localStorage (key: 'verity_rss_sources')
+
+### 4. Arquitectura del Componente
+
+```
+SourcesDrawer
+├── Buscador IA (Input + Botón Buscar)
+│   └── Auto-discovery con Gemini
+├── Controles
+│   ├── Seleccionar todas
+│   └── Restaurar defaults
+├── Filtros por categoría (8 badges)
+└── Lista de fuentes
+    ├── Toggle activo/inactivo
+    └── Botón eliminar
+```
+
+### 5. Flujo de Auto-Discovery
+
+```
+Usuario escribe "El País"
+        ↓
+Click en "Buscar" (o Enter)
+        ↓
+POST /api/sources/discover
+        ↓
+Gemini analiza y busca RSS
+        ↓
+Retorna: https://feeds.elpais.com/...
+        ↓
+Auto-añade fuente a la lista
+        ↓
+Guardado en localStorage
+```
+
+### 6. Archivos Creados/Modificados Sprint 9
+
+| Archivo | Cambio |
+|---------|--------|
+| **Backend** | |
+| `backend/src/infrastructure/external/gemini.client.ts` | Método `discoverRssUrl()` con prompt especializado |
+| `backend/src/domain/services/gemini-client.interface.ts` | Interfaz del método `discoverRssUrl()` |
+| `backend/src/infrastructure/http/controllers/sources.controller.ts` | Nuevo controller con validación Zod |
+| `backend/src/infrastructure/http/routes/sources.routes.ts` | Nuevo archivo de rutas `/api/sources` |
+| `backend/src/infrastructure/http/server.ts` | Registro de routes de sources |
+| `backend/src/infrastructure/config/dependencies.ts` | Instancia de SourcesController |
+| `backend/src/infrastructure/external/direct-spanish-rss.client.ts` | Expansión de RSS_SOURCES (20 → 64) |
+| **Frontend** | |
+| `frontend/lib/api.ts` | Función `discoverRssSource()` |
+| `frontend/components/sources-drawer.tsx` | Componente completo de gestión (reescrito) |
+| `frontend/components/layout/sidebar.tsx` | Botón "Gestionar Fuentes RSS" |
+| `frontend/app/page.tsx` | Integración de SourcesDrawer |
+
+### 7. Interfaz TypeScript
+
+```typescript
+interface RssSource {
+  id: string;
+  name: string;
+  url: string;
+  category: string;
+  active: boolean;
+}
+
+interface DiscoverRssResponse {
+  success: boolean;
+  rssUrl: string;
+  message?: string;
+}
+```
+
+### 8. Prompt de Auto-Discovery
+
+```
+Eres un experto buscando feeds RSS de medios de noticias.
+
+Medio: {mediaName}
+
+Instrucciones:
+1. Busca la URL oficial del feed RSS de {mediaName}
+2. Prioriza feeds principales/portada
+3. Devuelve SOLO la URL completa (https://...)
+4. Si no existe RSS, devuelve: NO_RSS_FOUND
+
+Formato: https://ejemplo.com/rss.xml
+```
 
 ---
 
+## Sprint 
 ## Sprint 7.1: Implementación Completa
 
 ### 1. Chat RAG (Retrieval-Augmented Generation)
@@ -426,32 +561,34 @@ interface TokenUsage {
 │  │         │            │            │               │              │ │
 │  │         └────────────┴────────────┴───────────────┘              │ │
 │  │                              ▼                                    │ │
-│  │  ┌─────────────────────────────────────────────────────────────┐ │ │
-│  │  │   DOMPurify (XSS Protection) + Rate Limit (Client Side)     │ │ │
-│  │  └─────────────────────────────────────────────────────────────┘ │ │
-│  └─────────────────────────────────────────────────────────────────┘ │
-│                                  │                                    │
-│                                  ▼                                    │
-│  ┌─────────────────────────────────────────────────────────────────┐ │
-│  │                  BACKEND (Express + Clean Architecture)          │ │
-│  │                                                                   │ │
-│  │  ┌─────────────────────────────────────────────────────────────┐ │ │
-│  │  │  PRESENTATION: Controllers + Routes + Zod Validation        │ │ │
-│  │  │  Security: CORS restrictivo + Rate Limit (100/15min)        │ │ │
-│  │  └─────────────────────────────────────────────────────────────┘ │ │
-│  │                              ▼                                    │ │
+│  │  ┌──────────────────────────────────────64 medios españoles via RSS
+2. ✅ **Análisis de Sesgo IA**: Puntuación -10/+10 con normalización 0-1
+3. ✅ **Detector de Bulos**: reliabilityScore 0-100 + factCheck con verdict
+4. ✅ **Clickbait Score**: Detección de titulares sensacionalistas 0-100
+5. ✅ **Búsqueda Semántica**: Por significado con embeddings 768d
+6. ✅ **Chat RAG Híbrido**: Contexto prioritario + conocimiento general con aviso
+7. ✅ **Chat Grounding**: Respuestas con Google Search para info externa
+8. ✅ **Dashboard Analítico**: KPIs y distribución de sesgo
+9. ✅ **Sistema de Favoritos**: Toggle + filtro + auto-favorito al analizar
+10. ✅ **Seguridad**: XSS, CORS, Rate Limiting, Retry, Health Checks
+11. ✅ **UX Optimizada**: Resúmenes estructurados, chat con formato Markdown
+12. ✅ **Optimización de Costes IA**: Prompts compactados (-64%), ventana deslizante, límites defensivos
+13. ✅ **Testing de Carga**: Suite k6 con validación de rate limiting y thresholds de rendimiento
+14. ✅ **Token Taximeter**: Auditoría de costes en tiempo real para análisis, chat RAG y chat grounding
+15. ✅ **Gestor de Fuentes RSS**: Auto-discovery con IA, 64 medios, persistencia localStorage
 │  │  ┌─────────────────────────────────────────────────────────────┐ │ │
 │  │  │  APPLICATION: Use Cases                                      │ │ │
 │  │  │  • IngestNewsUseCase    • AnalyzeArticleUseCase             │ │ │
 │  │  │  • ChatArticleUseCase   • SearchNewsUseCase                 │ │ │
 │  │  │  • ToggleFavoriteUseCase                                    │ │ │
 │  │  └─────────────────────────────────────────────────────────────┘ │ │
-│  │                              ▼                                    │ │
-│  │  ┌─────────────────────────────────────────────────────────────┐ │ │
-│  │  │  DOMAIN: Entities + Interfaces + Errors                      │ │ │
-│  │  │  • NewsArticle (ArticleAnalysis, FactCheck)                 │ │ │
-│  │  │  • IGeminiClient, IChromaClient, INewsRepository            │ │ │
-│  │  └─────────────────────────────────────────────────────────────┘ │ │
+│  │                         3 |
+| **Archivos TypeScript** | ~85 |
+| **Líneas de código** | ~13,000 |
+| **Tests unitarios** | 41 |
+| **Endpoints API** | 12 |
+| **Componentes React** | ~26 |
+| **Medios RSS catalogados** | 64───────────────────────────────────────┘ │ │
 │  │                              ▼                                    │ │
 │  │  ┌─────────────────────────────────────────────────────────────┐ │ │
 │  │  │  INFRASTRUCTURE: External Services                           │ │ │
@@ -480,14 +617,15 @@ interface TokenUsage {
 | Método | Endpoint | Descripción |
 |--------|----------|-------------|
 | POST | `/api/ingest/news` | Ingestar noticias por categoría |
-| GET | `/api/ingest/status` | Estado de última ingesta |
+| GET | `/api/ingest/9** representa un sistema RAG Full Stack completo y optimizado:
 
-### Noticias
-| Método | Endpoint | Descripción |
-|--------|----------|-------------|
-| GET | `/api/news` | Listar noticias (paginado) |
-| GET | `/api/news/:id` | Obtener noticia por ID |
-| PATCH | `/api/news/:id/favorite` | Toggle favorito |
+- **Cerebro IA** (Gemini 2.5 Flash) - Análisis + Chat Híbrido + RAG + Auto-Discovery RSS
+- **Memoria Vectorial** (ChromaDB) - Búsqueda semántica
+- **Detector de Bulos** - reliabilityScore + factCheck
+- **Seguridad Producción** - XSS, CORS, Rate Limit, Health Checks
+- **UX Optimizada** - Resúmenes estructurados, formato Markdown, auto-favoritos
+- **Costes Optimizados** - 64% reducción en tokens de Gemini API
+- **Gestor de Fuentes** - 64 medios españoles + búsqueda inteligente con IA
 
 ### Análisis IA
 | Método | Endpoint | Descripción |

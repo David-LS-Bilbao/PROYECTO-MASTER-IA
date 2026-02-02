@@ -687,4 +687,44 @@ ${question}`;
     }
     return 'Unproven'; // Default if invalid
   }
+
+  /**
+   * Auto-discover RSS URL for a given media name
+   * 
+   * FEATURE: RSS AUTO-DISCOVERY (Sprint 9)
+   * Usa Gemini para encontrar la URL del feed RSS oficial de un medio dado.
+   * 
+   * @param mediaName Nombre del medio (e.g., "El País", "BBC News")
+   * @returns URL del RSS si se encuentra, null si no existe o no se puede determinar
+   */
+  async discoverRssUrl(mediaName: string): Promise<string | null> {
+    console.log(`🔍 Buscando RSS automático para: "${mediaName}"`);
+
+    try {
+      const prompt = `El usuario busca el RSS de: '${mediaName}'. Devuelve EXCLUSIVAMENTE la URL del feed RSS oficial más probable. Sin texto, sin markdown, solo la URL. Si no tiene RSS o no lo sabes, devuelve 'null'.`;
+
+      const result = await this.model.generateContent(prompt);
+      const response = result.response;
+      const text = response.text().trim().replace(/['"]/g, ''); // Limpia comillas
+
+      // Si la respuesta es literalmente "null" o vacía, retornar null
+      if (text === 'null' || text === '' || text.length < 10) {
+        console.log(`❌ No se encontró RSS para "${mediaName}"`);
+        return null;
+      }
+
+      // Validar que sea una URL válida
+      try {
+        new URL(text);
+        console.log(`✅ RSS encontrado: ${text}`);
+        return text;
+      } catch {
+        console.log(`⚠️ Respuesta inválida (no es URL): ${text}`);
+        return null;
+      }
+    } catch (error) {
+      console.error(`❌ Error al buscar RSS: ${(error as Error).message}`);
+      return null;
+    }
+  }
 }

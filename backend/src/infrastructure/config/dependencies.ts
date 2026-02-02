@@ -23,6 +23,7 @@ import { AnalyzeController } from '../http/controllers/analyze.controller';
 import { NewsController } from '../http/controllers/news.controller';
 import { ChatController } from '../http/controllers/chat.controller';
 import { SearchController } from '../http/controllers/search.controller';
+import { SourcesController } from '../http/controllers/sources.controller';
 
 export class DependencyContainer {
   private static instance: DependencyContainer;
@@ -36,6 +37,7 @@ export class DependencyContainer {
   public readonly newsController: NewsController;
   public readonly chatController: ChatController;
   public readonly searchController: SearchController;
+  public readonly sourcesController: SourcesController;
 
   private constructor() {
     // Infrastructure Layer - Prisma 7 requires adapter for database connection
@@ -96,6 +98,7 @@ export class DependencyContainer {
     );
     this.chatController = new ChatController(chatArticleUseCase);
     this.searchController = new SearchController(searchNewsUseCase);
+    this.sourcesController = new SourcesController(this.geminiClient);
   }
 
   static getInstance(): DependencyContainer {

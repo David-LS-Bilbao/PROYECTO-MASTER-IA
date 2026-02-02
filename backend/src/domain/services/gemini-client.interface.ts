@@ -61,4 +61,12 @@ export interface IGeminiClient {
    * Check if the service is available
    */
   isAvailable(): Promise<boolean>;
+
+  /**
+   * Auto-discover RSS URL for a given media name
+   * FEATURE: RSS AUTO-DISCOVERY (Sprint 9)
+   * @param mediaName Name of the media outlet
+   * @returns RSS URL if found, null otherwise
+   */
+  discoverRssUrl(mediaName: string): Promise<string | null>;
 }

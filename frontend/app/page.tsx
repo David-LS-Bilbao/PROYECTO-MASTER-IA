@@ -14,6 +14,7 @@ import {
 } from '@/lib/api';
 import { NewsCard } from '@/components/news-card';
 import { Sidebar, DashboardDrawer } from '@/components/layout';
+import { SourcesDrawer } from '@/components/sources-drawer';
 import { Badge } from '@/components/ui/badge';
 import { CategoryPills, type CategoryId, CATEGORIES } from '@/components/category-pills';
 
@@ -23,6 +24,7 @@ export default function Home() {
   const urlCategory = searchParams.get('category') as CategoryId | null;
 
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
+  const [isSourcesOpen, setIsSourcesOpen] = useState(false);
   const [newsData, setNewsData] = useState<NewsResponse | null>(null);
   const [stats, setStats] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
@@ -135,7 +137,10 @@ export default function Home() {
   return (
     <div className="flex h-screen bg-zinc-50 dark:bg-zinc-950">
       {/* Sidebar */}
-      <Sidebar onOpenDashboard={() => setIsDashboardOpen(true)} />
+      <Sidebar 
+        onOpenDashboard={() => setIsDashboardOpen(true)}
+        onOpenSources={() => setIsSourcesOpen(true)}
+      />
 
       {/* Dashboard Drawer */}
       {stats && (
@@ -149,6 +154,12 @@ export default function Home() {
           isLoading={isLoading}
         />
       )}
+
+      {/* Sources Drawer */}
+      <SourcesDrawer
+        isOpen={isSourcesOpen}
+        onOpenChange={setIsSourcesOpen}
+      />
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden lg:ml-0">

@@ -9,6 +9,7 @@ import {
   Newspaper,
   Heart,
   Settings,
+  Rss,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SearchBar } from '@/components/search-bar';
@@ -16,9 +17,10 @@ import { cn } from '@/lib/utils';
 
 interface SidebarProps {
   onOpenDashboard?: () => void;
+  onOpenSources?: () => void;
 }
 
-export function Sidebar({ onOpenDashboard }: SidebarProps) {
+export function Sidebar({ onOpenDashboard, onOpenSources }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   const navItems = [
@@ -37,6 +39,14 @@ export function Sidebar({ onOpenDashboard }: SidebarProps) {
       icon: BarChart3,
       onClick: () => {
         onOpenDashboard?.();
+        setIsOpen(false);
+      },
+    },
+    {
+      label: 'Gestionar Fuentes RSS',
+      icon: Rss,
+      onClick: () => {
+        onOpenSources?.();
         setIsOpen(false);
       },
     },

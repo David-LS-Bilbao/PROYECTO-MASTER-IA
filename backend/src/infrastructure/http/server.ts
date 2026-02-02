@@ -8,6 +8,7 @@ import { createAnalyzeRoutes } from './routes/analyze.routes';
 import { createNewsRoutes } from './routes/news.routes';
 import { createChatRoutes } from './routes/chat.routes';
 import { createSearchRoutes } from './routes/search.routes';
+import { createSourcesRoutes } from './routes/sources.routes';
 
 export function createServer(): Application {
   const app = express();
@@ -90,6 +91,7 @@ export function createServer(): Application {
   app.use('/api/analyze', createAnalyzeRoutes(container.analyzeController));
   app.use('/api/chat', createChatRoutes(container.chatController));
   app.use('/api/search', createSearchRoutes(container.searchController));
+  app.use('/api/sources', createSourcesRoutes(container.sourcesController));
 
   // 404 handler
   app.use((_req: Request, res: Response) => {
