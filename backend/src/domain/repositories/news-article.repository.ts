@@ -76,6 +76,12 @@ export interface INewsArticleRepository {
   countAnalyzed(): Promise<number>;
 
   /**
+   * Get bias distribution for analyzed articles
+   * @returns Object with counts for left, neutral, and right bias
+   */
+  getBiasDistribution(): Promise<{ left: number; neutral: number; right: number }>;
+
+  /**
    * Find all articles with pagination and optional filtering
    * @param params Query parameters including limit, offset, category, and favorites filter
    */

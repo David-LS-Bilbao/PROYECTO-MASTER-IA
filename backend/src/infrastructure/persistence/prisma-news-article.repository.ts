@@ -261,6 +261,42 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
     }
   }
 
+  async getBiasDistribution(): Promise<{ left: number; neutral: number; right: number }> {
+    try {
+      const articles = await this.prisma.article.findMany({
+        where: {
+          analyzedAt: { not: null },
+          biasScore: { not: null },
+        },
+        select: {
+          biasScore: true,
+        },
+      });
+
+      // biasScore normalizado: 0-1 donde 0.5 es neutral
+      // Left: 0.0 - 0.4, Neutral: 0.4 - 0.6, Right: 0.6 - 1.0
+      const distribution = { left: 0, neutral: 0, right: 0 };
+
+      articles.forEach((article) => {
+        const bias = article.biasScore ?? 0.5;
+        if (bias < 0.4) {
+          distribution.left++;
+        } else if (bias > 0.6) {
+          distribution.right++;
+        } else {
+          distribution.neutral++;
+        }
+      });
+
+      return distribution;
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to get bias distribution: ${(error as Error).message}`,
+        error as Error
+      );
+    }
+  }
+
   /**
    * Find all articles with pagination and optional filtering
    */

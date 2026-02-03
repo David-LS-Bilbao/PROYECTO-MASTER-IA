@@ -146,7 +146,7 @@ export async function fetchAnalysisStats(): Promise<{
     analyzed: number;
     pending: number;
     percentAnalyzed: number;
-    biasDistribution?: BiasDistribution;
+    biasDistribution: BiasDistribution;
   };
 }> {
   const res = await fetch(`${API_BASE_URL}/api/analyze/stats`, {
@@ -171,11 +171,7 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
     totalArticles: stats.total,
     analyzedCount: stats.analyzed,
     coverage: stats.percentAnalyzed,
-    biasDistribution: stats.biasDistribution || {
-      left: 0,
-      neutral: 0,
-      right: 0,
-    },
+    biasDistribution: stats.biasDistribution,
   };
 }
 

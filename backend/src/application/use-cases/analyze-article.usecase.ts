@@ -324,12 +324,14 @@ export class AnalyzeArticleUseCase {
     analyzed: number;
     pending: number;
     percentAnalyzed: number;
+    biasDistribution: { left: number; neutral: number; right: number };
   }> {
     const total = await this.articleRepository.count();
     const analyzed = await this.articleRepository.countAnalyzed();
     const pending = total - analyzed;
     const percentAnalyzed = total > 0 ? Math.round((analyzed / total) * 100) : 0;
+    const biasDistribution = await this.articleRepository.getBiasDistribution();
 
-    return { total, analyzed, pending, percentAnalyzed };
+    return { total, analyzed, pending, percentAnalyzed, biasDistribution };
   }
 }
