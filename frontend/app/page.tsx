@@ -1,23 +1,17 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import {
-  fetchNews,
-  fetchDashboardStats,
-  fetchFavorites,
-  fetchNewsByCategory,
-  ingestByCategory,
-  type NewsArticle,
-  type BiasDistribution,
-  type NewsResponse,
-} from '@/lib/api';
+import { type NewsArticle, type BiasDistribution } from '@/lib/api';
 import { NewsCard } from '@/components/news-card';
 import { Sidebar, DashboardDrawer } from '@/components/layout';
 import { SourcesDrawer } from '@/components/sources-drawer';
 import { Badge } from '@/components/ui/badge';
 import { CategoryPills, type CategoryId, CATEGORIES } from '@/components/category-pills';
+import { useNews } from '@/hooks/useNews';
+import { useDashboardStats } from '@/hooks/useDashboardStats';
+
 
 export default function Home() {
   const { user, loading: authLoading } = useAuth();
@@ -25,69 +19,45 @@ export default function Home() {
   const router = useRouter();
   const urlCategory = searchParams.get('category') as CategoryId | null;
 
+  // =========================================================================
+  // UI STATE: Drawers (no server state)
+  // =========================================================================
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
   const [isSourcesOpen, setIsSourcesOpen] = useState(false);
-  const [newsData, setNewsData] = useState<NewsResponse | null>(null);
-  const [stats, setStats] = useState<any>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  
+  // Category state (UI state, synced with URL)
   const [category, setCategory] = useState<CategoryId>(() => {
     const validCategories = CATEGORIES.map(c => c.id);
     return urlCategory && validCategories.includes(urlCategory) ? urlCategory : 'general';
   });
-  const [isIngesting, setIsIngesting] = useState(false);
 
-  const loadNewsByCategory = useCallback(async (cat: CategoryId) => {
-    setIsLoading(true);
-    setError(null);
+  // =========================================================================
+  // REACT QUERY: Fetch de noticias con caché automático (60s stale time)
+  // =========================================================================
+  const {
+    data: newsData,
+    isLoading,
+    isError,
+    error: queryError,
+  } = useNews({
+    category,
+    limit: 50,
+    offset: 0,
+  });
 
-    try {
-      let newsResponse: NewsResponse;
+  // =========================================================================
+  // REACT QUERY: Dashboard stats con auto-refresh cada 5 minutos
+  // =========================================================================
+  const { data: stats } = useDashboardStats();
 
-      if (cat === 'favorites') {
-        newsResponse = await fetchFavorites(50, 0);
-      } else if (cat === 'general') {
-        newsResponse = await fetchNews(50, 0);
-      } else {
-        // =========================================================================
-        // OPTIMIZATION: Cache control to prevent excessive API calls
-        // Only refresh news if last refresh was more than 15 minutes ago
-        // =========================================================================
-        const CACHE_DURATION_MS = 15 * 60 * 1000; // 15 minutes
-        const CACHE_KEY = `last_news_refresh_${cat}`;
-        
-        const lastRefreshStr = sessionStorage.getItem(CACHE_KEY);
-        const lastRefresh = lastRefreshStr ? parseInt(lastRefreshStr, 10) : 0;
-        const timeSinceLastRefresh = Date.now() - lastRefresh;
-        const shouldRefresh = timeSinceLastRefresh >= CACHE_DURATION_MS;
-
-        if (!shouldRefresh && lastRefresh > 0) {
-          console.log(`⚡ Noticias frescas (caché) para "${cat}" - Última actualización hace ${Math.round(timeSinceLastRefresh / 60000)} minutos. Saltando ingesta.`);
-        } else {
-          setIsIngesting(true);
-          try {
-            console.log(`🔄 Actualizando noticias para "${cat}" - Cache expirado o primera carga.`);
-            await ingestByCategory(cat, 20);
-            // Update cache timestamp after successful ingestion
-            sessionStorage.setItem(CACHE_KEY, Date.now().toString());
-          } catch (ingestError) {
-            console.warn(`Ingesta fallida para ${cat}, mostrando datos existentes:`, ingestError);
-          } finally {
-            setIsIngesting(false);
-          }
-        }
-        
-        newsResponse = await fetchNewsByCategory(cat, 50, 0);
-      }
-
-      setNewsData(newsResponse);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al cargar las noticias');
-      console.error('Error fetching data:', e);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  // =========================================================================
+  // COMPUTED: Error message (compatible con código legacy)
+  // =========================================================================
+  const error = isError && queryError
+    ? queryError instanceof Error
+      ? queryError.message
+      : 'Error al cargar las noticias'
+    : null;
 
   // =========================================================================
   // PROTECCIÓN DE RUTA: Redirigir a /login si no hay usuario autenticado
@@ -99,38 +69,31 @@ export default function Home() {
     }
   }, [authLoading, user, router]);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const statsResponse = await fetchDashboardStats();
-        setStats(statsResponse);
-        await loadNewsByCategory(category);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Error al cargar las noticias');
-        console.error('Error fetching data:', e);
-        setIsLoading(false);
-      }
-    })();
-  }, []);
-
+  // =========================================================================
+  // SYNC: Categoría con URL (cuando cambia el search param externo)
+  // =========================================================================
   useEffect(() => {
     const validCategories = CATEGORIES.map(c => c.id);
     if (urlCategory && validCategories.includes(urlCategory) && urlCategory !== category) {
       setCategory(urlCategory);
-      loadNewsByCategory(urlCategory);
     }
-  }, [urlCategory]);
+  }, [urlCategory, category]);
 
+  // =========================================================================
+  // HANDLER: Cambio de categoría (UI state + URL navigation)
+  // =========================================================================
   const handleCategoryChange = (newCategory: CategoryId) => {
     if (newCategory === category) return;
     setCategory(newCategory);
 
     const url = newCategory === 'general' ? '/' : `/?category=${newCategory}`;
     router.push(url, { scroll: false });
-
-    loadNewsByCategory(newCategory);
+    // React Query auto-refetches when category changes (dynamic queryKey)
   };
 
+  // =========================================================================
+  // COMPUTED: Bias distribution (calculado desde newsData si existe)
+  // =========================================================================
   function calculateBiasDistribution(articles: NewsArticle[]): BiasDistribution {
     const analyzedArticles = articles.filter((article) => article.biasScore !== null);
 
@@ -149,6 +112,7 @@ export default function Home() {
       { left: 0, neutral: 0, right: 0 }
     );
   }
+  
   const fallbackBiasDistribution: BiasDistribution = {
     left: 0,
     neutral: 0,
@@ -292,12 +256,6 @@ export default function Home() {
                 onSelect={handleCategoryChange}
                 disabled={isLoading}
               />
-              {isIngesting && (
-                <p className="text-sm text-muted-foreground mt-2 flex items-center gap-2">
-                  <span className="inline-block w-4 h-4 border-2 border-zinc-400 border-t-zinc-900 rounded-full animate-spin" />
-                  Descargando noticias frescas...
-                </p>
-              )}
             </div>
 
             {/* Loading State */}

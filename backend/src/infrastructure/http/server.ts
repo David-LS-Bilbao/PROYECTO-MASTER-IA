@@ -10,12 +10,18 @@ import { createChatRoutes } from './routes/chat.routes';
 import { createSearchRoutes } from './routes/search.routes';
 import { createSourcesRoutes } from './routes/sources.routes';
 import { createUserRoutes } from './routes/user.routes';
+import { errorHandler } from './middleware/error.handler';
+import { requestLogger } from './middleware/request.logger';
+import { EntityNotFoundError } from '../../domain/errors/domain.error';
 
 export function createServer(): Application {
   const app = express();
 
   // Initialize dependencies
   const container = DependencyContainer.getInstance();
+
+  // Request Logger - PRIMERO para capturar todas las peticiones desde el inicio
+  app.use(requestLogger);
 
   // Security middleware
   app.use(helmet());
@@ -95,16 +101,13 @@ export function createServer(): Application {
   app.use('/api/sources', createSourcesRoutes(container.sourcesController));
   app.use('/api/user', createUserRoutes(container.userController));
 
-  // 404 handler
-  app.use((_req: Request, res: Response) => {
-    res.status(404).json({ error: 'Not Found' });
+  // 404 handler - Lanza error en lugar de enviar respuesta directa
+  app.use((req: Request, _res: Response, next: NextFunction) => {
+    next(new EntityNotFoundError('Route', req.path));
   });
 
-  // Error handler
-  app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-    console.error('Error:', err.message);
-    res.status(500).json({ error: 'Internal Server Error' });
-  });
+  // Global Error Handler - DEBE IR AL FINAL de todos los middlewares y rutas
+  app.use(errorHandler);
 
   return app;
 }

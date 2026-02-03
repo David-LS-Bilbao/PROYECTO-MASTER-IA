@@ -130,6 +130,10 @@ class MockNewsArticleRepository implements INewsArticleRepository {
 }
 
 class MockPrismaClient {
+  article = {
+    findMany: vi.fn().mockResolvedValue([]),
+  };
+
   ingestMetadata = {
     create: vi.fn(),
   };
@@ -180,8 +184,10 @@ describe('IngestNewsUseCase', () => {
     });
 
     it('should handle duplicate articles correctly', async () => {
-      // Mark first article as existing
-      mockArticleRepository.setExistingArticle('https://example.com/article1');
+      // Configurar Prisma mock para devolver el primer artículo como existente
+      vi.spyOn(mockPrisma.article, 'findMany').mockResolvedValue([
+        { url: 'https://example.com/article1' },
+      ] as any);
 
       const request = {
         language: 'en',
@@ -357,14 +363,15 @@ describe('IngestNewsUseCase', () => {
     });
 
     it('should track partial errors when some articles fail to process', async () => {
-      // Mock repository to throw error for existsByUrl on second call
-      let callCount = 0;
-      vi.spyOn(mockArticleRepository, 'existsByUrl').mockImplementation(() => {
-        callCount++;
-        if (callCount === 2) {
-          throw new Error('Check existence failed');
+      // Mock NewsArticle.create to throw error on second call
+      let createCallCount = 0;
+      const originalCreate = NewsArticle.create;
+      vi.spyOn(NewsArticle, 'create' as any).mockImplementation((data: any) => {
+        createCallCount++;
+        if (createCallCount === 2) {
+          throw new Error('Article creation failed');
         }
-        return Promise.resolve(false);
+        return originalCreate(data);
       });
 
       const result = await useCase.execute({});

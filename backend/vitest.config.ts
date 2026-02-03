@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    setupFiles: ['./tests/setup.ts'],
     env: {
       // Variables de entorno para tests
       GEMINI_API_KEY: 'test-api-key-for-integration-tests',

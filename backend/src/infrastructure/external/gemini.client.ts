@@ -225,6 +225,133 @@ export class GeminiClient implements IGeminiClient {
   }
 
   /**
+   * Generic retry mechanism with exponential backoff
+   * 
+   * RESILIENCIA: Reintentos inteligentes para errores transitorios
+   * - Solo reintenta errores 429 (Rate Limit) y 5xx (Server Errors)
+   * - No reintenta errores 401 (Auth), 404 (Not Found), 400 (Bad Request)
+   * - Exponential Backoff: delay * (2 ^ attempt)
+   * 
+   * @param operation Función asíncrona a ejecutar
+   * @param retries Número máximo de reintentos (default: 3)
+   * @param initialDelay Delay inicial en ms (default: 1000)
+   * @returns Resultado de la operación
+   */
+  private async executeWithRetry<T>(
+    operation: () => Promise<T>,
+    retries: number = 3,
+    initialDelay: number = 1000
+  ): Promise<T> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error as Error;
+        const errorMessage = lastError.message || '';
+
+        // No reintentar errores no transitorios
+        if (this.isNonRetryableError(errorMessage)) {
+          throw this.wrapError(lastError);
+        }
+
+        // Verificar si es error retriable
+        const isRetryable = this.isRetryableError(errorMessage);
+
+        if (!isRetryable || attempt >= retries) {
+          // Último intento o error no retriable
+          throw this.wrapError(lastError);
+        }
+
+        // Calcular delay con exponential backoff
+        const delay = initialDelay * Math.pow(2, attempt - 1);
+        
+        console.warn(
+          `⚠️ [GeminiClient] Gemini API error (intento ${attempt}/${retries}): ${errorMessage}. ` +
+          `Reintentando en ${delay}ms...`
+        );
+
+        // Esperar antes de reintentar
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+
+    // Si llegamos aquí, todos los reintentos fallaron
+    throw new ExternalAPIError(
+      'Gemini',
+      `Operation failed after ${retries} attempts: ${lastError?.message}`,
+      500,
+      lastError || undefined
+    );
+  }
+
+  /**
+   * Verifica si un error NO debe ser reintentado
+   */
+  private isNonRetryableError(errorMessage: string): boolean {
+    return (
+      errorMessage.includes('API key') ||
+      errorMessage.includes('401') ||
+      errorMessage.includes('404') ||
+      errorMessage.includes('not found') ||
+      errorMessage.includes('Invalid argument')
+    );
+  }
+
+  /**
+   * Verifica si un error debe ser reintentado
+   * Solo reintentar Rate Limits (429) y Server Errors (5xx)
+   */
+  private isRetryableError(errorMessage: string): boolean {
+    return (
+      // Rate Limit (429)
+      errorMessage.includes('quota') ||
+      errorMessage.includes('RESOURCE_EXHAUSTED') ||
+      errorMessage.includes('429') ||
+      errorMessage.includes('Too Many Requests') ||
+      // Server Errors (5xx)
+      errorMessage.includes('500') ||
+      errorMessage.includes('502') ||
+      errorMessage.includes('503') ||
+      errorMessage.includes('504') ||
+      errorMessage.includes('Internal Server Error') ||
+      errorMessage.includes('Service Unavailable') ||
+      errorMessage.includes('Gateway Timeout') ||
+      // Network errors
+      errorMessage.includes('ECONNRESET') ||
+      errorMessage.includes('ETIMEDOUT') ||
+      errorMessage.includes('ENOTFOUND')
+    );
+  }
+
+  /**
+   * Envuelve un error en ExternalAPIError con el código HTTP apropiado
+   */
+  private wrapError(error: Error): ExternalAPIError {
+    const errorMessage = error.message || '';
+
+    // 401 - Unauthorized (API key inválida)
+    if (errorMessage.includes('API key') || errorMessage.includes('401')) {
+      return new ExternalAPIError('Gemini', 'Invalid API key', 401, error);
+    }
+
+    // 404 - Not Found (Modelo no encontrado)
+    if (errorMessage.includes('404') || errorMessage.includes('not found')) {
+      return new ExternalAPIError('Gemini', `Model not found: ${errorMessage}`, 404, error);
+    }
+
+    // 429 - Rate Limit
+    if (this.isRetryableError(errorMessage) && 
+        (errorMessage.includes('429') || errorMessage.includes('quota'))) {
+      return new ExternalAPIError('Gemini', 'Rate limit exceeded after retries', 429, error);
+    }
+
+    // 500 - Generic server error
+    return new ExternalAPIError('Gemini', `API error: ${errorMessage}`, 500, error);
+  }
+
+  /**
    * Analyze article content with AI
    * Security: Includes retry with exponential backoff for rate limit handling
    */
@@ -251,96 +378,49 @@ export class GeminiClient implements IGeminiClient {
       .replace('{source}', sanitizedSource)
       .replace('{content}', sanitizedContent.substring(0, MAX_ARTICLE_CONTENT_LENGTH));
 
-    // Resilience: Retry with exponential backoff for transient failures
-    const maxRetries = 3;
-    let lastError: Error | null = null;
+    // RESILIENCIA: executeWithRetry maneja reintentos automáticos
+    return this.executeWithRetry(async () => {
+      console.log(`      [GeminiClient] Analizando artículo: "${sanitizedTitle.substring(0, 40)}..."`);
+      
+      const result = await this.model.generateContent(prompt);
+      const response = result.response;
+      const text = response.text();
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        console.log(`      [GeminiClient] Analizando artículo (intento ${attempt}/${maxRetries})...`);
-        const result = await this.model.generateContent(prompt);
-        const response = result.response;
-        const text = response.text();
+      // TOKEN TAXIMETER: Capturar uso de tokens
+      const usageMetadata = response.usageMetadata;
+      let tokenUsage: TokenUsage | undefined;
 
-        // TOKEN TAXIMETER: Capturar uso de tokens
-        const usageMetadata = response.usageMetadata;
-        let tokenUsage: TokenUsage | undefined;
+      if (usageMetadata) {
+        const promptTokens = usageMetadata.promptTokenCount || 0;
+        const completionTokens = usageMetadata.candidatesTokenCount || 0;
+        const totalTokens = usageMetadata.totalTokenCount || (promptTokens + completionTokens);
+        const costEstimated = calculateCostEUR(promptTokens, completionTokens);
 
-        if (usageMetadata) {
-          const promptTokens = usageMetadata.promptTokenCount || 0;
-          const completionTokens = usageMetadata.candidatesTokenCount || 0;
-          const totalTokens = usageMetadata.totalTokenCount || (promptTokens + completionTokens);
-          const costEstimated = calculateCostEUR(promptTokens, completionTokens);
+        tokenUsage = {
+          promptTokens,
+          completionTokens,
+          totalTokens,
+          costEstimated,
+        };
 
-          tokenUsage = {
-            promptTokens,
-            completionTokens,
-            totalTokens,
-            costEstimated,
-          };
+        // Actualizar acumulador de sesión
+        sessionCosts.analysisCount++;
+        sessionCosts.analysisTotalTokens += totalTokens;
+        sessionCosts.analysisTotalCost += costEstimated;
 
-          // Actualizar acumulador de sesión
-          sessionCosts.analysisCount++;
-          sessionCosts.analysisTotalTokens += totalTokens;
-          sessionCosts.analysisTotalCost += costEstimated;
-
-          // Log visual
-          logTaximeter('ANÁLISIS', sanitizedTitle, promptTokens, completionTokens, totalTokens, costEstimated);
-        } else {
-          console.log(`      [GeminiClient] Respuesta recibida OK (sin metadata de tokens)`);
-        }
-
-        return this.parseAnalysisResponse(text, tokenUsage);
-      } catch (error) {
-        lastError = error as Error;
-        console.warn(`      [GeminiClient] Intento ${attempt} falló: ${lastError.message}`);
-
-        // Don't retry on non-transient errors
-        if (lastError.message?.includes('API key') || lastError.message?.includes('401')) {
-          throw new ExternalAPIError('Gemini', 'Invalid API key', 401, lastError);
-        }
-
-        if (lastError.message?.includes('404') || lastError.message?.includes('not found')) {
-          throw new ExternalAPIError('Gemini', `Model not found: ${lastError.message}`, 404, lastError);
-        }
-
-        // Retry on rate limit (429) with exponential backoff
-        const isRateLimited = lastError.message?.includes('quota') ||
-          lastError.message?.includes('RESOURCE_EXHAUSTED') ||
-          lastError.message?.includes('429') ||
-          lastError.message?.includes('Too Many Requests');
-
-        if (isRateLimited && attempt < maxRetries) {
-          const delay = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
-          console.log(`      [GeminiClient] Rate limit - esperando ${delay}ms antes de reintentar...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          continue;
-        }
-
-        // If rate limited on last attempt, throw specific error
-        if (isRateLimited) {
-          throw new ExternalAPIError('Gemini', 'Rate limit exceeded after retries', 429, lastError);
-        }
-
-        // For other errors, retry with backoff
-        if (attempt < maxRetries) {
-          const delay = Math.pow(2, attempt) * 500; // 1s, 2s
-          console.log(`      [GeminiClient] Esperando ${delay}ms antes de reintentar...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        }
+        // Log visual
+        logTaximeter('ANÁLISIS', sanitizedTitle, promptTokens, completionTokens, totalTokens, costEstimated);
+      } else {
+        console.log(`      [GeminiClient] Respuesta recibida OK (sin metadata de tokens)`);
       }
-    }
 
-    throw new ExternalAPIError(
-      'Gemini',
-      `Analysis failed after ${maxRetries} attempts: ${lastError?.message}`,
-      500,
-      lastError || undefined
-    );
+      return this.parseAnalysisResponse(text, tokenUsage);
+    }, 3, 1000); // 3 reintentos, 1s delay inicial
   }
 
   async isAvailable(): Promise<boolean> {
     try {
+      // Sin reintentos para health check (queremos respuesta rápida)
       const result = await this.model.generateContent('Respond with "OK"');
       return result.response.text().includes('OK');
     } catch {
@@ -358,46 +438,19 @@ export class GeminiClient implements IGeminiClient {
     }
 
     // COST OPTIMIZATION: Truncar texto para evitar tokens innecesarios
-    // El modelo soporta ~8000 tokens pero usamos 6000 para margen de seguridad
     const truncatedText = text.substring(0, MAX_EMBEDDING_TEXT_LENGTH);
-    const maxRetries = 3;
-    let lastError: Error | null = null;
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        console.log(`      [GeminiClient] Generando embedding (intento ${attempt}/${maxRetries})...`);
+    // RESILIENCIA: executeWithRetry maneja reintentos automáticos
+    return this.executeWithRetry(async () => {
+      console.log(`      [GeminiClient] Generando embedding (${truncatedText.length} chars)...`);
 
-        const embeddingModel = this.genAI.getGenerativeModel({ model: 'text-embedding-004' });
-        const result = await embeddingModel.embedContent(truncatedText);
-        const embedding = result.embedding.values;
+      const embeddingModel = this.genAI.getGenerativeModel({ model: 'text-embedding-004' });
+      const result = await embeddingModel.embedContent(truncatedText);
+      const embedding = result.embedding.values;
 
-        console.log(`      [GeminiClient] Embedding OK - dimensiones: ${embedding.length}`);
-        return embedding;
-
-      } catch (error) {
-        lastError = error as Error;
-        console.warn(`      [GeminiClient] Embedding intento ${attempt} falló: ${lastError.message}`);
-
-        // Don't retry on non-transient errors
-        if (lastError.message?.includes('API key') || lastError.message?.includes('401')) {
-          throw new ExternalAPIError('Gemini', 'Invalid API key', 401, lastError);
-        }
-
-        // Wait before retry (exponential backoff)
-        if (attempt < maxRetries) {
-          const delay = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
-          console.log(`      [GeminiClient] Esperando ${delay}ms antes de reintentar...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        }
-      }
-    }
-
-    throw new ExternalAPIError(
-      'Gemini',
-      `Embedding generation failed after ${maxRetries} attempts: ${lastError?.message}`,
-      500,
-      lastError || undefined
-    );
+      console.log(`      [GeminiClient] Embedding OK - dimensiones: ${embedding.length}`);
+      return embedding;
+    }, 3, 1000); // 3 reintentos, 1s delay inicial
   }
 
   /**
@@ -417,7 +470,6 @@ export class GeminiClient implements IGeminiClient {
     }
 
     // COST OPTIMIZATION: Ventana deslizante - solo últimos N mensajes
-    // Esto evita que el coste crezca exponencialmente con cada mensaje
     const recentMessages = messages.slice(-MAX_CHAT_HISTORY_MESSAGES);
 
     if (messages.length > MAX_CHAT_HISTORY_MESSAGES) {
@@ -426,8 +478,6 @@ export class GeminiClient implements IGeminiClient {
 
     // Build the conversation with system context (formato compacto)
     const conversationParts: string[] = [];
-
-    // Add system context as the foundation
     conversationParts.push(`[CONTEXTO]\n${systemContext}`);
     conversationParts.push('\n[HISTORIAL]');
 
@@ -438,12 +488,12 @@ export class GeminiClient implements IGeminiClient {
     }
 
     conversationParts.push('\nResponde a la última pregunta.');
-
     const prompt = conversationParts.join('\n');
 
-    try {
+    // RESILIENCIA: executeWithRetry maneja reintentos automáticos
+    return this.executeWithRetry(async () => {
       console.log(`      [GeminiClient] Chat (con Google Search) - Enviando conversación...`);
-      // Use chatModel which has Google Search Grounding enabled
+      
       const result = await this.chatModel.generateContent(prompt);
       const response = result.response;
       const text = response.text();
@@ -476,26 +526,7 @@ export class GeminiClient implements IGeminiClient {
       }
 
       return { message: text.trim() };
-    } catch (error) {
-      const err = error as Error;
-      console.error(`      [GeminiClient] Chat ERROR: ${err.message}`);
-
-      if (err.message?.includes('API key')) {
-        throw new ExternalAPIError('Gemini', 'Invalid API key', 401, err);
-      }
-
-      if (err.message?.includes('quota') || err.message?.includes('RESOURCE_EXHAUSTED') ||
-          err.message?.includes('429') || err.message?.includes('Too Many Requests')) {
-        throw new ExternalAPIError('Gemini', 'Rate limit exceeded', 429, err);
-      }
-
-      throw new ExternalAPIError(
-        'Gemini',
-        `Chat failed: ${err.message}`,
-        500,
-        err
-      );
-    }
+    }, 3, 1000); // 3 reintentos, 1s delay inicial
   }
 
   /**
@@ -532,9 +563,10 @@ ${context}
 [PREGUNTA]
 ${question}`;
 
-    try {
+    // RESILIENCIA: executeWithRetry maneja reintentos automáticos
+    return this.executeWithRetry(async () => {
       console.log(`      [GeminiClient] RAG Chat - Generando respuesta...`);
-      // Use base model (no Google Search) for pure RAG
+      
       const result = await this.model.generateContent(ragPrompt);
       const response = result.response;
       const text = response.text().trim();
@@ -557,26 +589,7 @@ ${question}`;
       }
 
       return text;
-    } catch (error) {
-      const err = error as Error;
-      console.error(`      [GeminiClient] RAG Chat ERROR: ${err.message}`);
-
-      if (err.message?.includes('API key')) {
-        throw new ExternalAPIError('Gemini', 'Invalid API key', 401, err);
-      }
-
-      if (err.message?.includes('quota') || err.message?.includes('RESOURCE_EXHAUSTED') ||
-          err.message?.includes('429') || err.message?.includes('Too Many Requests')) {
-        throw new ExternalAPIError('Gemini', 'Rate limit exceeded', 429, err);
-      }
-
-      throw new ExternalAPIError(
-        'Gemini',
-        `RAG Chat failed: ${err.message}`,
-        500,
-        err
-      );
-    }
+    }, 3, 1000); // 3 reintentos, 1s delay inicial
   }
 
   /**
@@ -717,26 +730,28 @@ ${question}`;
   async discoverRssUrl(mediaName: string): Promise<string | null> {
     console.log(`🔍 Buscando RSS automático para: "${mediaName}"`);
 
-    try {
-      const prompt = `El usuario busca el RSS de: '${mediaName}'. Devuelve EXCLUSIVAMENTE la URL del feed RSS oficial más probable. Sin texto, sin markdown, solo la URL. Si no tiene RSS o no lo sabes, devuelve 'null'.`;
+    const prompt = `El usuario busca el RSS de: '${mediaName}'. Devuelve EXCLUSIVAMENTE la URL del feed RSS oficial más probable. Sin texto, sin markdown, solo la URL. Si no tiene RSS o no lo sabes, devuelve 'null'.`;
 
-      const result = await this.model.generateContent(prompt);
-      const response = result.response;
-      const text = response.text().trim().replace(/['"]/g, ''); // Limpia comillas
+    try {
+      // RESILIENCIA: executeWithRetry maneja reintentos automáticos
+      const result = await this.executeWithRetry(async () => {
+        const response = await this.model.generateContent(prompt);
+        return response.response.text().trim().replace(/['"]/g, '');
+      }, 2, 500); // 2 reintentos, 500ms delay (operación menos crítica)
 
       // Si la respuesta es literalmente "null" o vacía, retornar null
-      if (text === 'null' || text === '' || text.length < 10) {
+      if (result === 'null' || result === '' || result.length < 10) {
         console.log(`❌ No se encontró RSS para "${mediaName}"`);
         return null;
       }
 
       // Validar que sea una URL válida
       try {
-        new URL(text);
-        console.log(`✅ RSS encontrado: ${text}`);
-        return text;
+        new URL(result);
+        console.log(`✅ RSS encontrado: ${result}`);
+        return result;
       } catch {
-        console.log(`⚠️ Respuesta inválida (no es URL): ${text}`);
+        console.log(`⚠️ Respuesta inválida (no es URL): ${result}`);
         return null;
       }
     } catch (error) {

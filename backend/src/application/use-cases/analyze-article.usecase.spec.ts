@@ -108,6 +108,26 @@ class MockNewsArticleRepository implements INewsArticleRepository {
     return Array.from(this.articles.values()).filter((a) => a.isAnalyzed).length;
   }
 
+  async getBiasDistribution(): Promise<{ left: number; center: number; right: number }> {
+    return { left: 0, center: 0, right: 0 };
+  }
+
+  async findAll(): Promise<NewsArticle[]> {
+    return [];
+  }
+
+  async countFiltered(): Promise<number> {
+    return 0;
+  }
+
+  async toggleFavorite(): Promise<NewsArticle | null> {
+    return null;
+  }
+
+  async findByIds(): Promise<NewsArticle[]> {
+    return [];
+  }
+
   // Test helpers
   setArticle(article: NewsArticle): void {
     this.articles.set(article.id, article);
@@ -121,6 +141,14 @@ class MockNewsArticleRepository implements INewsArticleRepository {
 class MockGeminiClient implements IGeminiClient {
   async analyzeArticle(_input: AnalyzeContentInput): Promise<ArticleAnalysis> {
     return mockAnalysis;
+  }
+
+  async generateEmbedding(_text: string): Promise<number[]> {
+    return [0.1, 0.2, 0.3];
+  }
+
+  async chatWithContext(): Promise<any> {
+    return { response: 'Mock response', usage: { totalTokens: 100 } };
   }
 
   async isAvailable(): Promise<boolean> {
@@ -138,18 +166,52 @@ class MockJinaReaderClient implements IJinaReaderClient {
   }
 }
 
+class MockMetadataExtractor {
+  async extractMetadata(_url: string): Promise<any> {
+    return {
+      imageUrl: 'https://example.com/image.jpg',
+      title: 'Test Title',
+      description: 'Test Description',
+    };
+  }
+}
+
+class MockChromaClient {
+  async addDocument(): Promise<void> {
+    // Mock implementation
+  }
+
+  async upsertItem(): Promise<void> {
+    // Mock implementation
+  }
+
+  async healthCheck(): Promise<boolean> {
+    return true;
+  }
+}
+
 describe('AnalyzeArticleUseCase', () => {
   let useCase: AnalyzeArticleUseCase;
   let mockRepository: MockNewsArticleRepository;
   let mockGemini: MockGeminiClient;
   let mockJina: MockJinaReaderClient;
+  let mockMetadata: MockMetadataExtractor;
+  let mockChroma: MockChromaClient;
 
   beforeEach(() => {
     mockRepository = new MockNewsArticleRepository();
     mockGemini = new MockGeminiClient();
     mockJina = new MockJinaReaderClient();
+    mockMetadata = new MockMetadataExtractor();
+    mockChroma = new MockChromaClient();
 
-    useCase = new AnalyzeArticleUseCase(mockRepository, mockGemini, mockJina);
+    useCase = new AnalyzeArticleUseCase(
+      mockRepository,
+      mockGemini,
+      mockJina,
+      mockMetadata as any,
+      mockChroma as any
+    );
   });
 
   describe('execute - single article analysis', () => {
@@ -247,7 +309,13 @@ describe('AnalyzeArticleUseCase', () => {
         new ExternalAPIError('JinaReader', 'URL not accessible', 404)
       );
 
-      await expect(useCase.execute({ articleId: article.id })).rejects.toThrow(ExternalAPIError);
+      // El análisis debe completarse usando fallback (título + descripción)
+      const result = await useCase.execute({ articleId: article.id });
+
+      // Verificar que el análisis se completó correctamente usando fallback
+      expect(result.articleId).toBe(article.id);
+      expect(result.summary).toBe(mockAnalysis.summary);
+      expect(result.scrapedContentLength).toBe(0); // Fallback no scraped
     });
 
     it('should wrap unknown scraping errors in ExternalAPIError', async () => {
@@ -256,7 +324,13 @@ describe('AnalyzeArticleUseCase', () => {
 
       vi.spyOn(mockJina, 'scrapeUrl').mockRejectedValue(new Error('Network error'));
 
-      await expect(useCase.execute({ articleId: article.id })).rejects.toThrow(ExternalAPIError);
+      // El análisis debe completarse usando fallback (título + descripción)
+      const result = await useCase.execute({ articleId: article.id });
+
+      // Verificar que el análisis se completó correctamente usando fallback
+      expect(result.articleId).toBe(article.id);
+      expect(result.summary).toBe(mockAnalysis.summary);
+      expect(result.scrapedContentLength).toBe(0); // Fallback no scraped
     });
 
     it('should save article with scraped content before analysis', async () => {
@@ -339,9 +413,11 @@ describe('AnalyzeArticleUseCase', () => {
       const result = await useCase.executeBatch({ limit: 10 });
 
       expect(result.processed).toBe(3);
-      expect(result.successful).toBe(2);
-      expect(result.failed).toBe(1);
-      expect(result.results.find((r) => r.articleId === 'article-2')?.success).toBe(false);
+      expect(result.successful).toBe(3); // Todos pasan (fallback funciona)
+      expect(result.failed).toBe(0); // Ninguno falla (fallback maneja errores)
+      // Verificar que el artículo con error de scraping está marcado como exitoso
+      const article2 = result.results.find((r) => r.articleId === 'article-2');
+      expect(article2?.success).toBe(true);
     });
 
     it('should throw ValidationError for invalid batch limit (0)', async () => {
@@ -388,8 +464,9 @@ describe('AnalyzeArticleUseCase', () => {
 
       const result = await useCase.executeBatch({ limit: 10 });
 
-      expect(result.failed).toBe(1);
-      expect(result.results[0].error).toContain('Page not found');
+      expect(result.failed).toBe(0); // Fallback maneja el error
+      expect(result.successful).toBe(1); // El artículo se analiza correctamente
+      expect(result.results[0].success).toBe(true);
     });
   });
 

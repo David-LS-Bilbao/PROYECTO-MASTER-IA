@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx prisma migrate dev:*)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(npx prisma generate:*)",
+      "Bash(npx ts-node:*)",
+      "Bash(npx shadcn@latest add:*)",
+      "Bash(npx tsx scripts/test-chroma.ts)",
+      "Bash(npx tsx:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm run build:*)",
+      "Bash(curl:*)",
+      "Bash(ls:*)",
+      "Bash(timeout:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat: Sprint 7.1 - Chat RAG + Detector de Bulos + Auditoría\n\nBackend:\n- Implementar generateChatResponse en GeminiClient para RAG puro\n- Añadir querySimilarWithDocuments en ChromaClient para recuperar documentos\n- Pipeline RAG completo en ChatArticleUseCase \\(embedding → query → augment → generate\\)\n- Nuevo prompt de análisis con biasScore \\(-10 a +10\\), clickbaitScore, reliabilityScore\n- Añadir FactCheck \\(claims, verdict, reasoning\\) en ArticleAnalysis\n\nFrontend:\n- Nuevo componente ReliabilityBadge \\(detector de bulos visual\\)\n- Integrar ReliabilityBadge en página de detalle de noticia\n- Actualizar tipos ArticleAnalysis en api.ts\n\nDocs:\n- Añadir AUDIT.md con auditoría completa del código\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfix\\(security\\): Corregir vulnerabilidades críticas\n\n- Sanitizar HTML con DOMPurify para prevenir XSS en page.tsx\n- Añadir rate limiting \\(100 req/15min\\) para prevenir abuso\n- Configurar CORS con métodos HTTP explícitos\n- Eliminar código de prueba duplicado \\(test-patch routes\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfix\\(quality\\): Completar correcciones de auditoría Sprint 7.1\n\nSeguridad/Tipos:\n- Eliminar `as any` en ChromaClient con interfaz ChromaMetadata\n- Añadir retry con exponential backoff en analyzeArticle \\(3 intentos\\)\n- Mejorar endpoint /health: muestra estado de database, chromadb, gemini\n\nRefactor:\n- Exponer geminiClient y newsRepository en DependencyContainer para health checks\n\nDocs:\n- Actualizar AUDIT.md con checklist de correcciones completadas\n- Subir puntuación de seguridad de 5/10 a 8/10\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\ndocs: Actualizar ESTADO_PROYECTO.md con Sprint 7.1 completo\n\n- Resumen de todos los sprints completados \\(1-7.1\\)\n- Stack tecnológico final actualizado\n- Diagrama de arquitectura del sistema\n- Lista de endpoints API\n- Categorías RSS configuradas\n- Capacidades del sistema \\(10 features\\)\n- Métricas de desarrollo\n- Próximos pasos post-MVP\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfix: Mover useMemo antes de returns condicionales \\(Rules of Hooks\\)\n\nEl useMemo para sanitizedContent estaba después de los returns\ncondicionales \\(isLoading, error\\), violando la regla de que los\nhooks deben ejecutarse siempre en el mismo orden.\n\nMovido antes de handleAnalyze para cumplir con Rules of Hooks.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit:*)",
+      "Bash(dir /s /b /ad \"c:\\\\Users\\\\David\\\\OneDrive\\\\Desktop\\\\PROYECTO MASTER IA\\\\Verity-News\\\\backend\\\\src\")"
+    ]
+  }
+}
