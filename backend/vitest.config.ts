@@ -4,6 +4,14 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    env: {
+      // Variables de entorno para tests
+      GEMINI_API_KEY: 'test-api-key-for-integration-tests',
+      JINA_API_KEY: 'test-jina-api-key-for-integration-tests',
+      DATABASE_URL: 'file:./test.db',
+      CHROMA_URL: 'http://localhost:8000',
+      NODE_ENV: 'test',
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

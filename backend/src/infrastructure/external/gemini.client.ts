@@ -77,6 +77,23 @@ const sessionCosts: SessionCostAccumulator = {
 };
 
 /**
+ * Resetea el acumulador de sesión (solo para testing)
+ * @internal
+ */
+export function resetSessionCosts(): void {
+  sessionCosts.analysisCount = 0;
+  sessionCosts.analysisTotalTokens = 0;
+  sessionCosts.analysisTotalCost = 0;
+  sessionCosts.ragChatCount = 0;
+  sessionCosts.ragChatTotalTokens = 0;
+  sessionCosts.ragChatTotalCost = 0;
+  sessionCosts.groundingChatCount = 0;
+  sessionCosts.groundingChatTotalTokens = 0;
+  sessionCosts.groundingChatTotalCost = 0;
+  sessionCosts.sessionStart = new Date();
+}
+
+/**
  * Calcula el coste en EUR a partir de tokens
  */
 function calculateCostEUR(promptTokens: number, completionTokens: number): number {

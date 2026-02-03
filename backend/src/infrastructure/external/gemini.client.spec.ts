@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { GeminiClient } from './gemini.client';
+import { GeminiClient, resetSessionCosts } from './gemini.client';
 import { ExternalAPIError, ConfigurationError } from '../../domain/errors/infrastructure.error';
 
 // ============================================================================
@@ -24,10 +24,10 @@ let mockGenerateContent: ReturnType<typeof vi.fn>;
 let mockGenerateEmbedding: ReturnType<typeof vi.fn>;
 
 // Mock completo de Google Generative AI
-vi.mock('@google/generative-ai', () => {
-  const generateContentMock = vi.fn();
-  const generateEmbeddingMock = vi.fn();
+const mockGenerateContentFn = vi.fn();
+const mockGenerateEmbeddingFn = vi.fn();
 
+vi.mock('@google/generative-ai', () => {
   // Crear clase mock
   class MockGoogleGenerativeAI {
     constructor(_apiKey: string) {
@@ -36,17 +36,14 @@ vi.mock('@google/generative-ai', () => {
 
     getGenerativeModel() {
       return {
-        generateContent: generateContentMock,
-        embedContent: generateEmbeddingMock,
+        generateContent: mockGenerateContentFn,
+        embedContent: mockGenerateEmbeddingFn,
       };
     }
   }
 
   return {
     GoogleGenerativeAI: MockGoogleGenerativeAI,
-    // Exportamos getters para acceder a los mocks
-    getMockGenerateContent: () => generateContentMock,
-    getMockGenerateEmbedding: () => generateEmbeddingMock,
   };
 });
 
@@ -78,10 +75,12 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
     // Reset de todos los mocks antes de cada test
     vi.clearAllMocks();
 
-    // Importar y obtener referencias a los mocks
-    const { getMockGenerateContent, getMockGenerateEmbedding } = await import('@google/generative-ai');
-    mockGenerateContent = getMockGenerateContent();
-    mockGenerateEmbedding = getMockGenerateEmbedding();
+    // CRÍTICO: Resetear el acumulador global de sesión
+    resetSessionCosts();
+
+    // Asignar referencias a los mocks
+    mockGenerateContent = mockGenerateContentFn;
+    mockGenerateEmbedding = mockGenerateEmbeddingFn;
 
     // Instanciar cliente con API key ficticia
     geminiClient = new GeminiClient('test-api-key-12345');
@@ -131,9 +130,10 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
 
       // ACT
       const result = await geminiClient.analyzeArticle({
-        title: 'Test Article',
-        content: 'This is a test article with enough content to pass validation requirements for meaningful analysis.',
-        source: 'Test Source',
+          title: 'Test Article',
+          content: 'This is a test article with enough content to pass validation requirements for meaningful analysis.',
+          source: 'Test Source',
+          language: ''
       });
 
       // ASSERT
@@ -172,9 +172,10 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
 
       // ACT
       const result = await geminiClient.analyzeArticle({
-        title: 'Empty Token Test',
-        content: 'Minimal content for testing zero token scenario with valid length for validation.',
-        source: 'Test',
+          title: 'Empty Token Test',
+          content: 'Minimal content for testing zero token scenario with valid length for validation.',
+          source: 'Test',
+          language: ''
       });
 
       // ASSERT
@@ -193,7 +194,7 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
         response: {
           text: () => JSON.stringify({
             summary: 'Decimal test',
-            biasScore: -3,
+            biasScore: 3,
             biasIndicators: ['test'],
             clickbaitScore: 42,
             reliabilityScore: 67,
@@ -215,9 +216,10 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
 
       // ACT
       const result = await geminiClient.analyzeArticle({
-        title: 'Decimal Precision Test',
-        content: 'Testing floating point precision in cost calculations with irregular token counts.',
-        source: 'Test Source',
+          title: 'Decimal Precision Test',
+          content: 'Testing floating point precision in cost calculations with irregular token counts.',
+          source: 'Test Source',
+          language: ''
       });
 
       // ASSERT
@@ -258,9 +260,10 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
 
       // ACT
       const result = await geminiClient.analyzeArticle({
-        title: 'Asymmetric Token Test',
-        content: 'This article simulates a long input with a short AI response for testing asymmetric token usage patterns.',
-        source: 'Test',
+          title: 'Asymmetric Token Test',
+          content: 'This article simulates a long input with a short AI response for testing asymmetric token usage patterns.',
+          source: 'Test',
+          language: ''
       });
 
       // ASSERT
@@ -313,21 +316,24 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
 
       // ACT - Ejecutar las 3 llamadas
       await geminiClient.analyzeArticle({
-        title: 'Call 1',
-        content: 'First analysis call with sufficient content for validation requirements.',
-        source: 'Test',
+          title: 'Call 1',
+          content: 'First analysis call with sufficient content for validation requirements.',
+          source: 'Test',
+          language: ''
       });
 
       await geminiClient.analyzeArticle({
-        title: 'Call 2',
-        content: 'Second analysis call with sufficient content for validation requirements.',
-        source: 'Test',
+          title: 'Call 2',
+          content: 'Second analysis call with sufficient content for validation requirements.',
+          source: 'Test',
+          language: ''
       });
 
       await geminiClient.analyzeArticle({
-        title: 'Call 3',
-        content: 'Third analysis call with sufficient content for validation requirements.',
-        source: 'Test',
+          title: 'Call 3',
+          content: 'Third analysis call with sufficient content for validation requirements.',
+          source: 'Test',
+          language: ''
       });
 
       // ASSERT - Verificar acumulador
@@ -386,9 +392,10 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
 
       // ACT
       const result = await geminiClient.analyzeArticle({
-        title: 'No Metadata Test',
-        content: 'Testing behavior when API does not return token usage metadata for tracking.',
-        source: 'Test',
+          title: 'No Metadata Test',
+          content: 'Testing behavior when API does not return token usage metadata for tracking.',
+          source: 'Test',
+          language: ''
       });
 
       // ASSERT
@@ -412,9 +419,10 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
       // ACT & ASSERT
       await expect(
         geminiClient.analyzeArticle({
-          title: 'Error Test',
-          content: 'This should fail and not add phantom tokens to the session accumulator.',
-          source: 'Test',
+            title: 'Error Test',
+            content: 'This should fail and not add phantom tokens to the session accumulator.',
+            source: 'Test',
+            language: ''
         })
       ).rejects.toThrow();
 
@@ -435,17 +443,19 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
       // ACT & ASSERT
       await expect(
         geminiClient.analyzeArticle({
-          title: 'Short',
-          content: 'Too short', // Menos de 50 caracteres
-          source: 'Test',
+            title: 'Short',
+            content: 'Too short', // Menos de 50 caracteres
+            source: 'Test',
+            language: ''
         })
       ).rejects.toThrow(ExternalAPIError);
 
       await expect(
         geminiClient.analyzeArticle({
-          title: 'Empty',
-          content: '',
-          source: 'Test',
+            title: 'Empty',
+            content: '',
+            source: 'Test',
+            language: ''
         })
       ).rejects.toThrow(ExternalAPIError);
     });
@@ -484,9 +494,10 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
 
       // ACT
       const result = await geminiClient.analyzeArticle({
-        title: 'Rate Limit Test',
-        content: 'Testing retry logic with exponential backoff for rate limit handling.',
-        source: 'Test',
+          title: 'Rate Limit Test',
+          content: 'Testing retry logic with exponential backoff for rate limit handling.',
+          source: 'Test',
+          language: ''
       });
 
       // ASSERT
@@ -497,28 +508,33 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
       const report = geminiClient.getSessionCostReport();
       expect(report.analysis.count).toBe(1); // Solo 1 operación exitosa
       expect(report.analysis.tokens).toBe(150);
-    });
+    }, 10000); // Timeout de 10 segundos para permitir los retries (2s + 4s + margen)
 
     it('RATE LIMIT PERMANENTE: después de 3 reintentos, lanza error 429', async () => {
       // ARRANGE - Todas las llamadas fallan con rate limit
       const rateLimitError = new Error('429 Too Many Requests');
 
+      // Configurar para que TODAS las llamadas fallen (sin límite)
       mockGenerateContent.mockRejectedValue(rateLimitError);
 
       // ACT & ASSERT
       await expect(
         geminiClient.analyzeArticle({
-          title: 'Persistent Rate Limit',
-          content: 'Testing behavior when rate limit persists across all retry attempts.',
-          source: 'Test',
+            title: 'Persistent Rate Limit',
+            content: 'Testing behavior when rate limit persists across all retry attempts.',
+            source: 'Test',
+            language: ''
         })
       ).rejects.toThrow('Rate limit exceeded after retries');
+
+      // Verificar que se intentó 3 veces
+      expect(mockGenerateContent).toHaveBeenCalledTimes(3);
 
       // Verificar que NO se sumaron tokens
       const report = geminiClient.getSessionCostReport();
       expect(report.analysis.count).toBe(0);
       expect(report.analysis.tokens).toBe(0);
-    });
+    }, 10000); // Timeout de 10 segundos para los 3 reintentos
   });
 
   // ==========================================================================
