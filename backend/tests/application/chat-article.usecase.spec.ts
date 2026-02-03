@@ -245,6 +245,64 @@ describe('ChatArticleUseCase - RAG System (ZONA CRÍTICA)', () => {
   // ==========================================================================
 
   describe('🔍 Flujo RAG Completo', () => {
+    it('RAG EXITOSO: debe inyectar documentos de ChromaDB en el prompt de Gemini', async () => {
+      // ARRANGE
+      const article = createMockArticle();
+      const userQuestion = 'What is the key information about this topic?';
+      const mockEmbedding = [0.1, 0.2, 0.3];
+      
+      // ChromaDB devuelve documentos con "Dato Clave A"
+      const mockQueryResults: QueryResult[] = [
+        {
+          id: 'doc-1',
+          document: 'Dato Clave A - This is critical information from the knowledge base.',
+          metadata: {
+            title: 'Relevant Article 1',
+            source: 'Knowledge Base',
+            publishedAt: new Date('2026-02-01T10:00:00Z').toISOString(),
+          },
+          distance: 0.1,
+        },
+        {
+          id: 'doc-2',
+          document: 'Additional context information.',
+          metadata: {
+            title: 'Relevant Article 2',
+            source: 'Database',
+            publishedAt: new Date('2026-02-01T10:00:00Z').toISOString(),
+          },
+          distance: 0.2,
+        },
+      ];
+
+      const mockResponse = 'Based on the key information, here is the answer.';
+
+      mockArticleRepository.findById.mockResolvedValueOnce(article);
+      mockGeminiClient.generateEmbedding.mockResolvedValueOnce(mockEmbedding);
+      mockChromaClient.querySimilarWithDocuments.mockResolvedValueOnce(mockQueryResults);
+      mockGeminiClient.generateChatResponse.mockResolvedValueOnce(mockResponse);
+
+      // ACT
+      const result = await useCase.execute({
+        articleId: 'test-article-id-123',
+        messages: createChatMessages(userQuestion),
+      });
+
+      // ASSERT - Verificar que se llamaron los servicios correctos
+      expect(mockChromaClient.querySimilarWithDocuments).toHaveBeenCalledWith(mockEmbedding, 3);
+      expect(mockGeminiClient.generateChatResponse).toHaveBeenCalledTimes(1);
+
+      // ✅ CRÍTICO: Verificar que "Dato Clave A" fue inyectado en el prompt de Gemini
+      const geminiCallArgs = mockGeminiClient.generateChatResponse.mock.calls[0];
+      const contextPassedToGemini = geminiCallArgs[0]; // Primer argumento = contexto
+
+      expect(contextPassedToGemini).toEqual(expect.stringContaining('Dato Clave A'));
+      expect(contextPassedToGemini).toEqual(expect.stringContaining('critical information from the knowledge base'));
+
+      // Verificar resultado
+      expect(result.response).toBe(mockResponse);
+    });
+
     it('RAG EXITOSO: embedding → retrieval → augmentation → generation', async () => {
       // ARRANGE
       const article = createMockArticle();
@@ -423,7 +481,116 @@ describe('ChatArticleUseCase - RAG System (ZONA CRÍTICA)', () => {
   });
 
   // ==========================================================================
-  // GRUPO 4: CONVERSACIÓN MULTI-TURNO (ZONA ESTÁNDAR - 80%)
+  // GRUPO 4: DEGRADACIÓN GRACIOSA - FALLBACK AVANZADO (ZONA CRÍTICA - 100%)
+  // ==========================================================================
+
+  describe('🛡️ Degradación Graciosa (Graceful Degradation)', () => {
+    it('CHROMADB TIMEOUT: debe responder usando solo el contenido del artículo si ChromaDB falla con timeout', async () => {
+      // ARRANGE
+      const articleWithFullContent = createMockArticle({
+        content: 'Texto completo del artículo sobre inteligencia artificial. Este contenido incluye información detallada sobre machine learning, redes neuronales, y las últimas tendencias en el campo de la IA.',
+      });
+
+      const userQuestion = 'What are the main topics discussed?';
+
+      // Mock: ChromaDB lanza error de timeout
+      mockArticleRepository.findById.mockResolvedValueOnce(articleWithFullContent);
+      mockGeminiClient.generateEmbedding.mockRejectedValueOnce(new Error('Connection timeout'));
+      mockGeminiClient.generateChatResponse.mockResolvedValueOnce('The topics include machine learning and neural networks.');
+
+      // ACT
+      const result = await useCase.execute({
+        articleId: 'test-article-id-123',
+        messages: createChatMessages(userQuestion),
+      });
+
+      // ASSERT 1: NO debe lanzar excepción (graceful degradation)
+      expect(result).toBeDefined();
+      expect(result.response).toBe('The topics include machine learning and neural networks.');
+
+      // ASSERT 2: NO debe llamar a ChromaDB.querySimilarWithDocuments
+      expect(mockChromaClient.querySimilarWithDocuments).not.toHaveBeenCalled();
+
+      // ASSERT 3: SÍ debe llamar a GeminiClient.generateChatResponse
+      expect(mockGeminiClient.generateChatResponse).toHaveBeenCalledTimes(1);
+
+      // ASSERT 4: CRÍTICO - El contexto pasado a Gemini debe ser el contenido del artículo
+      const geminiCallArgs = mockGeminiClient.generateChatResponse.mock.calls[0];
+      const contextPassedToGemini = geminiCallArgs[0]; // Primer argumento = contexto
+
+      // Verificar que contiene el contenido del artículo (NO documentos de ChromaDB)
+      expect(contextPassedToGemini).toContain('Texto completo del artículo sobre inteligencia artificial');
+      expect(contextPassedToGemini).toContain('machine learning');
+      expect(contextPassedToGemini).toContain('redes neuronales');
+
+      // Verificar que NO contiene fragmentos de ChromaDB
+      expect(contextPassedToGemini).not.toContain('This is document fragment');
+    });
+
+    it('CHROMADB PARCIAL: si generateEmbedding funciona pero querySimilar falla, debe usar fallback', async () => {
+      // ARRANGE
+      const article = createMockArticle({
+        content: 'Detailed article about climate change and its global impact. The article covers scientific evidence and policy recommendations.',
+      });
+
+      // Mock: Embedding funciona, pero query falla
+      mockArticleRepository.findById.mockResolvedValueOnce(article);
+      mockGeminiClient.generateEmbedding.mockResolvedValueOnce([0.1, 0.2, 0.3]); // Éxito
+      mockChromaClient.querySimilarWithDocuments.mockRejectedValueOnce(new Error('Query timeout')); // Fallo
+      mockGeminiClient.generateChatResponse.mockResolvedValueOnce('Climate change impacts are discussed extensively.');
+
+      // ACT
+      const result = await useCase.execute({
+        articleId: 'test-article-id-123',
+        messages: createChatMessages('What are the impacts?'),
+      });
+
+      // ASSERT 1: Debe responder exitosamente
+      expect(result).toBeDefined();
+
+      // ASSERT 2: Debe haber intentado generar embedding
+      expect(mockGeminiClient.generateEmbedding).toHaveBeenCalledTimes(1);
+
+      // ASSERT 3: Debe haber intentado query (y falló)
+      expect(mockChromaClient.querySimilarWithDocuments).toHaveBeenCalledTimes(1);
+
+      // ASSERT 4: Debe usar contenido del artículo como fallback
+      const contextArg = mockGeminiClient.generateChatResponse.mock.calls[0][0];
+      expect(contextArg).toContain('climate change');
+      expect(contextArg).toContain('global impact');
+    });
+
+    it('TRUNCADO EN FALLBACK: si el contenido del artículo es muy largo (>3000 chars), debe truncarse', async () => {
+      // ARRANGE
+      const longContent = 'x'.repeat(5000); // 5000 caracteres
+      const articleWithLongContent = createMockArticle({
+        content: longContent,
+      });
+
+      // Mock: ChromaDB falla
+      mockArticleRepository.findById.mockResolvedValueOnce(articleWithLongContent);
+      mockGeminiClient.generateEmbedding.mockRejectedValueOnce(new Error('ChromaDB down'));
+      mockGeminiClient.generateChatResponse.mockResolvedValueOnce('Response');
+
+      // ACT
+      await useCase.execute({
+        articleId: 'test-article-id-123',
+        messages: createChatMessages('Question'),
+      });
+
+      // ASSERT: El contenido debe estar truncado a MAX_FALLBACK_CONTENT_CHARS (3000)
+      const contextArg = mockGeminiClient.generateChatResponse.mock.calls[0][0];
+      
+      // No debe contener los 5000 caracteres completos
+      expect(contextArg.length).toBeLessThan(5000);
+      
+      // Debe contener el marcador de truncado
+      expect(contextArg).toContain('...');
+    });
+  });
+
+  // ==========================================================================
+  // GRUPO 5: CONVERSACIÓN MULTI-TURNO (ZONA ESTÁNDAR - 80%)
   // ==========================================================================
 
   describe('💬 Conversación Multi-turno', () => {
@@ -479,7 +646,7 @@ describe('ChatArticleUseCase - RAG System (ZONA CRÍTICA)', () => {
   });
 
   // ==========================================================================
-  // GRUPO 5: AUGMENTATION (ZONA ESTÁNDAR - 80%)
+  // GRUPO 6: AUGMENTATION (ZONA ESTÁNDAR - 80%)
   // ==========================================================================
 
   describe('📝 Augmentation de Contexto', () => {
