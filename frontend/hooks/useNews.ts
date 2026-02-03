@@ -41,6 +41,8 @@ export interface UseNewsParams {
 export function useNews(params: UseNewsParams = {}) {
   const { category = 'general', limit = 50, offset = 0 } = params;
 
+  console.log('📰 [useNews] Hook montado/actualizado. Category:', category);
+
   return useQuery<NewsResponse>({
     // Query Key: Única por categoría y filtros
     // Cambia automáticamente cuando params cambia → refetch automático
@@ -48,13 +50,27 @@ export function useNews(params: UseNewsParams = {}) {
 
     // Query Function: Fetcher apropiado según categoría
     queryFn: async () => {
+      console.log('🌐 [useNews] ========== EJECUTANDO queryFn ==========');
+      console.log('🌐 [useNews] Category:', category, '| Limit:', limit, '| Offset:', offset);
+      const startTime = Date.now();
+      
+      let result;
       if (category === 'favorites') {
-        return fetchFavorites(limit, offset);
+        console.log('⭐ [useNews] Fetching FAVORITES...');
+        result = await fetchFavorites(limit, offset);
       } else if (category === 'general') {
-        return fetchNews(limit, offset);
+        console.log('📡 [useNews] Fetching GENERAL...');
+        result = await fetchNews(limit, offset);
       } else {
-        return fetchNewsByCategory(category, limit, offset);
+        console.log(`📂 [useNews] Fetching CATEGORY: ${category}...`);
+        result = await fetchNewsByCategory(category, limit, offset);
       }
+      
+      const duration = Date.now() - startTime;
+      console.log(`✅ [useNews] Fetch completado en ${duration}ms. Artículos:`, result.data?.length || 0);
+      console.log('✅ [useNews] ========== FIN queryFn ==========');
+      
+      return result;
     },
 
     // Placeholder Data: Mantener datos previos durante refetch

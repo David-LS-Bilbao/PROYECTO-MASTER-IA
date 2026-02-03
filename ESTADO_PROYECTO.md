@@ -1,10 +1,10 @@
 # Estado del Proyecto - Verity News
 
-> Última actualización: Sprint 13 - React Query v5 Migration + Google OAuth Avatars (2026-02-03) - **PRODUCCIÓN ENTERPRISE-READY ✅🎯**
+> Última actualización: Sprint 13.1 - Botón Refresh News Inteligente (2026-02-03) - **PRODUCCIÓN ENTERPRISE-READY ✅🎯**
 
 ---
 
-## Estado Actual: SPRINT 13 COMPLETADO - REACT QUERY V5 + UI FIXES ✅🎯
+## Estado Actual: SPRINT 13.1 COMPLETADO - REFRESH NEWS POR CATEGORÍA ✅🎯
 
 | Componente | Estado | Cobertura | Notas |
 |------------|--------|-----------|-------|
@@ -14,8 +14,8 @@
 | **Testing Frontend** | ✅ 10/10 | **52 tests (100% passing)** | Hooks + Components + API Interceptor + page.tsx |
 | **Resiliencia** | ✅ 10/10 | 100% crítico | Exponential Backoff + Circuit Breaker + Error Handler |
 | **Observabilidad** | ✅ 10/10 | 100% crítico | Pino Structured Logging + Request Correlation IDs |
-| **Frontend Moderno** | ✅ 10/10 | 100% crítico | React Query v5 + useArticle hook + Invalidación inteligente |
-| **UI/UX** | ✅ 10/10 | 100% crítico | Google Avatar CORS fix + Turbopack + Refresh News |
+| **Frontend Moderno** | ✅ 10/10 | 100% crítico | React Query v5 + useArticle hook + Refresh News |
+| **UI/UX** | ✅ 10/10 | 100% crítico | Google Avatar CORS fix + Turbopack + Refresh News Inteligente |
 | **Optimización** | ✅ 9/10 | 80% estándar | Ingesta Defensiva + Taximeter validado |
 | **Frontend UI** | ✅ 10/10 | 100% crítico | Perfil + Costes + Validación completa |
 | **Base de Datos** | ✅ 9/10 | 100% crítico | Modelos User/Favorite + Tests de persistencia |
@@ -45,6 +45,314 @@
 | **11** | **Suite de Testing Backend Completa** | ✅ | **2026-02-03** |
 | **12** | **Testing Frontend + Auto-Logout 401** | ✅ | **2026-02-03** |
 | **13** | **Resiliencia + Observabilidad** | ✅ | **2026-02-03** |
+| **13.1** | **Botón Refresh News Inteligente** | ✅ | **2026-02-03** |
+
+---
+
+## Sprint 13.1: Botón Refresh News por Categoría 🔄📰
+
+### Objetivo
+Implementar funcionalidad completa del botón "Últimas noticias" con ingesta RSS inteligente por categoría y refetch automático de React Query.
+
+### Resumen Ejecutivo
+
+**🎯 Funcionalidad Completada: Refresh News Inteligente**
+
+| Fase | Descripción | Estado |
+|------|-------------|--------|
+| **Configuración** | Vitest types en tsconfig.json | ✅ |
+| **Detección Categoría** | Parse automático desde URL | ✅ |
+| **Ingesta RSS** | Filtrado por categoría + pageSize 20 | ✅ |
+| **Refetch React Query** | Invalidación selectiva por categoría | ✅ |
+| **Favoritos** | Sin ingesta RSS, solo refetch cache | ✅ |
+| **Logs Debug** | Trazabilidad completa del flujo | ✅ |
+
+---
+
+### Fase A: Configuración TypeScript + Vitest
+
+#### Archivo: `frontend/tsconfig.json`
+
+**Cambio:**
+```json
+{
+  "compilerOptions": {
+    "types": ["vitest/globals"],  // ← Nuevo
+    // ... resto configuración
+  }
+}
+```
+
+**Beneficio:**
+- TypeScript reconoce globales de Vitest (`describe`, `it`, `expect`, `vi`)
+- No requiere imports en archivos de test
+- Autocompletado en VSCode
+
+---
+
+### Fase B: Botón Refresh News - Lógica Principal
+
+#### Archivo: `frontend/components/layout/sidebar.tsx`
+
+**Método:** `handleRefreshNews()`
+
+**Flujo:**
+```
+1. Detectar categoría desde URL (URLSearchParams)
+2. Si categoría !== 'favorites':
+   2a. POST /api/ingest/news con category filtrada
+   2b. Esperar respuesta (artículos nuevos ingresados)
+3. Invalidar queries de React Query para esa categoría
+4. React Query ejecuta refetch automático
+5. UI actualizada con noticias frescas
+```
+
+**Código Clave:**
+```typescript
+// 1. Detectar categoría
+const urlParams = new URLSearchParams(window.location.search);
+const currentCategory = urlParams.get('category') || 'general';
+
+// 2. Ingesta RSS (solo si NO es favoritos)
+if (currentCategory !== 'favorites') {
+  const requestBody: any = { pageSize: 20 };
+  
+  // Filtrar por categoría específica (excepto general)
+  if (currentCategory !== 'general') {
+    requestBody.category = currentCategory;
+  }
+  
+  await fetch('/api/ingest/news', {
+    method: 'POST',
+    body: JSON.stringify(requestBody)
+  });
+}
+
+// 3. Invalidar cache de React Query
+await queryClient.invalidateQueries({ 
+  queryKey: ['news', currentCategory],
+  exact: false,
+  refetchType: 'active',
+});
+```
+
+---
+
+### Fase C: Comportamiento por Categoría
+
+#### Tabla de Comportamiento
+
+| Categoría | Ingesta RSS | Fuentes Consultadas | Refetch | Resultado |
+|-----------|-------------|---------------------|---------|-----------|
+| **General** | ✅ | Todas las fuentes activas (todas categorías) | ✅ | Artículos de todas las categorías |
+| **Tecnología** | ✅ | Solo fuentes con `category: "tecnologia"` (10 fuentes) | ✅ | Artículos de Xataka, Genbeta, Applesfera, etc. |
+| **Economía** | ✅ | Solo fuentes con `category: "economia"` | ✅ | Artículos de fuentes económicas |
+| **Deportes** | ✅ | Solo fuentes con `category: "deportes"` | ✅ | Artículos de fuentes deportivas |
+| **Política** | ✅ | Solo fuentes con `category: "politica"` | ✅ | Artículos de fuentes políticas |
+| **Ciencia** | ✅ | Solo fuentes con `category: "ciencia"` | ✅ | Artículos de fuentes científicas |
+| **Cultura** | ✅ | Solo fuentes con `category: "cultura"` | ✅ | Artículos de fuentes culturales |
+| **Internacional** | ✅ | Solo fuentes con `category: "internacional"` | ✅ | Artículos de fuentes internacionales |
+| **Favoritos** | ❌ | N/A (sin fuentes externas) | ✅ | Re-obtiene favoritos actuales de BD |
+
+---
+
+### Fase D: Logs de Debugging
+
+#### Archivo: `frontend/hooks/useNews.ts`
+
+**Logs Implementados:**
+```typescript
+📰 [useNews] Hook montado/actualizado. Category: tecnologia
+🌐 [useNews] ========== EJECUTANDO queryFn ==========
+🌐 [useNews] Category: tecnologia | Limit: 50 | Offset: 0
+📂 [useNews] Fetching CATEGORY: tecnologia...
+✅ [useNews] Fetch completado en 27ms. Artículos: 10
+✅ [useNews] ========== FIN queryFn ==========
+```
+
+#### Archivo: `frontend/components/layout/sidebar.tsx`
+
+**Logs Implementados:**
+```typescript
+🔄 [REFRESH] ========== INICIO REFRESH ==========
+🔄 [REFRESH] URL actual: http://localhost:3001/?category=tecnologia
+🔄 [REFRESH] Categoría detectada: tecnologia
+🔄 [REFRESH] Queries activas ANTES: [{key: ['news', 'tecnologia', 50, 0], state: 'success'}]
+📥 [REFRESH] Iniciando ingesta RSS para categoría: tecnologia...
+📂 [REFRESH] Filtrando por categoría: tecnologia
+✅ [REFRESH] Ingesta completada: Successfully ingested 5 new articles
+📊 [REFRESH] Artículos nuevos: 5
+🗑️ [REFRESH] Invalidando queries de categoría: tecnologia
+🔄 [REFRESH] Queries activas DESPUÉS: [{key: ['news', 'tecnologia', 50, 0], state: 'success'}]
+✅ [REFRESH] ========== FIN REFRESH ==========
+```
+
+---
+
+### Validación End-to-End
+
+#### Ejemplo: Categoría Tecnología
+
+**Estado Inicial:**
+- BD tiene 5 artículos de tecnología (Xataka, Genbeta)
+- Usuario en `/?category=tecnologia`
+
+**Acción:** Pulsar "Últimas noticias"
+
+**Backend:**
+1. Recibe `POST /api/ingest/news { category: "tecnologia", pageSize: 20 }`
+2. Consulta solo las 10 fuentes RSS de tecnología
+3. Extrae artículos nuevos (no duplicados por URL)
+4. Inserta en BD
+5. Responde: `{ success: true, message: "Successfully ingested 5 new articles", data: { newArticles: 5 } }`
+
+**Frontend:**
+1. Detecta `category=tecnologia` desde URL
+2. Ejecuta ingesta RSS
+3. Invalida `queryKey: ['news', 'tecnologia']`
+4. React Query ejecuta refetch automático
+5. `useNews({ category: 'tecnologia' })` obtiene 10 artículos (5 viejos + 5 nuevos)
+6. UI actualizada
+
+**Logs Console:**
+```
+🔄 [REFRESH] Categoría detectada: tecnologia
+📥 [REFRESH] Iniciando ingesta RSS para categoría: tecnologia...
+📂 [REFRESH] Filtrando por categoría: tecnologia
+✅ [REFRESH] Ingesta completada: Successfully ingested 5 new articles
+📊 [REFRESH] Artículos nuevos: 5
+🗑️ [REFRESH] Invalidando queries de categoría: tecnologia
+🌐 [useNews] EJECUTANDO queryFn para tecnologia
+✅ [useNews] Fetch completado en 25ms. Artículos: 10
+```
+
+---
+
+### Ejemplo: Categoría Favoritos
+
+**Estado Inicial:**
+- Usuario tiene 3 artículos marcados como favoritos
+- Usuario en `/?category=favorites`
+
+**Acción:** Pulsar "Últimas noticias"
+
+**Backend:**
+- No recibe petición (favoritos no son fuente RSS externa)
+
+**Frontend:**
+1. Detecta `category=favorites`
+2. **NO** ejecuta ingesta RSS (favoritos no son RSS)
+3. Invalida `queryKey: ['news', 'favorites']`
+4. React Query ejecuta refetch de favoritos desde BD
+5. UI actualizada con favoritos actuales
+
+**Logs Console:**
+```
+🔄 [REFRESH] Categoría detectada: favorites
+⭐ [REFRESH] Categoría FAVORITOS: solo refrescando cache (sin ingesta RSS)
+🗑️ [REFRESH] Invalidando queries de categoría: favorites
+🌐 [useNews] EJECUTANDO queryFn para favorites
+✅ [useNews] Fetch completado en 15ms. Artículos: 3
+```
+
+---
+
+### Impacto y Beneficios
+
+#### UX
+- ✅ Actualización instantánea de noticias por categoría
+- ✅ Sin navegación forzada (mantiene vista actual)
+- ✅ Sidebar se cierra automáticamente en mobile
+- ✅ Feedback visual (artículos nuevos aparecen inmediatamente)
+
+#### Performance
+- ✅ Ingesta selectiva (solo fuentes de la categoría → menos carga)
+- ✅ Refetch selectivo (solo invalida categoría actual → menos queries)
+- ✅ pageSize: 20 (cantidad óptima para dashboard)
+
+#### Mantenibilidad
+- ✅ Logs completos para debugging
+- ✅ Lógica separada por categoría
+- ✅ Manejo especial para favoritos (sin RSS)
+- ✅ Código autodocumentado con emojis
+
+#### Escalabilidad
+- ✅ Fácil agregar nuevas categorías (solo actualizar backend schema)
+- ✅ Fácil cambiar pageSize sin tocar lógica
+- ✅ Fácil agregar nuevas fuentes RSS por categoría
+
+---
+
+### Comandos de Validación
+
+```bash
+# Frontend tests
+cd frontend
+npm test
+
+# Backend tests
+cd backend
+npm test
+
+# Verificar tipos TypeScript
+cd frontend
+npx tsc --noEmit
+
+# Verificar artículos en BD
+cd backend
+node -e "const {PrismaClient}=require('@prisma/client'); const p=new PrismaClient(); p.article.count().then(c=>console.log('Total:',c)).finally(()=>p.\$disconnect())"
+```
+
+---
+
+### Archivos Modificados
+
+| Archivo | Líneas | Cambios |
+|---------|--------|---------|
+| `frontend/tsconfig.json` | +1 | Agregado `types: ["vitest/globals"]` |
+| `frontend/components/layout/sidebar.tsx` | ~60 | Implementado `handleRefreshNews()` con detección categoría + ingesta RSS filtrada |
+| `frontend/hooks/useNews.ts` | ~30 | Agregados logs de debugging completos |
+| `backend/check-db.js` | +30 | Script temporal de verificación BD (puede eliminarse) |
+
+---
+
+### Deuda Técnica
+
+1. **Logs de Debugging:**
+   - Actualmente en modo verbose para validación
+   - **Acción:** Eliminar logs de producción antes de deploy
+   - **Prioridad:** Media
+
+2. **Script Temporal:**
+   - `backend/check-db.js` creado para debugging
+   - **Acción:** Eliminar archivo temporal
+   - **Prioridad:** Baja
+
+3. **Hardcoded pageSize:**
+   - Actualmente `pageSize: 20` hardcoded
+   - **Acción:** Mover a constante de configuración
+   - **Prioridad:** Baja
+
+---
+
+### Próximos Pasos Sugeridos
+
+1. **Tests Automatizados:**
+   - Tests E2E para refresh en cada categoría
+   - Tests de integración sidebar → useNews → backend
+
+2. **UI Feedback:**
+   - Loading spinner durante ingesta RSS
+   - Toast notification con cantidad de artículos nuevos
+   - Animación de entrada para artículos nuevos
+
+3. **Optimización:**
+   - Caché de fuentes RSS activas por categoría
+   - Prefetch de siguiente categoría al hover
+
+4. **Analytics:**
+   - Tracking de uso del botón por categoría
+   - Métricas de artículos nuevos por fuente
 
 ---
 

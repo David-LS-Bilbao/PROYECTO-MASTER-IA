@@ -32,15 +32,76 @@ export function Sidebar({ onOpenDashboard, onOpenSources }: SidebarProps) {
   const queryClient = useQueryClient();
 
   // Handler para refrescar las noticias
-  const handleRefreshNews = () => {
-    // Siempre invalidar las queries de noticias generales para forzar refetch
-    queryClient.invalidateQueries({ 
-      queryKey: ['news', 'general'],
-      exact: false, // Invalida todas las queries que empiecen con ['news', 'general', ...]
+  const handleRefreshNews = async () => {
+    console.log('🔄 [REFRESH] ========== INICIO REFRESH ==========');
+    
+    // Detectar categoría actual desde la URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const currentCategory = urlParams.get('category') || 'general';
+    
+    console.log('🔄 [REFRESH] URL actual:', window.location.href);
+    console.log('🔄 [REFRESH] Categoría detectada:', currentCategory);
+    console.log('🔄 [REFRESH] Queries activas ANTES:', 
+      queryClient.getQueryCache().getAll()
+        .filter(q => q.queryKey[0] === 'news')
+        .map(q => ({ key: q.queryKey, state: q.state.status }))
+    );
+    
+    // Solo hacer ingesta RSS si NO es favoritos
+    if (currentCategory !== 'favorites') {
+      try {
+        // 1. Disparar ingesta de noticias SOLO de las fuentes de la categoría actual
+        console.log(`📥 [REFRESH] Iniciando ingesta RSS para categoría: ${currentCategory}...`);
+        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+        
+        // Preparar body de la request
+        const requestBody: any = {
+          pageSize: 20, // Suficientes para llenar dashboard
+        };
+        
+        // Solo agregar category si NO es 'general'
+        if (currentCategory !== 'general') {
+          requestBody.category = currentCategory;
+          console.log(`📂 [REFRESH] Filtrando por categoría: ${currentCategory}`);
+        } else {
+          console.log(`🌐 [REFRESH] Ingesta general (todas las categorías)`);
+        }
+        
+        const response = await fetch(`${API_BASE_URL}/api/ingest/news`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+        });
+        
+        if (!response.ok) {
+          console.warn('⚠️ [REFRESH] Error al actualizar noticias:', response.status);
+        } else {
+          const data = await response.json();
+          console.log('✅ [REFRESH] Ingesta completada:', data.message);
+          console.log('📊 [REFRESH] Artículos nuevos:', data.data?.newArticles || 0);
+        }
+      } catch (error) {
+        console.error('❌ [REFRESH] Error al ingestar:', error);
+      }
+    } else {
+      console.log('⭐ [REFRESH] Categoría FAVORITOS: solo refrescando cache (sin ingesta RSS)');
+    }
+    
+    // 2. Invalidar Y refetch SOLO de la categoría actual
+    console.log(`🗑️ [REFRESH] Invalidando queries de categoría: ${currentCategory}`);
+    await queryClient.invalidateQueries({ 
+      queryKey: ['news', currentCategory],
+      exact: false,
+      refetchType: 'active',
     });
     
-    // Navegar a home para asegurar que estamos en la vista correcta
-    router.push('/');
+    console.log('🔄 [REFRESH] Queries activas DESPUÉS:', 
+      queryClient.getQueryCache().getAll()
+        .filter(q => q.queryKey[0] === 'news')
+        .map(q => ({ key: q.queryKey, state: q.state.status }))
+    );
+    
+    console.log('✅ [REFRESH] ========== FIN REFRESH ==========');
     
     // Cerrar el sidebar en mobile
     setIsOpen(false);
