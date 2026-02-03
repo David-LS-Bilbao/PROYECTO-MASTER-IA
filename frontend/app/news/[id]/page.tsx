@@ -5,9 +5,11 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import DOMPurify from 'dompurify';
+import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ExternalLink, Clock, User, Tag, Sparkles } from 'lucide-react';
-import { fetchNewsById, analyzeArticle, type NewsArticle, type AnalyzeResponse } from '@/lib/api';
+import { analyzeArticle, type NewsArticle, type AnalyzeResponse } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import { useArticle } from '@/hooks/useArticle';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -88,37 +90,27 @@ export default function NewsDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { getToken } = useAuth();
+  const queryClient = useQueryClient();
   const id = params.id as string;
 
-  const [article, setArticle] = useState<NewsArticle | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // React Query: Fetch article data
+  const { 
+    data: article, 
+    isLoading, 
+    isError, 
+    error: queryError 
+  } = useArticle({ id });
+
+  // Local state for AI analysis
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
 
+  // Redirect to not-found if 404 error
   useEffect(() => {
-    async function loadArticle() {
-      if (!id) return;
-
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        const response = await fetchNewsById(id);
-        setArticle(response.data);
-      } catch (e) {
-        const message = e instanceof Error ? e.message : 'Error al cargar la noticia';
-        setError(message);
-        if (message.includes('404')) {
-          router.push('/news/not-found');
-        }
-      } finally {
-        setIsLoading(false);
-      }
+    if (isError && queryError?.message.includes('404')) {
+      router.push('/news/not-found');
     }
-
-    loadArticle();
-  }, [id, router]);
+  }, [isError, queryError, router]);
 
   // Sanitize HTML content to prevent XSS attacks
   // Must be before any conditional returns to follow Rules of Hooks
@@ -144,16 +136,10 @@ export default function NewsDetailPage() {
         return;
       }
 
-      const response: AnalyzeResponse = await analyzeArticle(article.id, token);
+      await analyzeArticle(article.id, token);
 
-      // Update article with analysis data
-      setArticle(prev => prev ? {
-        ...prev,
-        summary: response.data.summary,
-        biasScore: response.data.biasScore,
-        analysis: response.data.analysis,
-        analyzedAt: new Date().toISOString(),
-      } : null);
+      // Invalidate query cache to refetch article with new analysis
+      queryClient.invalidateQueries({ queryKey: ['article', id] });
     } catch (e) {
       setAnalyzeError(e instanceof Error ? e.message : 'Error al analizar');
     } finally {
@@ -165,14 +151,15 @@ export default function NewsDetailPage() {
     return <ArticleSkeleton />;
   }
 
-  if (error || !article) {
+  if (isError || !article) {
+    const errorMessage = queryError?.message || 'Error al cargar la noticia';
     return (
       <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex items-center justify-center">
         <Card className="max-w-md mx-4">
           <CardContent className="pt-6 text-center">
             <div className="text-6xl mb-4">😵</div>
             <h1 className="text-2xl font-bold mb-2">Error al cargar la noticia</h1>
-            <p className="text-muted-foreground mb-6">{error}</p>
+            <p className="text-muted-foreground mb-6">{errorMessage}</p>
             <Button asChild>
               <Link href="/">Volver al inicio</Link>
             </Button>

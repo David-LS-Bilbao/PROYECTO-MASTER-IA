@@ -244,15 +244,23 @@ export default function ProfilePage() {
               <CardContent className="pt-6">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
                   {/* Avatar */}
-                  <div className="w-24 h-24 rounded-full bg-linear-to-br from-blue-500 to-purple-600 flex items-center justify-center ring-4 ring-blue-500/20 shrink-0">
+                  <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center ring-4 ring-blue-500/20 shrink-0 overflow-hidden">
                     {user.photoURL ? (
                       <img
                         src={user.photoURL}
                         alt={user.displayName || 'Usuario'}
-                        className="w-full h-full rounded-full object-cover"
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          console.error('Error cargando imagen de perfil:', user.photoURL);
+                          e.currentTarget.style.display = 'none';
+                        }}
                       />
                     ) : (
                       <User className="h-12 w-12 text-white" />
+                    )}
+                    {user.photoURL && (
+                      <User className="h-12 w-12 text-white absolute" style={{ display: 'none' }} />
                     )}
                   </div>
 

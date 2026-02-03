@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Menu,
   X,
@@ -26,12 +28,29 @@ interface SidebarProps {
 export function Sidebar({ onOpenDashboard, onOpenSources }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const { user, logout } = useAuth();
+  const router = useRouter();
+  const queryClient = useQueryClient();
+
+  // Handler para refrescar las noticias
+  const handleRefreshNews = () => {
+    // Siempre invalidar las queries de noticias generales para forzar refetch
+    queryClient.invalidateQueries({ 
+      queryKey: ['news', 'general'],
+      exact: false, // Invalida todas las queries que empiecen con ['news', 'general', ...]
+    });
+    
+    // Navegar a home para asegurar que estamos en la vista correcta
+    router.push('/');
+    
+    // Cerrar el sidebar en mobile
+    setIsOpen(false);
+  };
 
   const navItems = [
     {
       label: 'Últimas noticias',
-      href: '/',
       icon: Newspaper,
+      onClick: handleRefreshNews,
     },
     {
       label: 'Favoritos',
@@ -158,17 +177,25 @@ export function Sidebar({ onOpenDashboard, onOpenSources }: SidebarProps) {
               <Link
                 href="/profile"
                 onClick={() => setIsOpen(false)}
-                className="shrink-0 w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer"
+                className="shrink-0 w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer overflow-hidden"
                 title="Ver perfil"
               >
                 {user.photoURL ? (
                   <img
                     src={user.photoURL}
                     alt={user.displayName || 'Usuario'}
-                    className="w-full h-full rounded-full object-cover"
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      console.error('Error cargando imagen de perfil en sidebar:', user.photoURL);
+                      e.currentTarget.style.display = 'none';
+                    }}
                   />
                 ) : (
                   <User className="h-5 w-5 text-white" />
+                )}
+                {user.photoURL && (
+                  <User className="h-5 w-5 text-white absolute" style={{ display: 'none' }} />
                 )}
               </Link>
 

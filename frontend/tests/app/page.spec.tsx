@@ -119,29 +119,48 @@ const createMockArticle = (id: string, overrides?: Partial<NewsArticle>): NewsAr
   id,
   title: `Mock Article ${id}`,
   description: `Description for article ${id}`,
+  content: `Full content for article ${id}`,
   source: 'Mock News Source',
   url: `https://example.com/article-${id}`,
+  urlToImage: `https://example.com/image-${id}.jpg`,
+  author: 'Mock Author',
   publishedAt: '2026-02-03T10:00:00.000Z',
   category: 'general',
-  imageUrl: `https://example.com/image-${id}.jpg`,
+  language: 'es',
+  summary: `Summary for article ${id}`,
   biasScore: 0.5,
-  reliabilityScore: 0.8,
-  embedding: null,
+  analysis: {
+    summary: `Analysis summary for article ${id}`,
+    biasScore: 0.5,
+    biasRaw: 0,
+    biasIndicators: [],
+    clickbaitScore: 30,
+    reliabilityScore: 0.8,
+    sentiment: 'neutral',
+    mainTopics: [],
+    factCheck: {
+      claims: [],
+      verdict: 'Verified',
+      reasoning: 'Mock fact check reasoning',
+    },
+  },
+  analyzedAt: '2026-02-03T10:00:00.000Z',
   isFavorite: false,
   ...overrides,
 });
 
 const mockNewsResponse: NewsResponse = {
-  data: [
-    createMockArticle('1', { title: 'Breaking News: AI Revolution' }),
-    createMockArticle('2', { title: 'Tech Giants Announce New Products' }),
-  ],
-  pagination: {
-    total: 2,
-    limit: 50,
-    offset: 0,
-    hasMore: false,
-  },
+    success: true,
+    data: [
+        createMockArticle('1', { title: 'Breaking News: AI Revolution' }),
+        createMockArticle('2', { title: 'Tech Giants Announce New Products' }),
+    ],
+    pagination: {
+        total: 2,
+        limit: 50,
+        offset: 0,
+        hasMore: false,
+    },
 };
 
 // =========================================================================
