@@ -69,6 +69,13 @@ export interface DashboardStats {
   biasDistribution: BiasDistribution;
 }
 
+export interface TokenUsage {
+  promptTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  costEstimated: number; // En Euros
+}
+
 export interface AnalyzeResponse {
   success: boolean;
   data: {
@@ -78,6 +85,7 @@ export interface AnalyzeResponse {
     analysis: ArticleAnalysis;
     scrapedContentLength: number;
   };
+  usage?: TokenUsage; // Optional: Cost tracking from backend
   message: string;
 }
 
