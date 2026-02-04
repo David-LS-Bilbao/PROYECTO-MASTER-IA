@@ -167,7 +167,7 @@ export function NewsCard({ article, onFavoriteToggle }: NewsCardProps) {
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {/* Analysis Section */}
+        {/* Analysis Section - Solo badge de sesgo, sin resumen */}
         {isAnalyzed && biasInfo && (
           <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
             <div className="flex items-center justify-between">
@@ -176,9 +176,6 @@ export function NewsCard({ article, onFavoriteToggle }: NewsCardProps) {
                 {biasInfo.label} ({(article.biasScore! * 100).toFixed(0)}%)
               </Badge>
             </div>
-            {article.summary && (
-              <p className="text-sm text-muted-foreground">{article.summary}</p>
-            )}
             {article.analysis?.mainTopics && article.analysis.mainTopics.length > 0 && (
               <div className="flex flex-wrap gap-1">
                 {article.analysis.mainTopics.slice(0, 3).map((topic, i) => (
