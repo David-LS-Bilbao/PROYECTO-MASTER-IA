@@ -97,7 +97,7 @@ Cuando te solicite código o una funcionalidad, estructura tu respuesta así:
 ## 7. Comandos Especiales
 - **`/test`**: Genera/Completa la suite TDD para el archivo actual.
 - **`/security`**: Audita el código actual o el último generado.
-- **`/refactor`**: Aplica patrones de diseño (SOLID) para limpiar código existente.
+- **`/refactor`**:lee el archivo CALIDAD.md y Aplica patrones de diseño (SOLID) para limpiar código existente.
 - **`/guardar`**: Genera el resumen en formato Markdown para actualizar `ESTADO_PROYECTO.md`y despues sube cambios al repositorio de github .
 
 

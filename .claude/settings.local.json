@@ -20,7 +20,9 @@
       "Bash(git commit -m \"$\\(cat <<''EOF''\ndocs: Actualizar ESTADO_PROYECTO.md con Sprint 7.1 completo\n\n- Resumen de todos los sprints completados \\(1-7.1\\)\n- Stack tecnológico final actualizado\n- Diagrama de arquitectura del sistema\n- Lista de endpoints API\n- Categorías RSS configuradas\n- Capacidades del sistema \\(10 features\\)\n- Métricas de desarrollo\n- Próximos pasos post-MVP\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(git commit -m \"$\\(cat <<''EOF''\nfix: Mover useMemo antes de returns condicionales \\(Rules of Hooks\\)\n\nEl useMemo para sanitizedContent estaba después de los returns\ncondicionales \\(isLoading, error\\), violando la regla de que los\nhooks deben ejecutarse siempre en el mismo orden.\n\nMovido antes de handleAnalyze para cumplir con Rules of Hooks.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(git commit:*)",
-      "Bash(dir /s /b /ad \"c:\\\\Users\\\\David\\\\OneDrive\\\\Desktop\\\\PROYECTO MASTER IA\\\\Verity-News\\\\backend\\\\src\")"
+      "Bash(dir /s /b /ad \"c:\\\\Users\\\\David\\\\OneDrive\\\\Desktop\\\\PROYECTO MASTER IA\\\\Verity-News\\\\backend\\\\src\")",
+      "Bash(cd:*)",
+      "Bash(npx vitest:*)"
     ]
   }
 }
