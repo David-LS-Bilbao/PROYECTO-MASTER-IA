@@ -91,9 +91,9 @@ export function StatsOverview({
           </p>
         </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* KPI Cards - Responsive grid */}
-        <div className="grid gap-4 grid-cols-2 lg:col-span-2">
+      <div className="space-y-6">
+        {/* KPI Cards - 4 columns in a single row */}
+        <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
           {/* Total Articles */}
           <Card>
             <CardHeader className="pb-3">
@@ -185,8 +185,8 @@ export function StatsOverview({
           </Card>
         </div>
 
-        {/* Bias Chart - 1/3 width on desktop */}
-        <div className="lg:col-span-1">
+        {/* Bias Chart - Full width below KPIs */}
+        <div>
           <BiasDistributionChart data={biasDistribution} />
         </div>
       </div>
