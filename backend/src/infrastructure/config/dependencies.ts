@@ -25,6 +25,7 @@ import { ChatController } from '../http/controllers/chat.controller';
 import { SearchController } from '../http/controllers/search.controller';
 import { SourcesController } from '../http/controllers/sources.controller';
 import { UserController } from '../http/controllers/user.controller';
+import { HealthController } from '../http/controllers/health.controller';
 
 export class DependencyContainer {
   private static instance: DependencyContainer;
@@ -40,6 +41,7 @@ export class DependencyContainer {
   public readonly searchController: SearchController;
   public readonly sourcesController: SourcesController;
   public readonly userController: UserController;
+  public readonly healthController: HealthController;
 
   private constructor() {
     // Use singleton Prisma instance
@@ -101,6 +103,7 @@ export class DependencyContainer {
     this.searchController = new SearchController(searchNewsUseCase);
     this.userController = new UserController(this.geminiClient);
     this.sourcesController = new SourcesController(this.geminiClient);
+    this.healthController = new HealthController(this.prisma);
   }
 
   static getInstance(): DependencyContainer {

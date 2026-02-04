@@ -10,6 +10,7 @@ import { createChatRoutes } from './routes/chat.routes';
 import { createSearchRoutes } from './routes/search.routes';
 import { createSourcesRoutes } from './routes/sources.routes';
 import { createUserRoutes } from './routes/user.routes';
+import { createHealthRoutes } from './routes/health.routes';
 import { errorHandler } from './middleware/error.handler';
 import { requestLogger } from './middleware/request.logger';
 import { EntityNotFoundError } from '../../domain/errors/domain.error';
@@ -47,48 +48,8 @@ export function createServer(): Application {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
-  // Health check route - shows status of all services
-  app.get('/health', async (_req: Request, res: Response) => {
-    const services: Record<string, 'healthy' | 'unhealthy' | 'unknown'> = {
-      api: 'healthy',
-      database: 'unknown',
-      chromadb: 'unknown',
-      gemini: 'unknown',
-    };
-
-    // Check database (Prisma)
-    try {
-      await container.newsRepository.findAll({ limit: 1, offset: 0 });
-      services.database = 'healthy';
-    } catch {
-      services.database = 'unhealthy';
-    }
-
-    // Check ChromaDB
-    try {
-      const chromaHealthy = await container.chromaClient.healthCheck();
-      services.chromadb = chromaHealthy ? 'healthy' : 'unhealthy';
-    } catch {
-      services.chromadb = 'unhealthy';
-    }
-
-    // Check Gemini
-    try {
-      const geminiHealthy = await container.geminiClient.isAvailable();
-      services.gemini = geminiHealthy ? 'healthy' : 'unhealthy';
-    } catch {
-      services.gemini = 'unhealthy';
-    }
-
-    const allHealthy = Object.values(services).every(s => s === 'healthy');
-
-    res.status(allHealthy ? 200 : 503).json({
-      status: allHealthy ? 'ok' : 'degraded',
-      service: 'Verity News API',
-      services,
-      timestamp: new Date().toISOString(),
-    });
-  });
+  // Health Routes - basic health check and readiness probe
+  app.use('/health', createHealthRoutes(container.healthController));
 
   // API Routes
   console.log('📚 Registrando rutas...');
