@@ -42,8 +42,9 @@ function CustomTooltip({
   const item = payload[0];
   const label = item.name || '';
   const value = item.value ?? 0;
-  const total = payload[0]?.payload?.payload?.total || 1;
-  const percentage = Math.round((value / total) * 100);
+  
+  // El percent viene de Recharts ya calculado (0-1), lo convertimos a porcentaje
+  const percentage = Math.round((item.percent ?? 0) * 100);
 
   // Descripciones educativas según el tipo
   const descriptions: Record<string, { icon: string; text: string; color: string }> = {
