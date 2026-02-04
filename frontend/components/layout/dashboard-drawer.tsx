@@ -37,11 +37,23 @@ export function DashboardDrawer({
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>Inteligencia de Medios</SheetTitle>
+          <SheetTitle>📊 Inteligencia de Medios</SheetTitle>
           <SheetDescription>
-            Análisis global de sesgo y cobertura de noticias
+            Análisis automático para ayudarte a identificar sesgos y entender la cobertura de noticias
           </SheetDescription>
         </SheetHeader>
+
+        {/* Explicación educativa */}
+        <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
+          <h3 className="font-semibold text-sm text-blue-900 dark:text-blue-100 mb-2">
+            💡 ¿Cómo interpretar estos datos?
+          </h3>
+          <ul className="text-xs text-blue-800 dark:text-blue-200 space-y-1">
+            <li>• <strong>Noticias Objetivas altas (&gt;70%):</strong> Tu cobertura es balanceada</li>
+            <li>• <strong>Gráfico equilibrado:</strong> Verde en el centro y lados balanceados</li>
+            <li>• <strong>% Analizadas alto:</strong> Datos más fiables para tomar decisiones</li>
+          </ul>
+        </div>
 
         <div className="mt-8">
           <StatsOverview

@@ -20,16 +20,17 @@ interface BiasDistributionChartProps {
   data: BiasDistribution;
 }
 
+// Colores neutrales para evitar asociaciones políticas directas
 const COLORS = {
-  left: '#ef4444',    // Red 500
-  neutral: '#94a3b8', // Slate 400
-  right: '#3b82f6',   // Blue 500
+  left: '#f59e0b',    // Amber 500 (antes rojo - evita asociación)
+  neutral: '#10b981', // Green 500 (indica equilibrio positivo)
+  right: '#8b5cf6',   // Purple 500 (antes azul - evita asociación)
 };
 
 const LABELS = {
-  left: 'Izquierda',
-  neutral: 'Neutral',
-  right: 'Derecha',
+  left: 'Tendencia Izquierda',
+  neutral: 'Equilibrado',
+  right: 'Tendencia Derecha',
 };
 
 function CustomTooltip({
@@ -41,28 +42,40 @@ function CustomTooltip({
   const item = payload[0];
   const label = item.name || '';
   const value = item.value ?? 0;
+  const total = payload[0]?.payload?.payload?.total || 1;
+  const percentage = Math.round((value / total) * 100);
 
   return (
     <div className="rounded-lg border bg-background px-3 py-2 shadow-sm">
       <p className="text-sm font-medium text-foreground">{label}</p>
-      <p className="text-xs text-muted-foreground">{value} artículos</p>
+      <p className="text-xs text-muted-foreground">
+        {value} artículos ({percentage}%)
+      </p>
+      {label === LABELS.neutral && (
+        <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+          ✓ Objetivo y balanceado
+        </p>
+      )}
     </div>
   );
 }
 
 export function BiasDistributionChart({ data }: BiasDistributionChartProps) {
+  const total = data.left + data.neutral + data.right;
+  
   const chartData = [
-    { name: LABELS.left, value: data.left, color: COLORS.left },
-    { name: LABELS.neutral, value: data.neutral, color: COLORS.neutral },
-    { name: LABELS.right, value: data.right, color: COLORS.right },
+    { name: LABELS.left, value: data.left, color: COLORS.left, total },
+    { name: LABELS.neutral, value: data.neutral, color: COLORS.neutral, total },
+    { name: LABELS.right, value: data.right, color: COLORS.right, total },
   ];
-
-  const total = chartData.reduce((acc, item) => acc + item.value, 0);
 
   return (
     <Card className="h-full">
       <CardHeader>
-        <CardTitle className="text-lg">Distribución de Sesgo</CardTitle>
+        <CardTitle className="text-lg">¿Cómo se distribuyen las noticias?</CardTitle>
+        <p className="text-xs text-muted-foreground mt-2">
+          Una cobertura equilibrada tiene más noticias en el centro (verde) y balanceadas hacia los lados.
+        </p>
       </CardHeader>
       <CardContent className="h-65">
         {total === 0 ? (
