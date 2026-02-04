@@ -9,6 +9,7 @@ import { INewsArticleRepository } from '../../domain/repositories/news-article.r
 import { IGeminiClient } from '../../domain/services/gemini-client.interface';
 import { IChromaClient } from '../../domain/services/chroma-client.interface';
 import { ValidationError } from '../../domain/errors/domain.error';
+import { GeminiErrorMapper } from '../../infrastructure/external/gemini-error-mapper';
 
 export interface SearchNewsInput {
   query: string;
@@ -44,7 +45,16 @@ export class SearchNewsUseCase {
 
     // 1. Generate embedding for the search query
     console.log(`   🧠 Generando embedding para la query...`);
-    const queryEmbedding = await this.geminiClient.generateEmbedding(query);
+    
+    let queryEmbedding: number[];
+    try {
+      queryEmbedding = await this.geminiClient.generateEmbedding(query);
+    } catch (error) {
+      // Map Gemini errors for observability (AI_RULES.md compliance)
+      const mappedError = GeminiErrorMapper.toExternalAPIError(error);
+      console.error(`   ❌ Gemini embedding failed: ${mappedError.message}`);
+      throw mappedError;
+    }
 
     // 2. Search ChromaDB for similar article IDs
     console.log(`   🔗 Buscando en ChromaDB...`);

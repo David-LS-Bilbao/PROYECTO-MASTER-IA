@@ -63,6 +63,7 @@ model Article {
   biasScore     Float?              // Bias score from 0 (neutral) to 1 (highly biased)
   analysis      String?   @db.Text  // JSON string with detailed analysis
   analyzedAt    DateTime?           // When the article was analyzed
+  internalReasoning String? @db.Text // Chain-of-Thought for XAI auditing (NOT sent to client)
 
   // User features
   isFavorite    Boolean   @default(false)  // Quick favorite toggle (no auth for MVP)

@@ -25,7 +25,7 @@ export class GeminiErrorMapper {
    * @param errorMessage - Mensaje de error a evaluar
    * @returns true si el error es reintenTable
    */
-  isRetryable(errorMessage: string): boolean {
+  static isRetryable(errorMessage: string): boolean {
     if (!errorMessage || errorMessage.trim().length === 0) {
       return false;
     }
@@ -65,26 +65,27 @@ export class GeminiErrorMapper {
    * @param error - Error original de Gemini API
    * @returns ExternalAPIError con código HTTP y mensaje apropiado
    */
-  toExternalAPIError(error: Error): ExternalAPIError {
-    const errorMessage = error.message || '';
+  static toExternalAPIError(error: unknown): ExternalAPIError {
+    const err = error instanceof Error ? error : new Error(String(error));
+    const errorMessage = err.message || '';
     const msg = errorMessage.toLowerCase();
 
     // 401 - Unauthorized (API key inválida)
     if (msg.includes('api key') || msg.includes('401')) {
-      return new ExternalAPIError('Gemini', 'Invalid API key', 401, error);
+      return new ExternalAPIError('Gemini', 'Invalid API key', 401, err);
     }
 
     // 404 - Not Found (Modelo no encontrado)
     if (msg.includes('404') || msg.includes('not found')) {
-      return new ExternalAPIError('Gemini', `Model not found: ${errorMessage}`, 404, error);
+      return new ExternalAPIError('Gemini', `Model not found: ${errorMessage}`, 404, err);
     }
 
     // 429 - Rate Limit
     if (this.isRetryable(errorMessage) && (msg.includes('429') || msg.includes('quota'))) {
-      return new ExternalAPIError('Gemini', 'Rate limit exceeded after retries', 429, error);
+      return new ExternalAPIError('Gemini', 'Rate limit exceeded after retries', 429, err);
     }
 
     // 500 - Generic server error (5xx, network, unknown)
-    return new ExternalAPIError('Gemini', `API error: ${errorMessage}`, 500, error);
+    return new ExternalAPIError('Gemini', `API error: ${errorMessage}`, 500, err);
   }
 }

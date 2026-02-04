@@ -21,6 +21,7 @@ export interface NewsArticleProps {
   biasScore: number | null;
   analysis: string | null;
   analyzedAt: Date | null;
+  internalReasoning: string | null; // Chain-of-Thought for XAI auditing
   // User features
   isFavorite: boolean;
   // Metadata
@@ -51,6 +52,7 @@ export interface TokenUsage {
  * Complete AI analysis of a news article
  */
 export interface ArticleAnalysis {
+  internal_reasoning?: string; // Chain-of-Thought (XAI auditing only, excluded from client response)
   summary: string;
   // biasScore: -10 (Extrema Izquierda) a +10 (Extrema Derecha), 0 es Neutral
   // Stored normalized to 0-1 for UI compatibility (abs(biasScore)/10)
@@ -163,6 +165,10 @@ export class NewsArticle {
     return this.props.analyzedAt;
   }
 
+  get internalReasoning(): string | null {
+    return this.props.internalReasoning;
+  }
+
   get fetchedAt(): Date {
     return this.props.fetchedAt;
   }
@@ -201,6 +207,7 @@ export class NewsArticle {
       biasScore: analysis.biasScore,
       analysis: JSON.stringify(analysis),
       analyzedAt: new Date(),
+      internalReasoning: analysis.internal_reasoning || null, // Store for XAI auditing
       updatedAt: new Date(),
     });
   }
@@ -239,6 +246,8 @@ export class NewsArticle {
   }
 
   toJSON(): NewsArticleProps {
-    return { ...this.props };
+    const { internalReasoning, ...publicProps } = this.props;
+    // Exclude internalReasoning from client responses (XAI auditing only per AI_RULES.md)
+    return publicProps as NewsArticleProps;
   }
 }

@@ -29,9 +29,15 @@ export class AnalyzeController {
       // Execute use case
       const result = await this.analyzeArticleUseCase.execute(validatedInput);
 
+      // Exclude internal_reasoning from analysis object (AI_RULES.md: XAI auditing only)
+      const { internal_reasoning, ...publicAnalysis } = result.analysis;
+
       res.status(200).json({
         success: true,
-        data: result,
+        data: {
+          ...result,
+          analysis: publicAnalysis,
+        },
         message: 'Article analyzed successfully',
       });
     } catch (error) {

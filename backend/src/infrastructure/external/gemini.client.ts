@@ -43,11 +43,6 @@ import {
 const taximeter = new TokenTaximeter();
 
 /**
- * Singleton error mapper for consistent error handling
- */
-const errorMapper = new GeminiErrorMapper();
-
-/**
  * Reset taximeter (for testing)
  * @deprecated Use taximeter.reset() directly in tests
  */
@@ -64,7 +59,6 @@ export class GeminiClient implements IGeminiClient {
   private readonly chatModel: GenerativeModel;
   private readonly genAI: GoogleGenerativeAI;
   private readonly taximeter: TokenTaximeter;
-  private readonly errorMapper: GeminiErrorMapper;
 
   constructor(apiKey: string) {
     if (!apiKey || apiKey.trim() === '') {
@@ -73,7 +67,7 @@ export class GeminiClient implements IGeminiClient {
 
     this.genAI = new GoogleGenerativeAI(apiKey);
     this.taximeter = taximeter;
-    this.errorMapper = errorMapper;    this.errorMapper = errorMapper;
+
     // Modelo base para análisis (sin herramientas externas)
     this.model = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
@@ -113,11 +107,11 @@ export class GeminiClient implements IGeminiClient {
         const errorMessage = lastError.message || '';
 
         // No reintentar errores no transitorios
-        const isRetryable = this.errorMapper.isRetryable(errorMessage);
+        const isRetryable = GeminiErrorMapper.isRetryable(errorMessage);
 
         if (!isRetryable || attempt >= retries) {
           // Último intento o error no retriable
-          throw this.errorMapper.toExternalAPIError(lastError);
+          throw GeminiErrorMapper.toExternalAPIError(lastError);
         }
 
         // Calcular delay con exponential backoff
@@ -184,7 +178,7 @@ export class GeminiClient implements IGeminiClient {
       if (usageMetadata) {
         const promptTokens = usageMetadata.promptTokenCount || 0;
         const completionTokens = usageMetadata.candidatesTokenCount || 0;
-        const totalTokens = usageMetadata.totalTokenCount || (promptTokens + completionTokens);
+        const totalTokens = promptTokens + completionTokens; // Always calculate manually to avoid cached tokens inflation
         const costEstimated = this.taximeter.calculateCost(promptTokens, completionTokens);
 
         tokenUsage = {
@@ -441,6 +435,7 @@ export class GeminiClient implements IGeminiClient {
         : (Array.isArray(parsed.factualClaims) ? parsed.factualClaims : []);
 
       return {
+        internal_reasoning: typeof parsed.internal_reasoning === 'string' ? parsed.internal_reasoning : undefined,
         summary: parsed.summary,
         biasScore: biasScoreNormalized,
         biasRaw,

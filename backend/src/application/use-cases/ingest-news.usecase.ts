@@ -145,6 +145,7 @@ export class IngestNewsUseCase {
             biasScore: null,
             analysis: null,
             analyzedAt: null,
+            internalReasoning: null,
             isFavorite: false,
             fetchedAt: new Date(),
             updatedAt: new Date(),

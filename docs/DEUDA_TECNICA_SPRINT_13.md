@@ -480,7 +480,7 @@ export function ProfileHeader({
   return (
     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
       {/* Avatar */}
-      <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center ring-4 ring-blue-500/20 shrink-0 overflow-hidden">
+      <div className="w-24 h-24 rounded-full bg-linear-to-br from-blue-500 to-purple-600 flex items-center justify-center ring-4 ring-blue-500/20 shrink-0 overflow-hidden">
         {photoURL ? (
           <img
             src={photoURL}

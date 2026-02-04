@@ -116,6 +116,10 @@ class MockNewsArticleRepository implements INewsArticleRepository {
     return 0;
   }
 
+  async getBiasDistribution(): Promise<{ left: number; neutral: number; right: number }> {
+    return { left: 0, neutral: 0, right: 0 };
+  }
+
   async findBySourceAndDateRange(
     _source: string,
     _startDate: Date,

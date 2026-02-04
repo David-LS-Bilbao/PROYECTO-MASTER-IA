@@ -22,6 +22,7 @@ import { IJinaReaderClient } from '../../domain/services/jina-reader-client.inte
 import { IChromaClient } from '../../domain/services/chroma-client.interface';
 import { EntityNotFoundError, ValidationError } from '../../domain/errors/domain.error';
 import { MetadataExtractor } from '../../infrastructure/external/metadata-extractor';
+import { GeminiErrorMapper } from '../../infrastructure/external/gemini-error-mapper';
 
 // ============================================================================
 // COST OPTIMIZATION CONSTANTS
@@ -200,13 +201,21 @@ export class AnalyzeArticleUseCase {
       adjustedContent = `ADVERTENCIA: No se pudo acceder al artículo completo. Realiza el análisis basándote ÚNICAMENTE en el título y el resumen disponibles. Indica explícitamente en tu respuesta que el análisis es preliminar por falta de acceso a la fuente original.\n\n${contentToAnalyze || ''}`;
     }
     
-    const analysis = await this.geminiClient.analyzeArticle({
-      title: article.title,
-      content: adjustedContent,
-      source: article.source,
-      language: article.language,
-    });
-    console.log(`   ✅ Gemini OK. Score: ${analysis.biasScore} | Summary: ${analysis.summary.substring(0, 30)}...`);
+    let analysis: ArticleAnalysis;
+    try {
+      analysis = await this.geminiClient.analyzeArticle({
+        title: article.title,
+        content: adjustedContent,
+        source: article.source,
+        language: article.language,
+      });
+      console.log(`   ✅ Gemini OK. Score: ${analysis.biasScore} | Summary: ${analysis.summary.substring(0, 30)}...`);
+    } catch (error) {
+      // Map Gemini errors for observability (AI_RULES.md compliance)
+      const mappedError = GeminiErrorMapper.toExternalAPIError(error);
+      console.error(`   ❌ Gemini analysis failed: ${mappedError.message}`);
+      throw mappedError;
+    }
 
     // 5. Update article with analysis + auto-favorite (user invested credits in analysis)
     let analyzedArticle = article.withAnalysis(analysis);
@@ -229,8 +238,15 @@ export class AnalyzeArticleUseCase {
       // Combine relevant text for embedding
       const textToEmbed = `${article.title}. ${article.description || ''}. ${analysis.summary || ''}`;
 
-      // Generate embedding with Gemini
-      const embedding = await this.geminiClient.generateEmbedding(textToEmbed);
+      // Generate embedding with Gemini (wrapped with error mapping)
+      let embedding: number[];
+      try {
+        embedding = await this.geminiClient.generateEmbedding(textToEmbed);
+      } catch (error) {
+        const mappedError = GeminiErrorMapper.toExternalAPIError(error);
+        console.error(`   ❌ Gemini embedding failed: ${mappedError.message}`);
+        throw mappedError;
+      }
 
       // Upsert to ChromaDB
       await this.chromaClient.upsertItem(

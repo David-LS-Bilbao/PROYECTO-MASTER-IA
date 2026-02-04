@@ -1,8 +1,8 @@
 /**
  * RSS Discovery Prompt Configuration
  * 
- * Usado para encontrar feeds RSS de medios de comunicación
- * Versión actual: v1 (formato simple de búsqueda)
+ * Mapeo HTML → Lista URLs con regla de Confianza de Formato
+ * Versión: v2 (optimizada precisión estructural)
  */
 
 /**
@@ -12,5 +12,11 @@
  * @returns Prompt para enviar a Gemini
  */
 export function buildRssDiscoveryPrompt(mediaName: string): string {
-  return `El usuario busca el RSS de: '${mediaName}'. Devuelve EXCLUSIVAMENTE la URL del feed RSS oficial más probable. Sin texto, sin markdown, solo la URL. Si no tiene RSS o no lo sabes, devuelve 'null'.`;
+  return `INPUT: '${mediaName}'
+OUTPUT: URL feed RSS oficial
+
+REGLA CONFIANZA DE FORMATO:
+- SOLO URLs terminadas en .xml, .rss O que contengan /feed/
+- Si no cumple formato válido → 'null'
+- Sin texto adicional, sin markdown`;
 }

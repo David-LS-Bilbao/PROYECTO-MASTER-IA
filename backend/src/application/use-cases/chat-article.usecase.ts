@@ -20,6 +20,7 @@ import { INewsArticleRepository } from '../../domain/repositories/news-article.r
 import { IGeminiClient, ChatMessage } from '../../domain/services/gemini-client.interface';
 import { IChromaClient, QueryResult } from '../../domain/services/chroma-client.interface';
 import { EntityNotFoundError, ValidationError } from '../../domain/errors/domain.error';
+import { GeminiErrorMapper } from '../../infrastructure/external/gemini-error-mapper';
 
 // ============================================================================
 // COST OPTIMIZATION CONSTANTS
@@ -109,12 +110,19 @@ export class ChatArticleUseCase {
     const augmentedContext = this.augmentContext(retrievedContext, article);
 
     // 4. GENERATION: Call Gemini with the augmented context
-    const response = await this.geminiClient.generateChatResponse(
-      augmentedContext,
-      userQuestion
-    );
-
-    console.log(`   ✅ Respuesta RAG generada (${response.length} caracteres)`);
+    let response: string;
+    try {
+      response = await this.geminiClient.generateChatResponse(
+        augmentedContext,
+        userQuestion
+      );
+      console.log(`   ✅ Respuesta RAG generada (${response.length} caracteres)`);
+    } catch (error) {
+      // Map Gemini errors for observability (AI_RULES.md compliance)
+      const mappedError = GeminiErrorMapper.toExternalAPIError(error);
+      console.error(`   ❌ Gemini chat response failed: ${mappedError.message}`);
+      throw mappedError;
+    }
 
     return {
       articleId: article.id,
@@ -135,7 +143,16 @@ export class ChatArticleUseCase {
   private async retrieveContext(question: string, articleId: string): Promise<string> {
     // Generate embedding for the user's question
     console.log(`   🧠 Generando embedding de la pregunta...`);
-    const questionEmbedding = await this.geminiClient.generateEmbedding(question);
+    
+    let questionEmbedding: number[];
+    try {
+      questionEmbedding = await this.geminiClient.generateEmbedding(question);
+    } catch (error) {
+      // Map Gemini errors for observability (AI_RULES.md compliance)
+      const mappedError = GeminiErrorMapper.toExternalAPIError(error);
+      console.error(`   ❌ Gemini embedding failed: ${mappedError.message}`);
+      throw mappedError;
+    }
 
     // COST OPTIMIZATION: Límite de documentos recuperados
     console.log(`   🔎 Buscando en ChromaDB (max ${MAX_RAG_DOCUMENTS} docs)...`);

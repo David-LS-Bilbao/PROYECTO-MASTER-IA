@@ -36,22 +36,33 @@ describe('NewsController Integration Tests (API Layer)', () => {
   // ==========================================================================
 
   describe('🏥 Health Check - Verificación de Supertest', () => {
-    it('GET /health - debe devolver status 200 o 503 dependiendo del estado de servicios', async () => {
+    it('GET /health/check - debe devolver status 200 (liveness probe)', async () => {
       // ACT
-      const response = await request(app).get('/health');
+      const response = await request(app).get('/health/check');
+
+      // ASSERT
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('status', 'ok');
+      expect(response.body).toHaveProperty('timestamp');
+      expect(response.body).toHaveProperty('service', 'verity-news-api');
+    });
+
+    it('GET /health/readiness - debe devolver status 200 o 503 según estado de DB', async () => {
+      // ACT
+      const response = await request(app).get('/health/readiness');
 
       // ASSERT
       expect(response.status).toBeGreaterThanOrEqual(200);
       expect(response.status).toBeLessThan(600);
-      expect(response.body).toHaveProperty('service', 'Verity News API');
-      expect(response.body).toHaveProperty('services');
+      expect(response.body).toHaveProperty('status');
       expect(response.body).toHaveProperty('timestamp');
-
-      // Verificar estructura de servicios
-      expect(response.body.services).toHaveProperty('api');
-      expect(response.body.services).toHaveProperty('database');
-      expect(response.body.services).toHaveProperty('chromadb');
-      expect(response.body.services).toHaveProperty('gemini');
+      
+      if (response.status === 200) {
+        expect(response.body.status).toBe('ready');
+        expect(response.body).toHaveProperty('database', 'connected');
+      } else {
+        expect(response.body.status).toBe('not_ready');
+      }
     });
 
     it('GET /unknown-route - debe devolver 404 para rutas no existentes', async () => {

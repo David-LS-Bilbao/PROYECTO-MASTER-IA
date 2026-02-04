@@ -20,21 +20,27 @@ const EUR_USD_RATE = 0.95;     // EUR/USD conversion rate
 interface SessionCostAccumulator {
   analysisCount: number;
   analysisTotalTokens: number;
+  analysisPromptTokens: number;
+  analysisCompletionTokens: number;
   analysisTotalCost: number;
   ragChatCount: number;
   ragChatTotalTokens: number;
+  ragChatPromptTokens: number;
+  ragChatCompletionTokens: number;
   ragChatTotalCost: number;
   groundingChatCount: number;
   groundingChatTotalTokens: number;
+  groundingChatPromptTokens: number;
+  groundingChatCompletionTokens: number;
   groundingChatTotalCost: number;
   sessionStart: Date;
 }
 
 export interface CostReport {
-  analysis: { count: number; tokens: number; cost: number };
-  ragChat: { count: number; tokens: number; cost: number };
-  groundingChat: { count: number; tokens: number; cost: number };
-  total: { operations: number; tokens: number; cost: number };
+  analysis: { count: number; tokens: number; promptTokens: number; completionTokens: number; cost: number };
+  ragChat: { count: number; tokens: number; promptTokens: number; completionTokens: number; cost: number };
+  groundingChat: { count: number; tokens: number; promptTokens: number; completionTokens: number; cost: number };
+  total: { operations: number; tokens: number; totalTokens: number; promptTokens: number; completionTokens: number; cost: number };
   sessionStart: Date;
   uptime: number;
 }
@@ -46,12 +52,18 @@ export class TokenTaximeter {
     this.session = {
       analysisCount: 0,
       analysisTotalTokens: 0,
+      analysisPromptTokens: 0,
+      analysisCompletionTokens: 0,
       analysisTotalCost: 0,
       ragChatCount: 0,
       ragChatTotalTokens: 0,
+      ragChatPromptTokens: 0,
+      ragChatCompletionTokens: 0,
       ragChatTotalCost: 0,
       groundingChatCount: 0,
       groundingChatTotalTokens: 0,
+      groundingChatPromptTokens: 0,
+      groundingChatCompletionTokens: 0,
       groundingChatTotalCost: 0,
       sessionStart: new Date(),
     };
@@ -78,6 +90,8 @@ export class TokenTaximeter {
   ): void {
     this.session.analysisCount++;
     this.session.analysisTotalTokens += totalTokens;
+    this.session.analysisPromptTokens += promptTokens;
+    this.session.analysisCompletionTokens += completionTokens;
     this.session.analysisTotalCost += costEUR;
 
     this.logTaximeter('ANÁLISIS', '📰', title, promptTokens, completionTokens, totalTokens, costEUR);
@@ -95,6 +109,8 @@ export class TokenTaximeter {
   ): void {
     this.session.ragChatCount++;
     this.session.ragChatTotalTokens += totalTokens;
+    this.session.ragChatPromptTokens += promptTokens;
+    this.session.ragChatCompletionTokens += completionTokens;
     this.session.ragChatTotalCost += costEUR;
 
     this.logTaximeter('CHAT RAG', '💬', question, promptTokens, completionTokens, totalTokens, costEUR);
@@ -112,6 +128,8 @@ export class TokenTaximeter {
   ): void {
     this.session.groundingChatCount++;
     this.session.groundingChatTotalTokens += totalTokens;
+    this.session.groundingChatPromptTokens += promptTokens;
+    this.session.groundingChatCompletionTokens += completionTokens;
     this.session.groundingChatTotalCost += costEUR;
 
     this.logTaximeter('CHAT GROUNDING', '🌐', query, promptTokens, completionTokens, totalTokens, costEUR);
@@ -160,27 +178,38 @@ export class TokenTaximeter {
   getReport(): CostReport {
     const totalSessionCost = this.session.analysisTotalCost + this.session.ragChatTotalCost + this.session.groundingChatTotalCost;
     const totalSessionTokens = this.session.analysisTotalTokens + this.session.ragChatTotalTokens + this.session.groundingChatTotalTokens;
+    const totalPromptTokens = this.session.analysisPromptTokens + this.session.ragChatPromptTokens + this.session.groundingChatPromptTokens;
+    const totalCompletionTokens = this.session.analysisCompletionTokens + this.session.ragChatCompletionTokens + this.session.groundingChatCompletionTokens;
     const totalOperations = this.session.analysisCount + this.session.ragChatCount + this.session.groundingChatCount;
 
     return {
       analysis: {
         count: this.session.analysisCount,
         tokens: this.session.analysisTotalTokens,
+        promptTokens: this.session.analysisPromptTokens,
+        completionTokens: this.session.analysisCompletionTokens,
         cost: this.session.analysisTotalCost,
       },
       ragChat: {
         count: this.session.ragChatCount,
         tokens: this.session.ragChatTotalTokens,
+        promptTokens: this.session.ragChatPromptTokens,
+        completionTokens: this.session.ragChatCompletionTokens,
         cost: this.session.ragChatTotalCost,
       },
       groundingChat: {
         count: this.session.groundingChatCount,
         tokens: this.session.groundingChatTotalTokens,
+        promptTokens: this.session.groundingChatPromptTokens,
+        completionTokens: this.session.groundingChatCompletionTokens,
         cost: this.session.groundingChatTotalCost,
       },
       total: {
         operations: totalOperations,
         tokens: totalSessionTokens,
+        totalTokens: totalSessionTokens,
+        promptTokens: totalPromptTokens,
+        completionTokens: totalCompletionTokens,
         cost: totalSessionCost,
       },
       sessionStart: this.session.sessionStart,
@@ -195,12 +224,18 @@ export class TokenTaximeter {
     this.session = {
       analysisCount: 0,
       analysisTotalTokens: 0,
+      analysisPromptTokens: 0,
+      analysisCompletionTokens: 0,
       analysisTotalCost: 0,
       ragChatCount: 0,
       ragChatTotalTokens: 0,
+      ragChatPromptTokens: 0,
+      ragChatCompletionTokens: 0,
       ragChatTotalCost: 0,
       groundingChatCount: 0,
       groundingChatTotalTokens: 0,
+      groundingChatPromptTokens: 0,
+      groundingChatCompletionTokens: 0,
       groundingChatTotalCost: 0,
       sessionStart: new Date(),
     };
