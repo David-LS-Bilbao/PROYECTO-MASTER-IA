@@ -93,6 +93,17 @@ export default function NewsDetailPage() {
   const queryClient = useQueryClient();
   const id = params.id as string;
 
+  // Validate UUID format to prevent injection attacks
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const isValidUUID = UUID_REGEX.test(id);
+
+  // Redirect immediately if invalid UUID
+  useEffect(() => {
+    if (!isValidUUID) {
+      router.push('/news/not-found');
+    }
+  }, [isValidUUID, router]);
+
   // React Query: Fetch article data
   const { 
     data: article, 
@@ -104,6 +115,7 @@ export default function NewsDetailPage() {
   // Local state for AI analysis
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [lastAnalyzeTime, setLastAnalyzeTime] = useState<number>(0);
 
   // Redirect to not-found if 404 error
   useEffect(() => {
@@ -117,16 +129,25 @@ export default function NewsDetailPage() {
   const sanitizedContent = useMemo(() => {
     if (!article?.content) return '';
     return DOMPurify.sanitize(article.content, {
-      ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'em', 'strong', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'img'],
-      ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'class'],
+      ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'em', 'strong', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote'],
+      ALLOWED_ATTR: ['href', 'target', 'rel', 'class'],
+      ALLOWED_URI_REGEXP: /^(?:https?|mailto):/i, // Only HTTP(S) and mailto URLs
     });
   }, [article?.content]);
 
   const handleAnalyze = async () => {
     if (!article) return;
 
+    // Rate limiting: 10 second cooldown
+    const now = Date.now();
+    if (now - lastAnalyzeTime < 10000) {
+      setAnalyzeError('Espera 10 segundos antes de re-analizar');
+      return;
+    }
+
     setIsAnalyzing(true);
     setAnalyzeError(null);
+    setLastAnalyzeTime(now);
 
     try {
       // Get authentication token
@@ -152,7 +173,10 @@ export default function NewsDetailPage() {
   }
 
   if (isError || !article) {
-    const errorMessage = queryError?.message || 'Error al cargar la noticia';
+    // Sanitize error messages - don't expose technical details
+    const errorMessage = queryError?.message?.includes('404')
+      ? 'La noticia no existe o ha sido eliminada'
+      : 'Error al cargar la noticia. Intenta de nuevo más tarde.';
     return (
       <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex items-center justify-center">
         <Card className="max-w-md mx-4">
@@ -273,13 +297,19 @@ export default function NewsDetailPage() {
               </Card>
             )}
 
-            {/* Source Link */}
-            <Button size="lg" className="gap-2" asChild>
-              <a href={article.url} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="h-4 w-4" />
-                Leer noticia completa en {article.source}
-              </a>
-            </Button>
+            {/* Source Link - Validate URL scheme */}
+            {(article.url.startsWith('http://') || article.url.startsWith('https://')) ? (
+              <Button size="lg" className="gap-2" asChild>
+                <a href={article.url} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="h-4 w-4" />
+                  Leer noticia completa en {article.source}
+                </a>
+              </Button>
+            ) : (
+              <p className="text-sm text-red-500 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                URL no válida o insegura
+              </p>
+            )}
           </article>
 
           {/* Right Column - AI Analysis Panel (40%) */}
