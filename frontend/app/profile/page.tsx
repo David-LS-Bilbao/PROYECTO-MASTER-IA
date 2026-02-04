@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Sidebar } from '@/components/layout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { TokenUsageCard } from '@/components/token-usage-card';
@@ -75,9 +74,9 @@ export default function ProfilePage() {
 
   return (
     <div className="flex h-screen bg-zinc-50 dark:bg-zinc-950">
-      <Sidebar />
-
-      <main className="flex-1 flex flex-col overflow-hidden lg:ml-0">
+      {/* Sidebar oculto en perfil - los botones (Dashboard, Fuentes, Refresh) no funcionan aquí */}
+      
+      <main className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
         <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/80 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-900/80">
           <div className="px-4 sm:px-6 py-4">
