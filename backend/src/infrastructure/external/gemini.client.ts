@@ -180,8 +180,8 @@ const MAX_EMBEDDING_TEXT_LENGTH = 6000;
  * - Eliminado campo IDIOMA (se infiere del contenido)
  * - Escalas compactadas en una línea cada una
  * - Eliminados ejemplos en arrays (["indicador1", "indicador2"])
- * - Añadidos límites explícitos (max 3, max 50 palabras, 1 frase)
- * - Reducido summary de 60 a 50 palabras
+ * - Añadidos límites explícitos (max 3, max 150 palabras, 1 frase)
+ * - Summary mejorado a 150 palabras con contexto profesional
  *
  * AHORRO: ~700 tokens → ~250 tokens (~65% reducción)
  */
@@ -193,13 +193,20 @@ CONTENIDO:
 {content}
 
 Devuelve este JSON exacto:
-{"summary":"<max 50 palabras: qué, quién, cuándo>","biasScore":<-10 a +10>,"biasIndicators":["<max 3 indicadores>"],"clickbaitScore":<0-100>,"reliabilityScore":<0-100>,"sentiment":"positive|neutral|negative","mainTopics":["<max 3>"],"factCheck":{"claims":["<max 2 afirmaciones clave>"],"verdict":"Verified|Mixed|Unproven|False","reasoning":"<1 frase explicativa>"}}
+{"summary":"<resumen profesional de 120-150 palabras que explique los hechos clave, contexto, implicaciones y protagonistas de forma clara y amena, sin repetir el título textualmente>","biasScore":<-10 a +10>,"biasIndicators":["<max 3 indicadores>"],"clickbaitScore":<0-100>,"reliabilityScore":<0-100>,"sentiment":"positive|neutral|negative","mainTopics":["<max 3>"],"factCheck":{"claims":["<max 2 afirmaciones clave>"],"verdict":"Verified|Mixed|Unproven|False","reasoning":"<1 frase explicativa>"}}
 
 ESCALAS:
 - biasScore: -10=izquierda extrema, 0=neutral, +10=derecha extrema
 - clickbaitScore: 0=serio, 50=sensacionalista, 100=engañoso
 - reliabilityScore: 0=bulo, 50=parcial, 100=verificado con fuentes oficiales
-- verdict: Verified=comprobado, Mixed=parcial, Unproven=sin datos, False=falso`;
+- verdict: Verified=comprobado, Mixed=parcial, Unproven=sin datos, False=falso
+
+IMPORTANTE para el summary: 
+- NO repitas el título textualmente
+- Explica QUÉ pasó, QUIÉN está involucrado, CUÁNDO, DÓNDE y POR QUÉ
+- Incluye contexto relevante y consecuencias
+- Usa un tono periodístico profesional
+- Debe ser fácil de leer y comprender`;
 
 export class GeminiClient implements IGeminiClient {
   private readonly model: GenerativeModel;

@@ -24,17 +24,18 @@ interface CategoryPillsProps {
 
 export function CategoryPills({ selectedCategory, onSelect, disabled = false }: CategoryPillsProps) {
   return (
-    <div className="w-full overflow-x-auto scrollbar-hide">
-      <div className="flex gap-2 pb-2 min-w-max">
+    <div className="w-full overflow-x-auto scrollbar-hide py-2">
+      <div className="flex gap-3 pb-3 min-w-max">
         {CATEGORIES.map((cat) => (
           <button
             key={cat.id}
             onClick={() => onSelect(cat.id)}
             disabled={disabled}
             className={cn(
-              'px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all',
+              'px-5 py-2.5 rounded-full text-sm font-medium whitespace-nowrap transition-all',
               'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-zinc-500',
               'disabled:opacity-50 disabled:cursor-not-allowed',
+              'shadow-sm hover:shadow-md',
               selectedCategory === cat.id
                 ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900'
                 : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700'
