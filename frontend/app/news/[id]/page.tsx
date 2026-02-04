@@ -10,6 +10,8 @@ import { ArrowLeft, ExternalLink, Clock, User, Tag, Sparkles } from 'lucide-reac
 import { analyzeArticle, type NewsArticle, type AnalyzeResponse } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useArticle } from '@/hooks/useArticle';
+import { formatDate, getBiasInfo, getSentimentInfo, isValidUUID, isSafeUrl } from '@/lib/news-utils';
+import { ANALYSIS_COOLDOWN_MS } from '@/lib/constants';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,42 +19,6 @@ import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ReliabilityBadge } from '@/components/reliability-badge';
 import { NewsChatDrawer } from '@/components/news-chat-drawer';
-
-/**
- * Format date to readable string
- */
-function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString('es-ES', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-/**
- * Get bias level info
- */
-function getBiasInfo(score: number): { label: string; color: string; bg: string } {
-  if (score <= 0.2) return { label: 'Muy Neutral', color: 'text-green-700', bg: 'bg-green-100' };
-  if (score <= 0.4) return { label: 'Ligero Sesgo', color: 'text-blue-700', bg: 'bg-blue-100' };
-  if (score <= 0.6) return { label: 'Sesgo Moderado', color: 'text-amber-700', bg: 'bg-amber-100' };
-  if (score <= 0.8) return { label: 'Sesgo Alto', color: 'text-orange-700', bg: 'bg-orange-100' };
-  return { label: 'Muy Sesgado', color: 'text-red-700', bg: 'bg-red-100' };
-}
-
-/**
- * Get sentiment info
- */
-function getSentimentInfo(sentiment: string): { label: string; emoji: string } {
-  switch (sentiment) {
-    case 'positive': return { label: 'Positivo', emoji: '😊' };
-    case 'negative': return { label: 'Negativo', emoji: '😟' };
-    default: return { label: 'Neutral', emoji: '😐' };
-  }
-}
 
 /**
  * Loading skeleton for the article
@@ -94,15 +60,14 @@ export default function NewsDetailPage() {
   const id = params.id as string;
 
   // Validate UUID format to prevent injection attacks
-  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-  const isValidUUID = UUID_REGEX.test(id);
+  const validUUID = isValidUUID(id);
 
   // Redirect immediately if invalid UUID
   useEffect(() => {
-    if (!isValidUUID) {
+    if (!validUUID) {
       router.push('/news/not-found');
     }
-  }, [isValidUUID, router]);
+  }, [validUUID, router]);
 
   // React Query: Fetch article data
   const { 
@@ -138,10 +103,10 @@ export default function NewsDetailPage() {
   const handleAnalyze = async () => {
     if (!article) return;
 
-    // Rate limiting: 10 second cooldown
+    // Rate limiting: cooldown to prevent spam
     const now = Date.now();
-    if (now - lastAnalyzeTime < 10000) {
-      setAnalyzeError('Espera 10 segundos antes de re-analizar');
+    if (now - lastAnalyzeTime < ANALYSIS_COOLDOWN_MS) {
+      setAnalyzeError(`Espera ${ANALYSIS_COOLDOWN_MS / 1000} segundos antes de re-analizar`);
       return;
     }
 
@@ -298,7 +263,7 @@ export default function NewsDetailPage() {
             )}
 
             {/* Source Link - Validate URL scheme */}
-            {(article.url.startsWith('http://') || article.url.startsWith('https://')) ? (
+            {isSafeUrl(article.url) ? (
               <Button size="lg" className="gap-2" asChild>
                 <a href={article.url} target="_blank" rel="noopener noreferrer">
                   <ExternalLink className="h-4 w-4" />
