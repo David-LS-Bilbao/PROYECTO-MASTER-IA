@@ -243,11 +243,17 @@ export default function NewsDetailPage() {
 
             <Separator className="my-6" />
 
-            {/* Description / Summary */}
-            {article.description && (
-              <div className="mb-6">
-                <p className="text-lg text-muted-foreground leading-relaxed">
-                  {article.description}
+            {/* AI Summary - Only show if analyzed */}
+            {isAnalyzed && article.summary && (
+              <div className="mb-6 p-4 bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+                <div className="flex items-center gap-2 mb-3">
+                  <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                  <h3 className="text-sm font-semibold text-purple-900 dark:text-purple-300">
+                    Resumen Verity AI
+                  </h3>
+                </div>
+                <p className="text-base text-zinc-700 dark:text-zinc-300 leading-relaxed">
+                  {article.summary}
                 </p>
               </div>
             )}
@@ -325,16 +331,6 @@ export default function NewsDetailPage() {
                           <span className="text-xl">{sentimentInfo.emoji}</span>
                           <span className="text-sm">{sentimentInfo.label}</span>
                         </span>
-                      </div>
-                    )}
-
-                    {/* Summary */}
-                    {article.summary && (
-                      <div className="space-y-2">
-                        <h4 className="text-sm font-medium">Resumen IA</h4>
-                        <p className="text-sm text-muted-foreground leading-relaxed">
-                          {article.summary}
-                        </p>
                       </div>
                     )}
 
