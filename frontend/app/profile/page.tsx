@@ -36,6 +36,7 @@ export default function ProfilePage() {
   // Form state
   const [name, setName] = useState('');
   const { selected: selectedCategories, toggle: toggleCategory, setSelected: setSelectedCategories } = useCategoryToggle([]);
+  const [showTokenUsage, setShowTokenUsage] = useState(false);
 
   // Sincronizar form state cuando el perfil carga
   useEffect(() => {
@@ -148,6 +149,8 @@ export default function ProfilePage() {
                 plan={profile.plan}
                 createdAt={profile.createdAt}
                 userId={profile.id}
+                onShowTokenUsage={() => setShowTokenUsage(!showTokenUsage)}
+                showingTokenUsage={showTokenUsage}
               />
             </div>
 
@@ -157,7 +160,7 @@ export default function ProfilePage() {
               onToggle={toggleCategory}
             />
 
-            {authToken && <TokenUsageCard token={authToken} />}
+            {authToken && showTokenUsage && <TokenUsageCard token={authToken} />}
           </div>
         </div>
       </main>

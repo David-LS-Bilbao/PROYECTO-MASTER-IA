@@ -4,9 +4,10 @@
  * Componente de presentación: Progreso del plan + info de cuenta.
  */
 
-import { TrendingUp, Calendar, Shield } from 'lucide-react';
+import { TrendingUp, Calendar, Shield, Eye, EyeOff } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { Button } from '@/components/ui/button';
 
 const MONTHLY_LIMIT = 50;
 
@@ -15,6 +16,8 @@ export interface AccountLevelCardProps {
   plan: 'FREE' | 'QUOTA' | 'PAY_AS_YOU_GO';
   createdAt: string;
   userId: string;
+  onShowTokenUsage?: () => void;
+  showingTokenUsage?: boolean;
 }
 
 export function AccountLevelCard({
@@ -22,6 +25,8 @@ export function AccountLevelCard({
   plan,
   createdAt,
   userId,
+  onShowTokenUsage,
+  showingTokenUsage = false,
 }: AccountLevelCardProps) {
   const usagePercentage = Math.min(
     (articlesAnalyzed / MONTHLY_LIMIT) * 100,
@@ -81,6 +86,29 @@ export function AccountLevelCard({
             </div>
           </div>
         </div>
+
+        {onShowTokenUsage && (
+          <div className="pt-4 border-t border-zinc-200 dark:border-zinc-700">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onShowTokenUsage}
+              className="w-full gap-2"
+            >
+              {showingTokenUsage ? (
+                <>
+                  <EyeOff className="h-4 w-4" />
+                  Ocultar Uso de Tokens
+                </>
+              ) : (
+                <>
+                  <Eye className="h-4 w-4" />
+                  Ver Uso de Tokens
+                </>
+              )}
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
