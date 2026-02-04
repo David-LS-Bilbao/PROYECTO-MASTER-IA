@@ -45,17 +45,53 @@ function CustomTooltip({
   const total = payload[0]?.payload?.payload?.total || 1;
   const percentage = Math.round((value / total) * 100);
 
+  // Descripciones educativas según el tipo
+  const descriptions: Record<string, { icon: string; text: string; color: string }> = {
+    [LABELS.left]: {
+      icon: '📊',
+      text: 'Noticias con enfoque progresista o de izquierda política',
+      color: 'text-amber-600 dark:text-amber-400'
+    },
+    [LABELS.neutral]: {
+      icon: '✓',
+      text: 'Noticias objetivas sin sesgo político marcado',
+      color: 'text-green-600 dark:text-green-400'
+    },
+    [LABELS.right]: {
+      icon: '📊',
+      text: 'Noticias con enfoque conservador o de derecha política',
+      color: 'text-purple-600 dark:text-purple-400'
+    }
+  };
+
+  const info = descriptions[label] || { icon: 'ℹ️', text: 'Información no disponible', color: '' };
+
   return (
-    <div className="rounded-lg border bg-background px-3 py-2 shadow-sm">
-      <p className="text-sm font-medium text-foreground">{label}</p>
-      <p className="text-xs text-muted-foreground">
-        {value} artículos ({percentage}%)
-      </p>
-      {label === LABELS.neutral && (
-        <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-          ✓ Objetivo y balanceado
+    <div className="rounded-lg border bg-background px-4 py-3 shadow-lg max-w-xs">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-lg">{info.icon}</span>
+        <p className="text-sm font-semibold text-foreground">{label}</p>
+      </div>
+      
+      <div className="space-y-2">
+        <p className="text-xs text-muted-foreground">
+          {info.text}
         </p>
-      )}
+        
+        <div className="pt-2 border-t">
+          <p className={`text-sm font-bold ${info.color}`}>
+            {value} artículos ({percentage}%)
+          </p>
+        </div>
+
+        {label === LABELS.neutral && (
+          <div className="pt-2 mt-2 border-t border-green-200 dark:border-green-800">
+            <p className="text-xs text-green-600 dark:text-green-400 font-medium">
+              ⭐ Esto es bueno: indica cobertura imparcial
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
