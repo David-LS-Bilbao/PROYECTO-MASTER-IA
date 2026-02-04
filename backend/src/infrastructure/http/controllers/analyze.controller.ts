@@ -13,6 +13,7 @@ import {
   InfrastructureError,
 } from '../../../domain/errors/infrastructure.error';
 import { ZodError } from 'zod';
+import { UserStatsTracker } from '../../monitoring/user-stats-tracker';
 
 export class AnalyzeController {
   constructor(private readonly analyzeArticleUseCase: AnalyzeArticleUseCase) {}
@@ -28,6 +29,13 @@ export class AnalyzeController {
 
       // Execute use case
       const result = await this.analyzeArticleUseCase.execute(validatedInput);
+
+      // Track user stats (if authenticated)
+      if (req.user?.uid) {
+        UserStatsTracker.incrementArticlesAnalyzed(req.user.uid, 1).catch(err => 
+          console.error('[AnalyzeController] Failed to track article analysis:', err)
+        );
+      }
 
       // Exclude internal_reasoning from analysis object (AI_RULES.md: XAI auditing only)
       const { internal_reasoning, ...publicAnalysis } = result.analysis;
@@ -56,6 +64,13 @@ export class AnalyzeController {
 
       // Execute use case
       const result = await this.analyzeArticleUseCase.executeBatch(validatedInput);
+
+      // Track user stats (if authenticated)
+      if (req.user?.uid && result.successful > 0) {
+        UserStatsTracker.incrementArticlesAnalyzed(req.user.uid, result.successful).catch(err => 
+          console.error('[AnalyzeController] Failed to track batch analysis:', err)
+        );
+      }
 
       res.status(200).json({
         success: true,

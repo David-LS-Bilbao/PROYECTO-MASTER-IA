@@ -13,6 +13,7 @@ import {
   InfrastructureError,
 } from '../../../domain/errors/infrastructure.error';
 import { ZodError } from 'zod';
+import { UserStatsTracker } from '../../monitoring/user-stats-tracker';
 
 export class ChatController {
   constructor(private readonly chatArticleUseCase: ChatArticleUseCase) {}
@@ -28,6 +29,13 @@ export class ChatController {
 
       // Execute use case
       const result = await this.chatArticleUseCase.execute(validatedInput);
+
+      // Track user stats (if authenticated)
+      if (req.user?.uid) {
+        UserStatsTracker.incrementChatMessages(req.user.uid, 1).catch(err => 
+          console.error('[ChatController] Failed to track chat message:', err)
+        );
+      }
 
       res.status(200).json({
         success: true,

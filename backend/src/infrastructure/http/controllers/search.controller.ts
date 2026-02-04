@@ -7,6 +7,7 @@ import { Request, Response } from 'express';
 import { SearchNewsUseCase } from '../../../application/use-cases/search-news.usecase';
 import { ValidationError } from '../../../domain/errors/domain.error';
 import { ExternalAPIError, DatabaseError } from '../../../domain/errors/infrastructure.error';
+import { UserStatsTracker } from '../../monitoring/user-stats-tracker';
 
 export class SearchController {
   constructor(private readonly searchNewsUseCase: SearchNewsUseCase) {}
@@ -33,6 +34,13 @@ export class SearchController {
         query: query.trim(),
         limit,
       });
+
+      // Track user stats (if authenticated)
+      if (req.user?.uid) {
+        UserStatsTracker.incrementSearches(req.user.uid, 1).catch(err => 
+          console.error('[SearchController] Failed to track search:', err)
+        );
+      }
 
       // Map domain entities to API response format
       const searchResults = result.results.map((article) => {
