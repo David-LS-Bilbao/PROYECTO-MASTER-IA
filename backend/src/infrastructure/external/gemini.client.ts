@@ -21,197 +21,50 @@ import {
   ExternalAPIError,
   ConfigurationError,
 } from '../../domain/errors/infrastructure.error';
+import { TokenTaximeter } from '../monitoring/token-taximeter';
+import { GeminiErrorMapper } from './gemini-error-mapper';
+import {
+  ANALYSIS_PROMPT,
+  MAX_ARTICLE_CONTENT_LENGTH,
+  buildRagChatPrompt,
+  buildGroundingChatPrompt,
+  MAX_CHAT_HISTORY_MESSAGES,
+  buildRssDiscoveryPrompt,
+  MAX_EMBEDDING_TEXT_LENGTH,
+} from './prompts';
 
 // ============================================================================
-// TOKEN TAXIMETER - PRICING CONSTANTS (Gemini 2.5 Flash)
-// ============================================================================
-
-/**
- * Precio por 1 millón de tokens de entrada (USD)
- * Fuente: https://ai.google.dev/pricing
- */
-const PRICE_INPUT_1M = 0.075;
-
-/**
- * Precio por 1 millón de tokens de salida (USD)
- */
-const PRICE_OUTPUT_1M = 0.30;
-
-/**
- * Ratio de conversión EUR/USD
- */
-const EUR_USD_RATE = 0.95;
-
-// ============================================================================
-// TOKEN TAXIMETER - SESSION ACCUMULATOR
+// TOKEN TAXIMETER - SINGLETON INSTANCE
 // ============================================================================
 
 /**
- * Acumulador de costes por sesión del servidor
- * Se reinicia cuando se reinicia el servidor
+ * Singleton taximeter instance for the entire application
  */
-interface SessionCostAccumulator {
-  analysisCount: number;
-  analysisTotalTokens: number;
-  analysisTotalCost: number;
-  ragChatCount: number;
-  ragChatTotalTokens: number;
-  ragChatTotalCost: number;
-  groundingChatCount: number;
-  groundingChatTotalTokens: number;
-  groundingChatTotalCost: number;
-  sessionStart: Date;
-}
-
-const sessionCosts: SessionCostAccumulator = {
-  analysisCount: 0,
-  analysisTotalTokens: 0,
-  analysisTotalCost: 0,
-  ragChatCount: 0,
-  ragChatTotalTokens: 0,
-  ragChatTotalCost: 0,
-  groundingChatCount: 0,
-  groundingChatTotalTokens: 0,
-  groundingChatTotalCost: 0,
-  sessionStart: new Date(),
-};
+const taximeter = new TokenTaximeter();
 
 /**
- * Resetea el acumulador de sesión (solo para testing)
- * @internal
+ * Singleton error mapper for consistent error handling
+ */
+const errorMapper = new GeminiErrorMapper();
+
+/**
+ * Reset taximeter (for testing)
+ * @deprecated Use taximeter.reset() directly in tests
  */
 export function resetSessionCosts(): void {
-  sessionCosts.analysisCount = 0;
-  sessionCosts.analysisTotalTokens = 0;
-  sessionCosts.analysisTotalCost = 0;
-  sessionCosts.ragChatCount = 0;
-  sessionCosts.ragChatTotalTokens = 0;
-  sessionCosts.ragChatTotalCost = 0;
-  sessionCosts.groundingChatCount = 0;
-  sessionCosts.groundingChatTotalTokens = 0;
-  sessionCosts.groundingChatTotalCost = 0;
-  sessionCosts.sessionStart = new Date();
-}
-
-/**
- * Calcula el coste en EUR a partir de tokens
- */
-function calculateCostEUR(promptTokens: number, completionTokens: number): number {
-  const costInputUSD = (promptTokens / 1_000_000) * PRICE_INPUT_1M;
-  const costOutputUSD = (completionTokens / 1_000_000) * PRICE_OUTPUT_1M;
-  return (costInputUSD + costOutputUSD) * EUR_USD_RATE;
-}
-
-/**
- * Muestra el log visual del taxímetro
- */
-function logTaximeter(
-  operationType: 'ANÁLISIS' | 'CHAT RAG' | 'CHAT GROUNDING',
-  title: string,
-  promptTokens: number,
-  completionTokens: number,
-  totalTokens: number,
-  costEUR: number
-): void {
-  const emoji = operationType === 'ANÁLISIS' ? '📰' : operationType === 'CHAT RAG' ? '💬' : '🌐';
-  const titlePreview = title.substring(0, 45) + (title.length > 45 ? '...' : '');
-
-  console.log(`\n      🧾 ═══════════════════════════════════════════════════════════`);
-  console.log(`      🧾 TOKEN TAXIMETER - ${operationType}`);
-  console.log(`      🧾 ═══════════════════════════════════════════════════════════`);
-  console.log(`      ${emoji} ${operationType === 'ANÁLISIS' ? 'Título' : 'Pregunta'}: "${titlePreview}"`);
-  console.log(`      🧠 Tokens entrada:  ${promptTokens.toLocaleString('es-ES')}`);
-  console.log(`      🧠 Tokens salida:   ${completionTokens.toLocaleString('es-ES')}`);
-  console.log(`      🧠 Tokens TOTAL:    ${totalTokens.toLocaleString('es-ES')}`);
-  console.log(`      💰 Coste operación: €${costEUR.toFixed(6)}`);
-  console.log(`      🧾 ───────────────────────────────────────────────────────────`);
-
-  // Mostrar acumulado de sesión
-  const totalSessionCost = sessionCosts.analysisTotalCost + sessionCosts.ragChatTotalCost + sessionCosts.groundingChatTotalCost;
-  const totalSessionTokens = sessionCosts.analysisTotalTokens + sessionCosts.ragChatTotalTokens + sessionCosts.groundingChatTotalTokens;
-  const totalOperations = sessionCosts.analysisCount + sessionCosts.ragChatCount + sessionCosts.groundingChatCount;
-
-  console.log(`      📊 SESIÓN ACUMULADA (desde ${sessionCosts.sessionStart.toLocaleTimeString('es-ES')}):`);
-  console.log(`      📊 Análisis: ${sessionCosts.analysisCount} ops | ${sessionCosts.analysisTotalTokens.toLocaleString('es-ES')} tokens | €${sessionCosts.analysisTotalCost.toFixed(6)}`);
-  console.log(`      📊 Chat RAG: ${sessionCosts.ragChatCount} ops | ${sessionCosts.ragChatTotalTokens.toLocaleString('es-ES')} tokens | €${sessionCosts.ragChatTotalCost.toFixed(6)}`);
-  console.log(`      📊 Grounding: ${sessionCosts.groundingChatCount} ops | ${sessionCosts.groundingChatTotalTokens.toLocaleString('es-ES')} tokens | €${sessionCosts.groundingChatTotalCost.toFixed(6)}`);
-  console.log(`      💰 TOTAL SESIÓN: ${totalOperations} ops | ${totalSessionTokens.toLocaleString('es-ES')} tokens | €${totalSessionCost.toFixed(6)}`);
-  console.log(`      🧾 ═══════════════════════════════════════════════════════════\n`);
+  taximeter.reset();
 }
 
 // ============================================================================
-// COST OPTIMIZATION CONSTANTS
+// MODEL CONFIGURATION
 // ============================================================================
-
-/**
- * Máximo de mensajes enviados a Gemini en chat con historial.
- *
- * RAZÓN DE OPTIMIZACIÓN:
- * - Sin límite, cada mensaje reenvía TODO el historial anterior
- * - Mensaje 50 incluye los 49 anteriores = coste exponencial
- * - Con ventana de 6 mensajes (3 turnos), el coste es constante
- * - Ahorro estimado: ~70% en conversaciones largas
- *
- * VALOR: 6 mensajes = últimos 3 turnos (user→assistant→user→assistant→user→assistant)
- */
-const MAX_CHAT_HISTORY_MESSAGES = 6;
-
-/**
- * Límite de caracteres para contenido de artículo en análisis.
- * Evita enviar artículos enormes que consumen tokens innecesarios.
- */
-const MAX_ARTICLE_CONTENT_LENGTH = 8000;
-
-/**
- * Límite de caracteres para texto de embedding.
- * El modelo text-embedding-004 tiene límite de ~8000 tokens.
- */
-const MAX_EMBEDDING_TEXT_LENGTH = 6000;
-
-// ============================================================================
-// OPTIMIZED PROMPTS
-// ============================================================================
-
-/**
- * ANALYSIS_PROMPT - Versión optimizada
- *
- * CAMBIOS vs versión anterior:
- * - Eliminado rol verboso ("Actúa como un analista experto...")
- * - Eliminado campo IDIOMA (se infiere del contenido)
- * - Escalas compactadas en una línea cada una
- * - Eliminados ejemplos en arrays (["indicador1", "indicador2"])
- * - Añadidos límites explícitos (max 3, max 150 palabras, 1 frase)
- * - Summary mejorado a 150 palabras con contexto profesional
- *
- * AHORRO: ~700 tokens → ~250 tokens (~65% reducción)
- */
-const ANALYSIS_PROMPT = `Analiza esta noticia. Responde SOLO con JSON válido (sin markdown, sin backticks).
-
-TÍTULO: {title}
-FUENTE: {source}
-CONTENIDO:
-{content}
-
-Devuelve este JSON exacto:
-{"summary":"<resumen profesional de 120-150 palabras que explique los hechos clave, contexto, implicaciones y protagonistas de forma clara y amena, sin repetir el título textualmente>","biasScore":<-10 a +10>,"biasIndicators":["<max 3 indicadores>"],"clickbaitScore":<0-100>,"reliabilityScore":<0-100>,"sentiment":"positive|neutral|negative","mainTopics":["<max 3>"],"factCheck":{"claims":["<max 2 afirmaciones clave>"],"verdict":"Verified|Mixed|Unproven|False","reasoning":"<1 frase explicativa>"}}
-
-ESCALAS:
-- biasScore: -10=izquierda extrema, 0=neutral, +10=derecha extrema
-- clickbaitScore: 0=serio, 50=sensacionalista, 100=engañoso
-- reliabilityScore: 0=bulo, 50=parcial, 100=verificado con fuentes oficiales
-- verdict: Verified=comprobado, Mixed=parcial, Unproven=sin datos, False=falso
-
-IMPORTANTE para el summary: 
-- NO repitas el título textualmente
-- Explica QUÉ pasó, QUIÉN está involucrado, CUÁNDO, DÓNDE y POR QUÉ
-- Incluye contexto relevante y consecuencias
-- Usa un tono periodístico profesional
-- Debe ser fácil de leer y comprender`;
 
 export class GeminiClient implements IGeminiClient {
   private readonly model: GenerativeModel;
   private readonly chatModel: GenerativeModel;
   private readonly genAI: GoogleGenerativeAI;
+  private readonly taximeter: TokenTaximeter;
+  private readonly errorMapper: GeminiErrorMapper;
 
   constructor(apiKey: string) {
     if (!apiKey || apiKey.trim() === '') {
@@ -219,7 +72,8 @@ export class GeminiClient implements IGeminiClient {
     }
 
     this.genAI = new GoogleGenerativeAI(apiKey);
-
+    this.taximeter = taximeter;
+    this.errorMapper = errorMapper;    this.errorMapper = errorMapper;
     // Modelo base para análisis (sin herramientas externas)
     this.model = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
@@ -259,16 +113,11 @@ export class GeminiClient implements IGeminiClient {
         const errorMessage = lastError.message || '';
 
         // No reintentar errores no transitorios
-        if (this.isNonRetryableError(errorMessage)) {
-          throw this.wrapError(lastError);
-        }
-
-        // Verificar si es error retriable
-        const isRetryable = this.isRetryableError(errorMessage);
+        const isRetryable = this.errorMapper.isRetryable(errorMessage);
 
         if (!isRetryable || attempt >= retries) {
           // Último intento o error no retriable
-          throw this.wrapError(lastError);
+          throw this.errorMapper.toExternalAPIError(lastError);
         }
 
         // Calcular delay con exponential backoff
@@ -291,71 +140,6 @@ export class GeminiClient implements IGeminiClient {
       500,
       lastError || undefined
     );
-  }
-
-  /**
-   * Verifica si un error NO debe ser reintentado
-   */
-  private isNonRetryableError(errorMessage: string): boolean {
-    return (
-      errorMessage.includes('API key') ||
-      errorMessage.includes('401') ||
-      errorMessage.includes('404') ||
-      errorMessage.includes('not found') ||
-      errorMessage.includes('Invalid argument')
-    );
-  }
-
-  /**
-   * Verifica si un error debe ser reintentado
-   * Solo reintentar Rate Limits (429) y Server Errors (5xx)
-   */
-  private isRetryableError(errorMessage: string): boolean {
-    return (
-      // Rate Limit (429)
-      errorMessage.includes('quota') ||
-      errorMessage.includes('RESOURCE_EXHAUSTED') ||
-      errorMessage.includes('429') ||
-      errorMessage.includes('Too Many Requests') ||
-      // Server Errors (5xx)
-      errorMessage.includes('500') ||
-      errorMessage.includes('502') ||
-      errorMessage.includes('503') ||
-      errorMessage.includes('504') ||
-      errorMessage.includes('Internal Server Error') ||
-      errorMessage.includes('Service Unavailable') ||
-      errorMessage.includes('Gateway Timeout') ||
-      // Network errors
-      errorMessage.includes('ECONNRESET') ||
-      errorMessage.includes('ETIMEDOUT') ||
-      errorMessage.includes('ENOTFOUND')
-    );
-  }
-
-  /**
-   * Envuelve un error en ExternalAPIError con el código HTTP apropiado
-   */
-  private wrapError(error: Error): ExternalAPIError {
-    const errorMessage = error.message || '';
-
-    // 401 - Unauthorized (API key inválida)
-    if (errorMessage.includes('API key') || errorMessage.includes('401')) {
-      return new ExternalAPIError('Gemini', 'Invalid API key', 401, error);
-    }
-
-    // 404 - Not Found (Modelo no encontrado)
-    if (errorMessage.includes('404') || errorMessage.includes('not found')) {
-      return new ExternalAPIError('Gemini', `Model not found: ${errorMessage}`, 404, error);
-    }
-
-    // 429 - Rate Limit
-    if (this.isRetryableError(errorMessage) && 
-        (errorMessage.includes('429') || errorMessage.includes('quota'))) {
-      return new ExternalAPIError('Gemini', 'Rate limit exceeded after retries', 429, error);
-    }
-
-    // 500 - Generic server error
-    return new ExternalAPIError('Gemini', `API error: ${errorMessage}`, 500, error);
   }
 
   /**
@@ -401,7 +185,7 @@ export class GeminiClient implements IGeminiClient {
         const promptTokens = usageMetadata.promptTokenCount || 0;
         const completionTokens = usageMetadata.candidatesTokenCount || 0;
         const totalTokens = usageMetadata.totalTokenCount || (promptTokens + completionTokens);
-        const costEstimated = calculateCostEUR(promptTokens, completionTokens);
+        const costEstimated = this.taximeter.calculateCost(promptTokens, completionTokens);
 
         tokenUsage = {
           promptTokens,
@@ -410,13 +194,8 @@ export class GeminiClient implements IGeminiClient {
           costEstimated,
         };
 
-        // Actualizar acumulador de sesión
-        sessionCosts.analysisCount++;
-        sessionCosts.analysisTotalTokens += totalTokens;
-        sessionCosts.analysisTotalCost += costEstimated;
-
-        // Log visual
-        logTaximeter('ANÁLISIS', sanitizedTitle, promptTokens, completionTokens, totalTokens, costEstimated);
+        // Log with taximeter
+        this.taximeter.logAnalysis(sanitizedTitle, promptTokens, completionTokens, totalTokens, costEstimated);
       } else {
         console.log(`      [GeminiClient] Respuesta recibida OK (sin metadata de tokens)`);
       }
@@ -483,17 +262,9 @@ export class GeminiClient implements IGeminiClient {
       console.log(`      [GeminiClient] Chat - Historial truncado: ${messages.length} → ${recentMessages.length} mensajes`);
     }
 
-    // Build the conversation with system context (formato compacto)
-    const conversationParts: string[] = [];
-    conversationParts.push(`[CONTEXTO]\n${systemContext}`);
-    conversationParts.push('\n[HISTORIAL]');
-
-    // Add message history (formato compacto: U/A en lugar de Usuario/Asistente)
-    for (const msg of recentMessages) {
-      const roleLabel = msg.role === 'user' ? 'U' : 'A';
-      conversationParts.push(`${roleLabel}: ${msg.content}`);
-    }
-
+    // COST OPTIMIZATION: Prompt extraído a módulo centralizado
+    const conversationParts = buildGroundingChatPrompt(recentMessages);
+    conversationParts.unshift(`[CONTEXTO]\n${systemContext}`, '\n[HISTORIAL]');
     conversationParts.push('\nResponde a la última pregunta.');
     const prompt = conversationParts.join('\n');
 
@@ -517,19 +288,13 @@ export class GeminiClient implements IGeminiClient {
         const promptTokens = usageMetadata.promptTokenCount || 0;
         const completionTokens = usageMetadata.candidatesTokenCount || 0;
         const totalTokens = usageMetadata.totalTokenCount || (promptTokens + completionTokens);
-        const costEstimated = calculateCostEUR(promptTokens, completionTokens);
+        const costEstimated = this.taximeter.calculateCost(promptTokens, completionTokens);
 
-        // Actualizar acumulador de sesión
-        sessionCosts.groundingChatCount++;
-        sessionCosts.groundingChatTotalTokens += totalTokens;
-        sessionCosts.groundingChatTotalCost += costEstimated;
-
-        // Obtener la última pregunta del usuario para el log
+        // Get last user message for log
         const lastUserMessage = messages.filter(m => m.role === 'user').pop();
         const questionPreview = lastUserMessage?.content || 'Conversación';
 
-        // Log visual
-        logTaximeter('CHAT GROUNDING', questionPreview, promptTokens, completionTokens, totalTokens, costEstimated);
+        this.taximeter.logGroundingChat(questionPreview, promptTokens, completionTokens, totalTokens, costEstimated);
       }
 
       return { message: text.trim() };
@@ -557,18 +322,8 @@ export class GeminiClient implements IGeminiClient {
       throw new ExternalAPIError('Gemini', 'Question is required', 400);
     }
 
-    // COST OPTIMIZATION: Prompt compacto (antes ~370 tokens, ahora ~120 tokens)
-    const ragPrompt = `Asistente de noticias. Responde en español, max 150 palabras.
-
-REGLAS:
-- Prioriza el CONTEXTO. Si no está ahí, usa conocimiento general con prefijo "Según información general..."
-- Formato: bullets para listas, **negrita** para datos clave, párrafos cortos (2-3 líneas max)
-
-[CONTEXTO]
-${context}
-
-[PREGUNTA]
-${question}`;
+    // COST OPTIMIZATION: Prompt extraído a módulo centralizado
+    const ragPrompt = buildRagChatPrompt(question, context);
 
     // RESILIENCIA: executeWithRetry maneja reintentos automáticos
     return this.executeWithRetry(async () => {
@@ -584,15 +339,9 @@ ${question}`;
         const promptTokens = usageMetadata.promptTokenCount || 0;
         const completionTokens = usageMetadata.candidatesTokenCount || 0;
         const totalTokens = usageMetadata.totalTokenCount || (promptTokens + completionTokens);
-        const costEstimated = calculateCostEUR(promptTokens, completionTokens);
+        const costEstimated = this.taximeter.calculateCost(promptTokens, completionTokens);
 
-        // Actualizar acumulador de sesión
-        sessionCosts.ragChatCount++;
-        sessionCosts.ragChatTotalTokens += totalTokens;
-        sessionCosts.ragChatTotalCost += costEstimated;
-
-        // Log visual
-        logTaximeter('CHAT RAG', question, promptTokens, completionTokens, totalTokens, costEstimated);
+        this.taximeter.logRagChat(question, promptTokens, completionTokens, totalTokens, costEstimated);
       }
 
       return text;
@@ -737,7 +486,8 @@ ${question}`;
   async discoverRssUrl(mediaName: string): Promise<string | null> {
     console.log(`🔍 Buscando RSS automático para: "${mediaName}"`);
 
-    const prompt = `El usuario busca el RSS de: '${mediaName}'. Devuelve EXCLUSIVAMENTE la URL del feed RSS oficial más probable. Sin texto, sin markdown, solo la URL. Si no tiene RSS o no lo sabes, devuelve 'null'.`;
+    // COST OPTIMIZATION: Prompt extraído a módulo centralizado
+    const prompt = buildRssDiscoveryPrompt(mediaName);
 
     try {
       // RESILIENCIA: executeWithRetry maneja reintentos automáticos
@@ -771,33 +521,6 @@ ${question}`;
    * Obtiene el reporte de costes acumulados de la sesión
    */
   getSessionCostReport() {
-    const totalSessionCost = sessionCosts.analysisTotalCost + sessionCosts.ragChatTotalCost + sessionCosts.groundingChatTotalCost;
-    const totalSessionTokens = sessionCosts.analysisTotalTokens + sessionCosts.ragChatTotalTokens + sessionCosts.groundingChatTotalTokens;
-    const totalOperations = sessionCosts.analysisCount + sessionCosts.ragChatCount + sessionCosts.groundingChatCount;
-
-    return {
-      analysis: {
-        count: sessionCosts.analysisCount,
-        tokens: sessionCosts.analysisTotalTokens,
-        cost: sessionCosts.analysisTotalCost,
-      },
-      ragChat: {
-        count: sessionCosts.ragChatCount,
-        tokens: sessionCosts.ragChatTotalTokens,
-        cost: sessionCosts.ragChatTotalCost,
-      },
-      groundingChat: {
-        count: sessionCosts.groundingChatCount,
-        tokens: sessionCosts.groundingChatTotalTokens,
-        cost: sessionCosts.groundingChatTotalCost,
-      },
-      total: {
-        operations: totalOperations,
-        tokens: totalSessionTokens,
-        cost: totalSessionCost,
-      },
-      sessionStart: sessionCosts.sessionStart,
-      uptime: Date.now() - sessionCosts.sessionStart.getTime(),
-    };
+    return this.taximeter.getReport();
   }
 }
