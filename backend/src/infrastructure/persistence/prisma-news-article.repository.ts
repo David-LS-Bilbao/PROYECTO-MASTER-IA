@@ -7,57 +7,18 @@ import {
   INewsArticleRepository,
   FindAllParams,
 } from '../../domain/repositories/news-article.repository';
-import { NewsArticle, NewsArticleProps } from '../../domain/entities/news-article.entity';
+import { NewsArticle } from '../../domain/entities/news-article.entity';
 import { DatabaseError } from '../../domain/errors/infrastructure.error';
+import { ArticleMapper } from './article-mapper';
 
 export class PrismaNewsArticleRepository implements INewsArticleRepository {
+  private readonly mapper = new ArticleMapper();
+
   constructor(private readonly prisma: PrismaClient) {}
 
   async save(article: NewsArticle): Promise<void> {
     try {
-      const data = article.toJSON();
-
-      await this.prisma.article.upsert({
-        where: { url: data.url },
-        update: {
-          title: data.title,
-          description: data.description,
-          content: data.content,
-          urlToImage: data.urlToImage,
-          author: data.author,
-          category: data.category,
-          embedding: data.embedding,
-          summary: data.summary,
-          biasScore: data.biasScore,
-          analysis: data.analysis,
-          analyzedAt: data.analyzedAt,
-          internalReasoning: data.internalReasoning,
-          isFavorite: data.isFavorite,
-          updatedAt: new Date(),
-        },
-        create: {
-          id: data.id,
-          title: data.title,
-          description: data.description,
-          content: data.content,
-          url: data.url,
-          urlToImage: data.urlToImage,
-          source: data.source,
-          author: data.author,
-          publishedAt: data.publishedAt,
-          category: data.category,
-          language: data.language,
-          embedding: data.embedding,
-          summary: data.summary,
-          biasScore: data.biasScore,
-          analysis: data.analysis,
-          analyzedAt: data.analyzedAt,
-          internalReasoning: data.internalReasoning,
-          isFavorite: data.isFavorite,
-          fetchedAt: data.fetchedAt,
-          updatedAt: new Date(),
-        },
-      });
+      await this.prisma.article.upsert(this.mapper.toUpsertData(article));
     } catch (error) {
       throw new DatabaseError(
         `Failed to save article: ${(error as Error).message}`,
@@ -76,49 +37,7 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
 
       await this.prisma.$transaction(async (tx) => {
         for (const article of articles) {
-          const data = article.toJSON();
-
-          await tx.article.upsert({
-            where: { url: data.url },
-            update: {
-              title: data.title,
-              description: data.description,
-              content: data.content,
-              urlToImage: data.urlToImage,
-              author: data.author,
-              category: data.category,
-              embedding: data.embedding,
-              summary: data.summary,
-              biasScore: data.biasScore,
-              analysis: data.analysis,
-              analyzedAt: data.analyzedAt,
-              internalReasoning: data.internalReasoning,
-              isFavorite: data.isFavorite,
-              updatedAt: new Date(),
-            },
-            create: {
-              id: data.id,
-              title: data.title,
-              description: data.description,
-              content: data.content,
-              url: data.url,
-              urlToImage: data.urlToImage,
-              source: data.source,
-              author: data.author,
-              publishedAt: data.publishedAt,
-              category: data.category,
-              language: data.language,
-              embedding: data.embedding,
-              summary: data.summary,
-              biasScore: data.biasScore,
-              analysis: data.analysis,
-              analyzedAt: data.analyzedAt,
-              internalReasoning: data.internalReasoning,
-              isFavorite: data.isFavorite,
-              fetchedAt: data.fetchedAt,
-              updatedAt: new Date(),
-            },
-          });
+          await tx.article.upsert(this.mapper.toUpsertData(article));
         }
       });
     } catch (error) {
@@ -137,7 +56,7 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
 
       if (!article) return null;
 
-      return this.toDomain(article);
+      return this.mapper.toDomain(article);
     } catch (error) {
       throw new DatabaseError(
         `Failed to find article by ID: ${(error as Error).message}`,
@@ -154,7 +73,7 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
 
       if (!article) return null;
 
-      return this.toDomain(article);
+      return this.mapper.toDomain(article);
     } catch (error) {
       throw new DatabaseError(
         `Failed to find article by URL: ${(error as Error).message}`,
@@ -182,7 +101,7 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
         },
       });
 
-      return articles.map((article) => this.toDomain(article));
+      return articles.map((article) => this.mapper.toDomain(article));
     } catch (error) {
       throw new DatabaseError(
         `Failed to find articles by source and date range: ${(error as Error).message}`,
@@ -241,7 +160,7 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
         take: limit,
       });
 
-      return articles.map((article) => this.toDomain(article));
+      return articles.map((article) => this.mapper.toDomain(article));
     } catch (error) {
       throw new DatabaseError(
         `Failed to find unanalyzed articles: ${(error as Error).message}`,
@@ -325,7 +244,7 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
 
       console.log(`[Repository.findAll] Found ${articles.length} articles`);
 
-      return articles.map((article) => this.toDomain(article));
+      return articles.map((article) => this.mapper.toDomain(article));
     } catch (error) {
       throw new DatabaseError(
         `Failed to find articles: ${(error as Error).message}`,
@@ -344,7 +263,7 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
         },
       });
 
-      return articles.map((article) => this.toDomain(article));
+      return articles.map((article) => this.mapper.toDomain(article));
     } catch (error) {
       throw new DatabaseError(
         `Failed to find articles by IDs: ${(error as Error).message}`,
@@ -369,7 +288,7 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
         },
       });
 
-      return this.toDomain(updated);
+      return this.mapper.toDomain(updated);
     } catch (error) {
       throw new DatabaseError(
         `Failed to toggle favorite: ${(error as Error).message}`,
@@ -413,33 +332,4 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
     return where;
   }
 
-  /**
-   * Map Prisma model to Domain entity
-   */
-  private toDomain(prismaArticle: any): NewsArticle {
-    const props: NewsArticleProps = {
-      id: prismaArticle.id,
-      title: prismaArticle.title,
-      description: prismaArticle.description,
-      content: prismaArticle.content,
-      url: prismaArticle.url,
-      urlToImage: prismaArticle.urlToImage,
-      source: prismaArticle.source,
-      author: prismaArticle.author,
-      publishedAt: prismaArticle.publishedAt,
-      category: prismaArticle.category,
-      language: prismaArticle.language,
-      embedding: prismaArticle.embedding,
-      summary: prismaArticle.summary,
-      biasScore: prismaArticle.biasScore,
-      analysis: prismaArticle.analysis,
-      analyzedAt: prismaArticle.analyzedAt,
-      internalReasoning: prismaArticle.internalReasoning,
-      isFavorite: prismaArticle.isFavorite ?? false,
-      fetchedAt: prismaArticle.fetchedAt,
-      updatedAt: prismaArticle.updatedAt,
-    };
-
-    return NewsArticle.reconstitute(props);
-  }
 }

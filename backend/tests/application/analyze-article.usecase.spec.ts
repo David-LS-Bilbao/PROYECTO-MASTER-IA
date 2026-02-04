@@ -114,7 +114,6 @@ function createMockAnalysis(overrides?: Partial<ArticleAnalysis>): ArticleAnalys
       verdict: 'Verified',
       reasoning: 'Based on recent research publications',
     },
-    factualClaims: ['AI is advancing rapidly'],
     ...overrides,
   };
 }

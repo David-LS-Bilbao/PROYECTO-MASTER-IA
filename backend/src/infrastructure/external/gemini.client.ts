@@ -30,7 +30,6 @@ import {
   buildGroundingChatPrompt,
   MAX_CHAT_HISTORY_MESSAGES,
   buildRssDiscoveryPrompt,
-  MAX_EMBEDDING_TEXT_LENGTH,
 } from './prompts';
 
 // ============================================================================
@@ -51,8 +50,15 @@ export function resetSessionCosts(): void {
 }
 
 // ============================================================================
-// MODEL CONFIGURATION
+// MODEL CONFIGURATION & LIMITS
 // ============================================================================
+
+/**
+ * Límite de caracteres para texto de embedding.
+ * El modelo text-embedding-004 tiene límite de ~8000 tokens (~6000 chars).
+ * Evita enviar textos enormes que consumen tokens innecesarios.
+ */
+const MAX_EMBEDDING_TEXT_LENGTH = 6000;
 
 export class GeminiClient implements IGeminiClient {
   private readonly model: GenerativeModel;
@@ -384,43 +390,65 @@ export class GeminiClient implements IGeminiClient {
         throw new Error('Missing or invalid summary');
       }
 
-      // biasScore: now -10 to +10, normalize to 0-1 for UI compatibility
+      // internal_reasoning: Chain-of-Thought para XAI auditing
+      const internal_reasoning = typeof parsed.internal_reasoning === 'string'
+        ? parsed.internal_reasoning
+        : undefined;
+
+      // category: categoría sugerida por IA
+      const category = typeof parsed.category === 'string'
+        ? parsed.category
+        : undefined;
+
+      // biasScore: -10 to +10, normalize to 0-1 for UI compatibility
       let biasRaw = 0;
       if (typeof parsed.biasScore === 'number') {
-        // Clamp to valid range
         biasRaw = Math.max(-10, Math.min(10, parsed.biasScore));
       }
-      // Normalize: abs(biasRaw)/10 gives 0-1 where 0 is neutral, 1 is extreme
       const biasScoreNormalized = Math.abs(biasRaw) / 10;
 
-      if (!Array.isArray(parsed.biasIndicators)) {
-        parsed.biasIndicators = [];
-      }
+      // analysis.biasType: tipo de sesgo detectado
+      const biasType = typeof parsed.analysis?.biasType === 'string'
+        ? parsed.analysis.biasType
+        : undefined;
 
-      // clickbaitScore: 0-100
-      let clickbaitScore = 50; // Default to moderate
-      if (typeof parsed.clickbaitScore === 'number') {
-        clickbaitScore = Math.max(0, Math.min(100, parsed.clickbaitScore));
-      }
+      // analysis.explanation: transparencia AI Act
+      const explanation = typeof parsed.analysis?.explanation === 'string'
+        ? parsed.analysis.explanation
+        : undefined;
+
+      // biasIndicators: backward compat (prompt v4 no lo pide, v3 sí)
+      const biasIndicators = Array.isArray(parsed.biasIndicators)
+        ? parsed.biasIndicators
+        : [];
 
       // reliabilityScore: 0-100
-      let reliabilityScore = 50; // Default to moderate
+      let reliabilityScore = 50;
       if (typeof parsed.reliabilityScore === 'number') {
         reliabilityScore = Math.max(0, Math.min(100, parsed.reliabilityScore));
       }
 
-      // Normalize sentiment to lowercase
+      // clickbaitScore: backward compat (prompt v4 no lo pide)
+      let clickbaitScore = 0;
+      if (typeof parsed.clickbaitScore === 'number') {
+        clickbaitScore = Math.max(0, Math.min(100, parsed.clickbaitScore));
+      }
+
+      // sentiment: backward compat (prompt v4 no lo pide)
       let sentiment: 'positive' | 'negative' | 'neutral' = 'neutral';
       const sentimentRaw = String(parsed.sentiment || 'neutral').toLowerCase();
       if (['positive', 'negative', 'neutral'].includes(sentimentRaw)) {
         sentiment = sentimentRaw as 'positive' | 'negative' | 'neutral';
       }
 
-      if (!Array.isArray(parsed.mainTopics)) {
-        parsed.mainTopics = [];
-      }
+      // suggestedTopics → mainTopics (backward compat mapping)
+      const mainTopics = Array.isArray(parsed.suggestedTopics)
+        ? parsed.suggestedTopics
+        : Array.isArray(parsed.mainTopics)
+          ? parsed.mainTopics
+          : [];
 
-      // Parse factCheck object
+      // factCheck: backward compat (prompt v4 no lo pide)
       const factCheck = {
         claims: Array.isArray(parsed.factCheck?.claims) ? parsed.factCheck.claims : [],
         verdict: this.validateVerdict(parsed.factCheck?.verdict),
@@ -429,24 +457,20 @@ export class GeminiClient implements IGeminiClient {
           : 'Sin información suficiente para verificar',
       };
 
-      // Legacy factualClaims for backwards compatibility
-      const factualClaims = factCheck.claims.length > 0
-        ? factCheck.claims
-        : (Array.isArray(parsed.factualClaims) ? parsed.factualClaims : []);
-
       return {
-        internal_reasoning: typeof parsed.internal_reasoning === 'string' ? parsed.internal_reasoning : undefined,
+        internal_reasoning,
         summary: parsed.summary,
+        category,
         biasScore: biasScoreNormalized,
         biasRaw,
-        biasIndicators: parsed.biasIndicators,
+        biasType,
+        biasIndicators,
         clickbaitScore,
         reliabilityScore,
         sentiment,
-        mainTopics: parsed.mainTopics,
+        mainTopics,
         factCheck,
-        factualClaims,
-        // Token Taximeter: Include usage if available
+        explanation,
         ...(tokenUsage && { usage: tokenUsage }),
       };
     } catch (error) {

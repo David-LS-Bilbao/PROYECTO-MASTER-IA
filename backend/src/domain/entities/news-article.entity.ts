@@ -54,11 +54,13 @@ export interface TokenUsage {
 export interface ArticleAnalysis {
   internal_reasoning?: string; // Chain-of-Thought (XAI auditing only, excluded from client response)
   summary: string;
+  category?: string; // AI-suggested category for the article
   // biasScore: -10 (Extrema Izquierda) a +10 (Extrema Derecha), 0 es Neutral
   // Stored normalized to 0-1 for UI compatibility (abs(biasScore)/10)
   biasScore: number;
   // Raw bias score from -10 to +10 for detailed display
   biasRaw: number;
+  biasType?: string; // Tipo de sesgo: encuadre|omisión|lenguaje|selección|ninguno
   biasIndicators: string[];
   // clickbaitScore: 0 (Serio) a 100 (Clickbait extremo)
   clickbaitScore: number;
@@ -67,8 +69,7 @@ export interface ArticleAnalysis {
   sentiment: 'positive' | 'negative' | 'neutral';
   mainTopics: string[];
   factCheck: FactCheck;
-  // Legacy field for backwards compatibility
-  factualClaims: string[];
+  explanation?: string; // Transparencia AI Act: por qué se asignaron estos scores
   // Token Taximeter: Cost tracking (Sprint 8.2)
   usage?: TokenUsage;
 }

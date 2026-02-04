@@ -91,7 +91,6 @@ function createMockArticle(overrides?: Partial<any>): NewsArticle {
         verdict: 'Verified',
         reasoning: 'Based on research',
       },
-      factualClaims: ['AI is advancing rapidly'],
     }),
     analyzedAt: new Date('2026-02-01T11:00:00Z'),
     fetchedAt: new Date('2026-02-01T10:00:00Z'),

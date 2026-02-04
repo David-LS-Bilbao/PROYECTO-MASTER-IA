@@ -46,7 +46,6 @@ function createMockAnalysisOutput() {
         verdict: 'Verified',
         reasoning: 'Based on recent research and industry reports',
       },
-      factualClaims: ['AI is advancing rapidly', 'Technology impacts society'],
     },
     scrapedContentLength: 2500,
   };

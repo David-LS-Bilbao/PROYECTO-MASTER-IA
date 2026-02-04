@@ -54,7 +54,6 @@ const mockAnalysis: ArticleAnalysis = {
   biasIndicators: ['slight emotional language'],
   sentiment: 'neutral',
   mainTopics: ['technology', 'innovation'],
-  factualClaims: ['Company X launched product Y'],
 };
 
 // Mock scraped content
