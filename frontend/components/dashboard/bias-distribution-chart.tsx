@@ -33,6 +33,12 @@ const LABELS = {
   right: 'Tendencia Derecha',
 };
 
+// Función helper para calcular porcentaje (exportada para tests)
+export function calculatePercentage(value: number, total: number): number {
+  if (total === 0) return 0;
+  return Math.round((value / total) * 100);
+}
+
 function CustomTooltip({
   active,
   payload,
@@ -43,8 +49,9 @@ function CustomTooltip({
   const label = item.name || '';
   const value = item.value ?? 0;
   
-  // El percent viene de Recharts ya calculado (0-1), lo convertimos a porcentaje
-  const percentage = Math.round((item.percent ?? 0) * 100);
+  // Obtener total del payload (pasado en chartData)
+  const total = item.payload?.total ?? 0;
+  const percentage = calculatePercentage(value, total);
 
   // Descripciones educativas según el tipo
   const descriptions: Record<string, { icon: string; text: string; color: string }> = {
