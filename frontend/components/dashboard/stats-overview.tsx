@@ -91,8 +91,8 @@ export function StatsOverview({
           </p>
         </div>
 
-      <div className="grid gap-6 lg:grid-cols-5">
-        {/* KPI Cards - 40% width on desktop */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* KPI Cards - Responsive grid */}
         <div className="grid gap-4 grid-cols-2 lg:col-span-2">
           {/* Total Articles */}
           <Card>
@@ -185,8 +185,8 @@ export function StatsOverview({
           </Card>
         </div>
 
-        {/* Bias Chart - 60% width on desktop */}
-        <div className="lg:col-span-3">
+        {/* Bias Chart - 1/3 width on desktop */}
+        <div className="lg:col-span-1">
           <BiasDistributionChart data={biasDistribution} />
         </div>
       </div>

@@ -77,7 +77,7 @@ export function BiasDistributionChart({ data }: BiasDistributionChartProps) {
           Una cobertura equilibrada tiene más noticias en el centro (verde) y balanceadas hacia los lados.
         </p>
       </CardHeader>
-      <CardContent className="h-65">
+      <CardContent className="h-80">
         {total === 0 ? (
           <div className="flex h-full items-center justify-center">
             <p className="text-sm text-muted-foreground">Sin datos de sesgo</p>
@@ -89,8 +89,8 @@ export function BiasDistributionChart({ data }: BiasDistributionChartProps) {
                 data={chartData}
                 dataKey="value"
                 nameKey="name"
-                innerRadius={70}
-                outerRadius={100}
+                innerRadius={80}
+                outerRadius={120}
                 paddingAngle={2}
                 label={({ name, percent }) => 
                   `${name}: ${((percent ?? 0) * 100).toFixed(0)}%`

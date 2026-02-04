@@ -35,7 +35,7 @@ export function DashboardDrawer({
 }: DashboardDrawerProps) {
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto">
+      <SheetContent side="right" className="w-full sm:max-w-4xl overflow-y-auto">
         <SheetHeader>
           <SheetTitle>📊 Inteligencia de Medios</SheetTitle>
           <SheetDescription>
