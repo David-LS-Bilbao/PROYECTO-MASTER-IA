@@ -1,21 +1,19 @@
 /**
  * TokenTaximeter - Cost Tracking for AI API Operations
- * 
+ *
  * ZONA CRÍTICA (CALIDAD.md): Maneja cálculos de costes y tokens
  * Cobertura requerida: 100%
- * 
+ *
  * Responsabilidades:
  * - Calcular costes en EUR basado en tokens consumidos
  * - Acumular estadísticas de sesión por tipo de operación
  * - Generar logs visuales formateados
  * - Proveer reportes de costes acumulados
+ *
+ * DEUDA TÉCNICA #10 (Sprint 14): Magic numbers centralizados en constants.ts
  */
 
-// Pricing constants - Gemini 2.5 Flash
-// Fuente: https://ai.google.dev/pricing
-const PRICE_INPUT_1M = 0.075;  // USD per 1M input tokens
-const PRICE_OUTPUT_1M = 0.30;  // USD per 1M output tokens
-const EUR_USD_RATE = 0.95;     // EUR/USD conversion rate
+import { GEMINI_PRICING, CURRENCY_RATES, CONTENT_CONFIG } from '../../config/constants';
 
 interface SessionCostAccumulator {
   analysisCount: number;
@@ -73,9 +71,9 @@ export class TokenTaximeter {
    * Calculate cost in EUR from token counts
    */
   private calculateCostEUR(promptTokens: number, completionTokens: number): number {
-    const costInputUSD = (promptTokens / 1_000_000) * PRICE_INPUT_1M;
-    const costOutputUSD = (completionTokens / 1_000_000) * PRICE_OUTPUT_1M;
-    return (costInputUSD + costOutputUSD) * EUR_USD_RATE;
+    const costInputUSD = (promptTokens / 1_000_000) * GEMINI_PRICING.INPUT_COST_PER_1M_TOKENS;
+    const costOutputUSD = (completionTokens / 1_000_000) * GEMINI_PRICING.OUTPUT_COST_PER_1M_TOKENS;
+    return (costInputUSD + costOutputUSD) * CURRENCY_RATES.EUR_USD_RATE;
   }
 
   /**
@@ -147,7 +145,7 @@ export class TokenTaximeter {
     totalTokens: number,
     costEUR: number
   ): void {
-    const titlePreview = title.substring(0, 45) + (title.length > 45 ? '...' : '');
+    const titlePreview = title.substring(0, CONTENT_CONFIG.TITLE_PREVIEW_LENGTH) + (title.length > CONTENT_CONFIG.TITLE_PREVIEW_LENGTH ? '...' : '');
 
     console.log(`\n      🧾 ═══════════════════════════════════════════════════════════`);
     console.log(`      🧾 TOKEN TAXIMETER - ${operationType}`);

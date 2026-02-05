@@ -12,6 +12,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { GeminiClient } from '../../../src/infrastructure/external/gemini.client';
+import { TokenTaximeter } from '../../../src/infrastructure/monitoring/token-taximeter';
 import { ExternalAPIError } from '../../../src/domain/errors/infrastructure.error';
 
 // ============================================================================
@@ -46,10 +47,14 @@ vi.mock('@google/generative-ai', () => {
 
 describe('GeminiClient - Retry Logic & Resilience', () => {
   let geminiClient: GeminiClient;
+  let tokenTaximeter: TokenTaximeter;
 
   beforeEach(() => {
-    // Crear instancia del cliente con API key de prueba
-    geminiClient = new GeminiClient('test-api-key-123');
+    // BLOQUEANTE #2: Crear instancia fresca de TokenTaximeter
+    tokenTaximeter = new TokenTaximeter();
+
+    // BLOQUEANTE #2: Inyectar TokenTaximeter en el constructor (DI Pattern)
+    geminiClient = new GeminiClient('test-api-key-123', tokenTaximeter);
 
     // Limpiar mocks antes de cada test
     vi.clearAllMocks();

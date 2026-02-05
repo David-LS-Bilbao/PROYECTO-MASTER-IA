@@ -1,18 +1,17 @@
 /**
  * Analyze Controller (Infrastructure/Presentation Layer)
  * Handles HTTP requests for article analysis
+ *
+ * DEUDA TÉCNICA #7 (Sprint 14): Error handling centralizado
+ * - ✅ Eliminados try-catch redundantes (capturados por asyncHandler)
+ * - ✅ Removido handleError privado (duplicado del middleware global errorHandler)
+ * - ✅ Los errores se propagan automáticamente al middleware errorHandler
+ * - ✅ Implementación más limpia y mantenible
  */
 
 import { Request, Response } from 'express';
 import { AnalyzeArticleUseCase } from '../../../application/use-cases/analyze-article.usecase';
 import { analyzeArticleSchema, analyzeBatchSchema } from '../schemas/analyze.schema';
-import { ValidationError, EntityNotFoundError } from '../../../domain/errors/domain.error';
-import {
-  ExternalAPIError,
-  DatabaseError,
-  InfrastructureError,
-} from '../../../domain/errors/infrastructure.error';
-import { ZodError } from 'zod';
 import { UserStatsTracker } from '../../monitoring/user-stats-tracker';
 
 export class AnalyzeController {
@@ -21,36 +20,55 @@ export class AnalyzeController {
   /**
    * POST /api/analyze/article
    * Analyze a single article by ID
+   *
+   * Los errores se propagan automáticamente al middleware errorHandler:
+   * - ZodError (invalid input) → 400 Bad Request
+   * - EntityNotFoundError (article not found) → 404 Not Found
+   * - ValidationError → 400 Bad Request
+   * - ExternalAPIError (Gemini, etc.) → 503 Service Unavailable
+   * - QuotaExceededError → 429 Too Many Requests (Sprint 14)
+   * - Otros DomainErrors → según su httpStatusCode
+   * - Unknown errors → 500 Internal Server Error
    */
   async analyzeArticle(req: Request, res: Response): Promise<void> {
-    try {
-      // Validate request body with Zod (Shift Left Security)
-      const validatedInput = analyzeArticleSchema.parse(req.body);
+    // Validate request body with Zod (Shift Left Security)
+    // Si hay error, Zod lanza ZodError que captura asyncHandler → errorHandler
+    const validatedInput = analyzeArticleSchema.parse(req.body);
 
-      // Execute use case
-      const result = await this.analyzeArticleUseCase.execute(validatedInput);
+    // Sprint 14: Pass user to use case for quota enforcement
+    const input = {
+      ...validatedInput,
+      user: req.user
+        ? {
+            id: req.user.uid,
+            plan: req.user.plan,
+            usageStats: req.user.usageStats,
+          }
+        : undefined,
+    };
 
-      // Track user stats (if authenticated)
-      if (req.user?.uid) {
-        UserStatsTracker.incrementArticlesAnalyzed(req.user.uid, 1).catch(err => 
-          console.error('[AnalyzeController] Failed to track article analysis:', err)
-        );
-      }
+    // Execute use case
+    // Cualquier error (EntityNotFoundError, ExternalAPIError, QuotaExceededError, etc.) se propaga
+    const result = await this.analyzeArticleUseCase.execute(input);
 
-      // Exclude internal_reasoning from analysis object (AI_RULES.md: XAI auditing only)
-      const { internal_reasoning, ...publicAnalysis } = result.analysis;
-
-      res.status(200).json({
-        success: true,
-        data: {
-          ...result,
-          analysis: publicAnalysis,
-        },
-        message: 'Article analyzed successfully',
-      });
-    } catch (error) {
-      this.handleError(error, res);
+    // Track user stats (if authenticated, non-blocking)
+    if (req.user?.uid) {
+      UserStatsTracker.incrementArticlesAnalyzed(req.user.uid, 1).catch(err =>
+        console.error('[AnalyzeController] Failed to track article analysis:', err)
+      );
     }
+
+    // Exclude internal_reasoning from analysis object (AI_RULES.md: XAI auditing only)
+    const { internal_reasoning, ...publicAnalysis } = result.analysis;
+
+    res.status(200).json({
+      success: true,
+      data: {
+        ...result,
+        analysis: publicAnalysis,
+      },
+      message: 'Article analyzed successfully',
+    });
   }
 
   /**
@@ -58,28 +76,24 @@ export class AnalyzeController {
    * Analyze multiple unanalyzed articles
    */
   async analyzeBatch(req: Request, res: Response): Promise<void> {
-    try {
-      // Validate request body with Zod
-      const validatedInput = analyzeBatchSchema.parse(req.body);
+    // Validate request body with Zod
+    const validatedInput = analyzeBatchSchema.parse(req.body);
 
-      // Execute use case
-      const result = await this.analyzeArticleUseCase.executeBatch(validatedInput);
+    // Execute use case
+    const result = await this.analyzeArticleUseCase.executeBatch(validatedInput);
 
-      // Track user stats (if authenticated)
-      if (req.user?.uid && result.successful > 0) {
-        UserStatsTracker.incrementArticlesAnalyzed(req.user.uid, result.successful).catch(err => 
-          console.error('[AnalyzeController] Failed to track batch analysis:', err)
-        );
-      }
-
-      res.status(200).json({
-        success: true,
-        data: result,
-        message: `Processed ${result.processed} articles: ${result.successful} successful, ${result.failed} failed`,
-      });
-    } catch (error) {
-      this.handleError(error, res);
+    // Track user stats (if authenticated, non-blocking)
+    if (req.user?.uid && result.successful > 0) {
+      UserStatsTracker.incrementArticlesAnalyzed(req.user.uid, result.successful).catch(err =>
+        console.error('[AnalyzeController] Failed to track batch analysis:', err)
+      );
     }
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      message: `Processed ${result.processed} articles: ${result.successful} successful, ${result.failed} failed`,
+    });
   }
 
   /**
@@ -87,94 +101,12 @@ export class AnalyzeController {
    * Get analysis statistics
    */
   async getStats(_req: Request, res: Response): Promise<void> {
-    try {
-      const stats = await this.analyzeArticleUseCase.getStats();
+    const stats = await this.analyzeArticleUseCase.getStats();
 
-      res.status(200).json({
-        success: true,
-        data: stats,
-        message: `${stats.percentAnalyzed}% of articles analyzed`,
-      });
-    } catch (error) {
-      this.handleError(error, res);
-    }
-  }
-
-  /**
-   * Centralized error handling
-   */
-  private handleError(error: unknown, res: Response): void {
-    console.error('Controller Error:', error);
-
-    // Zod validation errors
-    if (error instanceof ZodError) {
-      res.status(400).json({
-        success: false,
-        error: 'Validation Error',
-        details: error.issues.map((err) => ({
-          field: err.path.join('.'),
-          message: err.message,
-        })),
-      });
-      return;
-    }
-
-    // Entity not found errors
-    if (error instanceof EntityNotFoundError) {
-      res.status(404).json({
-        success: false,
-        error: 'Not Found',
-        message: error.message,
-      });
-      return;
-    }
-
-    // Domain validation errors
-    if (error instanceof ValidationError) {
-      res.status(400).json({
-        success: false,
-        error: 'Validation Error',
-        message: error.message,
-      });
-      return;
-    }
-
-    // External API errors
-    if (error instanceof ExternalAPIError) {
-      res.status(error.statusCode || 502).json({
-        success: false,
-        error: 'External API Error',
-        message: error.message,
-        service: error.service,
-      });
-      return;
-    }
-
-    // Database errors
-    if (error instanceof DatabaseError) {
-      res.status(500).json({
-        success: false,
-        error: 'Database Error',
-        message: 'Failed to persist data',
-      });
-      return;
-    }
-
-    // Infrastructure errors
-    if (error instanceof InfrastructureError) {
-      res.status(500).json({
-        success: false,
-        error: 'Infrastructure Error',
-        message: error.message,
-      });
-      return;
-    }
-
-    // Unknown errors
-    res.status(500).json({
-      success: false,
-      error: 'Internal Server Error',
-      message: 'An unexpected error occurred',
+    res.status(200).json({
+      success: true,
+      data: stats,
+      message: `${stats.percentAnalyzed}% of articles analyzed`,
     });
   }
 }

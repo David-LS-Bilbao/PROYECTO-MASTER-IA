@@ -674,13 +674,13 @@ describe('ChatArticleUseCase - RAG System (ZONA CRÍTICA)', () => {
       expect(contextArg).toContain('Specific Source');
     });
 
-    it('FORMATO COMPACTO: contexto debe usar formato [N] Título | Fuente', async () => {
+    it('FORMATO COMPACTO: contexto debe usar formato [N] Título | Fuente - Contenido', async () => {
       // ARRANGE
       const article = createMockArticle();
       const mockQueryResults: QueryResult[] = [
         {
           id: 'article-1',
-          document: 'Content 1',
+          document: 'Content snippet with important information about the topic',
           metadata: { title: 'Title 1', source: 'Source 1', publishedAt: new Date('2026-02-01T10:00:00Z').toISOString() },
           distance: 0.1,
         },
@@ -697,15 +697,60 @@ describe('ChatArticleUseCase - RAG System (ZONA CRÍTICA)', () => {
         messages: createChatMessages('Test question'),
       });
 
-      // ASSERT - Verificar formato compacto (cost optimization)
+      // ASSERT - Verificar formato compacto con snippet (BLOQUEANTE #4)
       const contextArg = mockGeminiClient.generateChatResponse.mock.calls[0][0];
-      
-      // Debe usar formato: [1] Title 1 | Source 1
-      expect(contextArg).toMatch(/\[1\]\s+Title 1\s+\|\s+Source 1/);
-      
+
+      // ✅ BLOQUEANTE #4: Debe usar formato [N] Title | Source - Content snippet
+      // El guión y el contenido deben estar en la misma línea que los metadatos
+      expect(contextArg).toMatch(/\[1\]\s+Title 1\s+\|\s+Source 1\s+-\s+Content snippet/);
+
+      // Verificar que el contenido del documento está presente
+      expect(contextArg).toContain('important information about the topic');
+
       // NO debe tener headers verbosos como "--- Fragmento 1 ---"
       expect(contextArg).not.toContain('---');
       expect(contextArg).not.toContain('Fragmento');
+    });
+
+    it('BLOQUEANTE #4: Cada documento debe tener formato [N] Title | Source - Snippet', async () => {
+      // ARRANGE
+      const article = createMockArticle();
+      const mockQueryResults: QueryResult[] = [
+        {
+          id: 'article-1',
+          document: 'First document content with relevant data',
+          metadata: { title: 'Article Alpha', source: 'Source A', publishedAt: new Date('2026-02-01T10:00:00Z').toISOString() },
+          distance: 0.1,
+        },
+        {
+          id: 'article-2',
+          document: 'Second document with additional context',
+          metadata: { title: 'Article Beta', source: 'Source B', publishedAt: new Date('2026-02-01T10:00:00Z').toISOString() },
+          distance: 0.2,
+        },
+      ];
+
+      mockArticleRepository.findById.mockResolvedValueOnce(article);
+      mockGeminiClient.generateEmbedding.mockResolvedValueOnce([0.1, 0.2]);
+      mockChromaClient.querySimilarWithDocuments.mockResolvedValueOnce(mockQueryResults);
+      mockGeminiClient.generateChatResponse.mockResolvedValueOnce('Response');
+
+      // ACT
+      await useCase.execute({
+        articleId: 'test-article-id-123',
+        messages: createChatMessages('Test question'),
+      });
+
+      // ASSERT - BLOQUEANTE #4: Regex estricto para validar formato
+      const contextArg = mockGeminiClient.generateChatResponse.mock.calls[0][0];
+
+      // ✅ Regex genérico: [número] texto | texto - texto
+      // Debe cumplirse para CADA documento en el contexto
+      expect(contextArg).toMatch(/\[\d+\] .+ \| .+ - .+/);
+
+      // Verificar que ambos documentos están presentes con su contenido
+      expect(contextArg).toMatch(/\[1\] Article Alpha \| Source A - First document content with relevant data/);
+      expect(contextArg).toMatch(/\[2\] Article Beta \| Source B - Second document with additional context/);
     });
   });
 });

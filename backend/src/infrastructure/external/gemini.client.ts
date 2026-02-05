@@ -23,6 +23,7 @@ import {
 } from '../../domain/errors/infrastructure.error';
 import { TokenTaximeter } from '../monitoring/token-taximeter';
 import { GeminiErrorMapper } from './gemini-error-mapper';
+import { createModuleLogger } from '../logger/logger';
 import {
   ANALYSIS_PROMPT,
   MAX_ARTICLE_CONTENT_LENGTH,
@@ -33,21 +34,38 @@ import {
 } from './prompts';
 
 // ============================================================================
-// TOKEN TAXIMETER - SINGLETON INSTANCE
+// LOGGER - SEGURIDAD (Sprint 14 - Bloqueante #1)
 // ============================================================================
 
 /**
- * Singleton taximeter instance for the entire application
+ * Logger específico para GeminiClient
+ * Usa Pino con redaction automática de datos sensibles (PII)
+ *
+ * IMPORTANTE: Nunca loguear:
+ * - Títulos de artículos (puede contener información privada)
+ * - Contenido de usuarios (preguntas, datos personales)
+ * - URLs de fuentes privadas
+ *
+ * OK loguear:
+ * - Metadatos: conteos, dimensiones, tokens
+ * - Estados: "iniciando", "completado", "reintentando"
+ * - Errores técnicos: codigos, tipos de error (sin detalles sensibles)
  */
-const taximeter = new TokenTaximeter();
+const logger = createModuleLogger('GeminiClient');
+
+// ============================================================================
+// TOKEN TAXIMETER - DEPENDENCY INJECTION (Bloqueante #2 resuelto)
+// ============================================================================
 
 /**
- * Reset taximeter (for testing)
- * @deprecated Use taximeter.reset() directly in tests
+ * TokenTaximeter ya NO es un singleton global.
+ * Ahora se inyecta en el constructor (Dependency Injection).
+ *
+ * Beneficios:
+ * - Testing aislado con mocks
+ * - Sin estado global compartido
+ * - Mejor control del ciclo de vida
  */
-export function resetSessionCosts(): void {
-  taximeter.reset();
-}
 
 // ============================================================================
 // MODEL CONFIGURATION & LIMITS
@@ -66,7 +84,7 @@ export class GeminiClient implements IGeminiClient {
   private readonly genAI: GoogleGenerativeAI;
   private readonly taximeter: TokenTaximeter;
 
-  constructor(apiKey: string) {
+  constructor(apiKey: string, taximeter: TokenTaximeter) {
     if (!apiKey || apiKey.trim() === '') {
       throw new ConfigurationError('GEMINI_API_KEY is required');
     }
@@ -122,10 +140,15 @@ export class GeminiClient implements IGeminiClient {
 
         // Calcular delay con exponential backoff
         const delay = initialDelay * Math.pow(2, attempt - 1);
-        
-        console.warn(
-          `⚠️ [GeminiClient] Gemini API error (intento ${attempt}/${retries}): ${errorMessage}. ` +
-          `Reintentando en ${delay}ms...`
+
+        logger.warn(
+          {
+            attempt,
+            retries,
+            delayMs: delay,
+            errorCode: (error as any)?.code,
+          },
+          `Gemini API transient error - retrying`
         );
 
         // Esperar antes de reintentar
@@ -171,8 +194,11 @@ export class GeminiClient implements IGeminiClient {
 
     // RESILIENCIA: executeWithRetry maneja reintentos automáticos
     return this.executeWithRetry(async () => {
-      console.log(`      [GeminiClient] Analizando artículo: "${sanitizedTitle.substring(0, 40)}..."`);
-      
+      logger.info(
+        { contentLength: sanitizedContent.length },
+        'Starting article analysis'
+      );
+
       const result = await this.model.generateContent(prompt);
       const response = result.response;
       const text = response.text();
@@ -194,10 +220,15 @@ export class GeminiClient implements IGeminiClient {
           costEstimated,
         };
 
-        // Log with taximeter
-        this.taximeter.logAnalysis(sanitizedTitle, promptTokens, completionTokens, totalTokens, costEstimated);
+        // Log with taximeter (IMPORTANTE: no loguea títulos, solo metadatos)
+        this.taximeter.logAnalysis('[REDACTED]', promptTokens, completionTokens, totalTokens, costEstimated);
+
+        logger.debug(
+          { promptTokens, completionTokens, totalTokens, costEUR: costEstimated },
+          'Article analysis completed with token usage'
+        );
       } else {
-        console.log(`      [GeminiClient] Respuesta recibida OK (sin metadata de tokens)`);
+        logger.debug('Article analysis completed without token metadata');
       }
 
       return this.parseAnalysisResponse(text, tokenUsage);
@@ -228,13 +259,19 @@ export class GeminiClient implements IGeminiClient {
 
     // RESILIENCIA: executeWithRetry maneja reintentos automáticos
     return this.executeWithRetry(async () => {
-      console.log(`      [GeminiClient] Generando embedding (${truncatedText.length} chars)...`);
+      logger.info(
+        { textLength: truncatedText.length },
+        'Starting embedding generation'
+      );
 
       const embeddingModel = this.genAI.getGenerativeModel({ model: 'text-embedding-004' });
       const result = await embeddingModel.embedContent(truncatedText);
       const embedding = result.embedding.values;
 
-      console.log(`      [GeminiClient] Embedding OK - dimensiones: ${embedding.length}`);
+      logger.debug(
+        { embeddingDimensions: embedding.length },
+        'Embedding generated successfully'
+      );
       return embedding;
     }, 3, 1000); // 3 reintentos, 1s delay inicial
   }
@@ -259,7 +296,10 @@ export class GeminiClient implements IGeminiClient {
     const recentMessages = messages.slice(-MAX_CHAT_HISTORY_MESSAGES);
 
     if (messages.length > MAX_CHAT_HISTORY_MESSAGES) {
-      console.log(`      [GeminiClient] Chat - Historial truncado: ${messages.length} → ${recentMessages.length} mensajes`);
+      logger.debug(
+        { originalCount: messages.length, truncatedCount: recentMessages.length },
+        'Chat history window truncated to optimize costs'
+      );
     }
 
     // COST OPTIMIZATION: Prompt extraído a módulo centralizado
@@ -270,8 +310,11 @@ export class GeminiClient implements IGeminiClient {
 
     // RESILIENCIA: executeWithRetry maneja reintentos automáticos
     return this.executeWithRetry(async () => {
-      console.log(`      [GeminiClient] Chat (con Google Search) - Enviando conversación...`);
-      
+      logger.info(
+        { messageCount: recentMessages.length },
+        'Starting grounding chat with Google Search'
+      );
+
       const result = await this.chatModel.generateContent(prompt);
       const response = result.response;
       const text = response.text();
@@ -279,7 +322,7 @@ export class GeminiClient implements IGeminiClient {
       // Log if grounding was used
       const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
       if (groundingMetadata?.searchEntryPoint) {
-        console.log(`      [GeminiClient] Chat - Google Search utilizado para grounding`);
+        logger.debug('Google Search grounding was utilized');
       }
 
       // TOKEN TAXIMETER: Capturar uso de tokens para chat grounding
@@ -290,11 +333,13 @@ export class GeminiClient implements IGeminiClient {
         const totalTokens = usageMetadata.totalTokenCount || (promptTokens + completionTokens);
         const costEstimated = this.taximeter.calculateCost(promptTokens, completionTokens);
 
-        // Get last user message for log
-        const lastUserMessage = messages.filter(m => m.role === 'user').pop();
-        const questionPreview = lastUserMessage?.content || 'Conversación';
+        // SECURITY: No loguear la pregunta del usuario, solo metadatos
+        this.taximeter.logGroundingChat('[REDACTED]', promptTokens, completionTokens, totalTokens, costEstimated);
 
-        this.taximeter.logGroundingChat(questionPreview, promptTokens, completionTokens, totalTokens, costEstimated);
+        logger.debug(
+          { promptTokens, completionTokens, totalTokens, costEUR: costEstimated },
+          'Grounding chat completed with token usage'
+        );
       }
 
       return { message: text.trim() };
@@ -327,8 +372,8 @@ export class GeminiClient implements IGeminiClient {
 
     // RESILIENCIA: executeWithRetry maneja reintentos automáticos
     return this.executeWithRetry(async () => {
-      console.log(`      [GeminiClient] RAG Chat - Generando respuesta...`);
-      
+      logger.info('Starting RAG chat response generation');
+
       const result = await this.model.generateContent(ragPrompt);
       const response = result.response;
       const text = response.text().trim();
@@ -341,7 +386,13 @@ export class GeminiClient implements IGeminiClient {
         const totalTokens = usageMetadata.totalTokenCount || (promptTokens + completionTokens);
         const costEstimated = this.taximeter.calculateCost(promptTokens, completionTokens);
 
-        this.taximeter.logRagChat(question, promptTokens, completionTokens, totalTokens, costEstimated);
+        // SECURITY: No loguear la pregunta del usuario, solo metadatos
+        this.taximeter.logRagChat('[REDACTED]', promptTokens, completionTokens, totalTokens, costEstimated);
+
+        logger.debug(
+          { promptTokens, completionTokens, totalTokens, costEUR: costEstimated },
+          'RAG chat completed with token usage'
+        );
       }
 
       return text;
@@ -503,7 +554,10 @@ export class GeminiClient implements IGeminiClient {
    * @returns URL del RSS si se encuentra, null si no existe o no se puede determinar
    */
   async discoverRssUrl(mediaName: string): Promise<string | null> {
-    console.log(`🔍 Buscando RSS automático para: "${mediaName}"`);
+    logger.info(
+      { mediaLength: mediaName.length },
+      'Starting RSS URL discovery'
+    );
 
     // COST OPTIMIZATION: Prompt extraído a módulo centralizado
     const prompt = buildRssDiscoveryPrompt(mediaName);
@@ -517,21 +571,27 @@ export class GeminiClient implements IGeminiClient {
 
       // Si la respuesta es literalmente "null" o vacía, retornar null
       if (result === 'null' || result === '' || result.length < 10) {
-        console.log(`❌ No se encontró RSS para "${mediaName}"`);
+        logger.debug('No RSS URL found for media source');
         return null;
       }
 
       // Validar que sea una URL válida
       try {
         new URL(result);
-        console.log(`✅ RSS encontrado: ${result}`);
+        logger.info(
+          { rssUrlLength: result.length },
+          'Valid RSS URL discovered'
+        );
         return result;
       } catch {
-        console.log(`⚠️ Respuesta inválida (no es URL): ${result}`);
+        logger.warn('RSS discovery returned invalid URL format');
         return null;
       }
     } catch (error) {
-      console.error(`❌ Error al buscar RSS: ${(error as Error).message}`);
+      logger.error(
+        { errorCode: (error as any)?.code },
+        'Error during RSS URL discovery'
+      );
       return null;
     }
   }

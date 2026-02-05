@@ -71,3 +71,10 @@ export class ForbiddenError extends DomainError {
     this.name = 'ForbiddenError';
   }
 }
+
+export class QuotaExceededError extends DomainError {
+  constructor(message: string = 'Monthly quota exceeded', details?: Record<string, unknown>) {
+    super(message, 429, 'QUOTA_EXCEEDED', details);
+    this.name = 'QuotaExceededError';
+  }
+}

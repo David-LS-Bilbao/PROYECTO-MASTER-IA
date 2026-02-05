@@ -15,12 +15,20 @@
 import { Request, Response, NextFunction } from 'express';
 import { firebaseAuth } from '../../external/firebase.admin';
 import { getPrismaClient } from '../../persistence/prisma.client';
+import {
+  safeParseUserPreferences,
+  safeParseUserUsageStats,
+  UserPreferences,
+  UserUsageStats,
+} from '../schemas/user-profile.schema';
 
 // Función helper para obtener Prisma (lazy loading)
 const getPrisma = () => getPrismaClient();
 
 /**
  * Extiende la interfaz Request de Express para incluir datos del usuario autenticado
+ *
+ * BLOQUEANTE #3: Eliminados tipos `any` - ahora usa Zod schemas validados
  */
 declare global {
   namespace Express {
@@ -31,8 +39,8 @@ declare global {
         name: string | null;
         picture: string | null;
         plan: 'FREE' | 'QUOTA' | 'PAY_AS_YOU_GO';
-        preferences: any;
-        usageStats: any;
+        preferences: UserPreferences; // ✅ Tipo seguro con Zod
+        usageStats: UserUsageStats;   // ✅ Tipo seguro con Zod
       };
     }
   }
@@ -153,6 +161,7 @@ export async function authenticate(
 
     // =========================================================================
     // PASO 4: Inyectar datos del usuario en req.user
+    // BLOQUEANTE #3: Validar preferences y usageStats con Zod (elimina `any`)
     // =========================================================================
     req.user = {
       uid: user.id,
@@ -160,8 +169,8 @@ export async function authenticate(
       name: user.name,
       picture: user.picture,
       plan: user.plan as 'FREE' | 'QUOTA' | 'PAY_AS_YOU_GO',
-      preferences: user.preferences as any,
-      usageStats: user.usageStats as any,
+      preferences: safeParseUserPreferences(user.preferences), // ✅ Validado con Zod
+      usageStats: safeParseUserUsageStats(user.usageStats),   // ✅ Validado con Zod
     };
 
     // Continuar al siguiente middleware/controlador
@@ -247,8 +256,8 @@ export async function optionalAuthenticate(
           name: user.name,
           picture: user.picture,
           plan: user.plan as 'FREE' | 'QUOTA' | 'PAY_AS_YOU_GO',
-          preferences: user.preferences as any,
-          usageStats: user.usageStats as any,
+          preferences: safeParseUserPreferences(user.preferences), // ✅ Validado con Zod
+          usageStats: safeParseUserUsageStats(user.usageStats),   // ✅ Validado con Zod
         };
 
         console.log(`✅ Usuario opcional autenticado: ${email}`);

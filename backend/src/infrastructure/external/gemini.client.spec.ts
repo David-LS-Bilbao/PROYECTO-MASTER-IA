@@ -12,7 +12,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { GeminiClient, resetSessionCosts } from './gemini.client';
+import { GeminiClient } from './gemini.client';
+import { TokenTaximeter } from '../monitoring/token-taximeter';
 import { ExternalAPIError, ConfigurationError } from '../../domain/errors/infrastructure.error';
 
 // ============================================================================
@@ -70,20 +71,22 @@ function calculateExpectedCostEUR(promptTokens: number, completionTokens: number
 
 describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', () => {
   let geminiClient: GeminiClient;
+  let tokenTaximeter: TokenTaximeter;
 
   beforeEach(async () => {
     // Reset de todos los mocks antes de cada test
     vi.clearAllMocks();
 
-    // CRÍTICO: Resetear el acumulador global de sesión
-    resetSessionCosts();
+    // BLOQUEANTE #2: Crear instancia fresca de TokenTaximeter para cada test
+    // Esto asegura aislamiento completo entre tests
+    tokenTaximeter = new TokenTaximeter();
 
     // Asignar referencias a los mocks
     mockGenerateContent = mockGenerateContentFn;
     mockGenerateEmbedding = mockGenerateEmbeddingFn;
 
-    // Instanciar cliente con API key ficticia
-    geminiClient = new GeminiClient('test-api-key-12345');
+    // BLOQUEANTE #2: Inyectar TokenTaximeter en el constructor (DI Pattern)
+    geminiClient = new GeminiClient('test-api-key-12345', tokenTaximeter);
   });
 
   afterEach(() => {
@@ -640,6 +643,205 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
       // ASSERT
       expect(laterUptime).toBeGreaterThan(initialUptime);
       expect(laterUptime - initialUptime).toBeGreaterThanOrEqual(50);
+    });
+  });
+
+  // ==========================================================================
+  // GRUPO 6: SEGURIDAD - NO LOGGING DE DATOS SENSIBLES (BLOQUEANTE #1)
+  // ==========================================================================
+
+  describe('🔐 Seguridad: No Logging de Datos Sensibles', () => {
+    it('BLOQUEANTE #1: analyzeArticle NO loguea títulos de artículos (PII)', async () => {
+      // ARRANGE
+      const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const articleTitle = 'Secreto Gubernamental: Filtración de Documentos Clasificados';
+      const articleSource = 'Secret Agency';
+
+      mockGenerateContent.mockResolvedValueOnce({
+        response: {
+          text: () => JSON.stringify({
+            summary: 'Test summary',
+            biasScore: 0,
+            biasIndicators: [],
+            clickbaitScore: 0,
+            reliabilityScore: 50,
+            sentiment: 'neutral',
+            mainTopics: ['test'],
+            factCheck: {
+              claims: [],
+              verdict: 'Unproven',
+              reasoning: 'Test',
+            },
+          }),
+          usageMetadata: {
+            promptTokenCount: 1000,
+            candidatesTokenCount: 500,
+            totalTokenCount: 1500,
+          },
+        },
+      });
+
+      // ACT
+      await geminiClient.analyzeArticle({
+        title: articleTitle,
+        content: 'This is a sufficient length test content that meets the minimum requirement for analysis.',
+        source: articleSource,
+        language: 'es',
+      });
+
+      // ASSERT - Verificar que NO se loguea el título completo ni parcial
+      const logCalls = consoleLogSpy.mock.calls.map((call) => call[0]?.toString() || '');
+
+      // ❌ NO debe contener el título original
+      expect(logCalls.join('\n')).not.toContain('Secreto Gubernamental');
+      expect(logCalls.join('\n')).not.toContain('Filtración');
+      expect(logCalls.join('\n')).not.toContain('Clasificados');
+
+      // ❌ NO debe contener el source
+      expect(logCalls.join('\n')).not.toContain('Secret Agency');
+
+      consoleLogSpy.mockRestore();
+    });
+
+    it('SECURITY: NO loguea consultas de usuario en RAG Chat', async () => {
+      // ARRANGE
+      const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const sensitiveQuestion = '¿Cuál es la dirección del CEO? ¿Sus hijos van a esta escuela?';
+
+      mockGenerateContent.mockResolvedValueOnce({
+        response: {
+          text: () => 'I cannot answer that question.',
+          usageMetadata: {
+            promptTokenCount: 500,
+            candidatesTokenCount: 50,
+            totalTokenCount: 550,
+          },
+        },
+      });
+
+      // ACT
+      await geminiClient.generateChatResponse(
+        '[1] Some article context here',
+        sensitiveQuestion
+      );
+
+      // ASSERT
+      const logCalls = consoleLogSpy.mock.calls.map((call) => call[0]?.toString() || '');
+      expect(logCalls.join('\n')).not.toContain('dirección del CEO');
+      expect(logCalls.join('\n')).not.toContain('escuela');
+
+      consoleLogSpy.mockRestore();
+    });
+
+    it('SAFETY: Logs contienen solo metadatos, no data de usuario', async () => {
+      // ARRANGE
+      const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      mockGenerateContent.mockResolvedValueOnce({
+        response: {
+          text: () => JSON.stringify({
+            summary: 'Test',
+            biasScore: 0,
+            biasIndicators: [],
+            clickbaitScore: 0,
+            reliabilityScore: 50,
+            sentiment: 'neutral',
+            mainTopics: ['test'],
+            factCheck: { claims: [], verdict: 'Unproven', reasoning: 'Test' },
+          }),
+          usageMetadata: {
+            promptTokenCount: 2000,
+            candidatesTokenCount: 100,
+            totalTokenCount: 2100,
+          },
+        },
+      });
+
+      // ACT
+      await geminiClient.analyzeArticle({
+        title: 'User Private Info: Bank Account 123456',
+        content: 'Sensitive personal information that should never be logged in any form.',
+        source: 'Private Source',
+        language: 'es',
+      });
+
+      // ASSERT - Si hay logs, deben ser solo números/metadatos
+      const logCalls = consoleLogSpy.mock.calls;
+
+      if (logCalls.length > 0) {
+        // Solo permitir logs que sean metadatos (OK: "dimensiones", "caracteres", "tokens")
+        // NO permitir PII (NOT OK: números de cuenta, emails, nombres)
+        const logContent = logCalls.map((call) => call[0]?.toString() || '').join('\n');
+
+        expect(logContent).not.toContain('Bank Account');
+        expect(logContent).not.toContain('123456');
+        expect(logContent).not.toContain('Sensitive personal');
+        expect(logContent).not.toContain('Private Source');
+      }
+
+      consoleLogSpy.mockRestore();
+    });
+  });
+
+  // ==========================================================================
+  // BLOQUEANTE #2: DEPENDENCY INJECTION (debe FALLAR hasta refactor)
+  // ==========================================================================
+
+  describe('🏗️ BLOQUEANTE #2: TokenTaximeter Dependency Injection', () => {
+    it('RED PHASE: Constructor debe aceptar taximeter inyectado (actualmente FALLA)', async () => {
+      // ARRANGE - Crear un mock de TokenTaximeter
+      const mockTaximeter = {
+        logAnalysis: vi.fn(),
+        logRagChat: vi.fn(),
+        logGroundingChat: vi.fn(),
+        calculateCost: vi.fn().mockReturnValue(0.0001),
+        getReport: vi.fn().mockReturnValue({
+          analysis: { count: 99, tokens: 9999, promptTokens: 5000, completionTokens: 4999, cost: 0.99 },
+          ragChat: { count: 0, tokens: 0, promptTokens: 0, completionTokens: 0, cost: 0 },
+          groundingChat: { count: 0, tokens: 0, promptTokens: 0, completionTokens: 0, cost: 0 },
+          total: { operations: 99, tokens: 9999, totalTokens: 9999, promptTokens: 5000, completionTokens: 4999, cost: 0.99 },
+          sessionStart: new Date(),
+          uptime: 1000,
+        }),
+        reset: vi.fn(),
+      };
+
+      mockGenerateContent.mockResolvedValueOnce({
+        response: {
+          text: () => JSON.stringify({
+            summary: 'Test',
+            biasScore: 0,
+            biasIndicators: [],
+            clickbaitScore: 0,
+            reliabilityScore: 50,
+            sentiment: 'neutral',
+            mainTopics: ['test'],
+            factCheck: { claims: [], verdict: 'Unproven', reasoning: 'Test' },
+          }),
+          usageMetadata: {
+            promptTokenCount: 1000,
+            candidatesTokenCount: 500,
+            totalTokenCount: 1500,
+          },
+        },
+      });
+
+      // ACT - Intentar inyectar el mock (actualmente NO es posible)
+      // @ts-expect-error - Actualmente el constructor no acepta taximeter, esperamos error
+      const clientWithMock = new GeminiClient('test-key', mockTaximeter);
+
+      await clientWithMock.analyzeArticle({
+        title: 'Test Dependency Injection',
+        content: 'Este es un contenido de prueba suficientemente largo para pasar la validación de 50 caracteres. Necesitamos verificar que el mock de TokenTaximeter se usa correctamente.',
+        source: 'Test Source',
+        language: 'es',
+      });
+
+      // ASSERT - Verificar que el mock fue llamado (actualmente FALLARÁ)
+      // Problema actual: El constructor ignora el segundo parámetro y usa el singleton global
+      // Por lo tanto, mockTaximeter.logAnalysis NO será llamado
+      expect(mockTaximeter.logAnalysis).toHaveBeenCalledTimes(1);
+      expect(mockTaximeter.calculateCost).toHaveBeenCalledWith(1000, 500);
     });
   });
 });

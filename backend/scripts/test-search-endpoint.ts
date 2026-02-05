@@ -6,6 +6,7 @@
 import 'dotenv/config';
 import { ChromaClient } from '../src/infrastructure/external/chroma.client';
 import { GeminiClient } from '../src/infrastructure/external/gemini.client';
+import { TokenTaximeter } from '../src/infrastructure/monitoring/token-taximeter';
 import { SearchNewsUseCase } from '../src/application/use-cases/search-news.usecase';
 import { PrismaNewsArticleRepository } from '../src/infrastructure/persistence/prisma-news-article.repository';
 import { PrismaClient } from '@prisma/client';
@@ -18,7 +19,8 @@ async function main() {
   const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
   const prisma = new PrismaClient({ adapter });
   const chromaClient = new ChromaClient();
-  const geminiClient = new GeminiClient(process.env.GEMINI_API_KEY || '');
+  const tokenTaximeter = new TokenTaximeter();
+  const geminiClient = new GeminiClient(process.env.GEMINI_API_KEY || '', tokenTaximeter);
   const articleRepository = new PrismaNewsArticleRepository(prisma);
 
   // Initialize ChromaDB collection

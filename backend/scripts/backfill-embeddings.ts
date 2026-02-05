@@ -10,6 +10,7 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { ChromaClient } from '../src/infrastructure/external/chroma.client';
 import { GeminiClient } from '../src/infrastructure/external/gemini.client';
+import { TokenTaximeter } from '../src/infrastructure/monitoring/token-taximeter';
 
 // Rate limit delay (2s para tier gratuito de Gemini - seguro para TFM)
 const RATE_LIMIT_DELAY_MS = 2000;
@@ -28,7 +29,8 @@ async function main() {
   const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
   const prisma = new PrismaClient({ adapter });
   const chromaClient = new ChromaClient();
-  const geminiClient = new GeminiClient(process.env.GEMINI_API_KEY || '');
+  const tokenTaximeter = new TokenTaximeter();
+  const geminiClient = new GeminiClient(process.env.GEMINI_API_KEY || '', tokenTaximeter);
 
   // 2. Initialize ChromaDB collection
   console.log('2️⃣  Conectando a ChromaDB...');

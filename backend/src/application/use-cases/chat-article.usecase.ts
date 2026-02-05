@@ -173,14 +173,16 @@ export class ChatArticleUseCase {
     // - Eliminados headers verbosos ("--- Fragmento X ---")
     // - Eliminada nota de relevancia redundante
     // - Truncado de documentos largos
+    // - BLOQUEANTE #4: Formato [N] Title | Source - Content (guión en misma línea)
     const contextParts = sortedResults.map((result, index) => {
       // Truncar documento si es muy largo
       const truncatedDoc = result.document.length > MAX_DOCUMENT_CHARS
         ? result.document.substring(0, MAX_DOCUMENT_CHARS) + '...'
         : result.document;
 
-      // Formato compacto: [N] Título | Fuente \n Contenido
-      return `[${index + 1}] ${result.metadata.title} | ${result.metadata.source}\n${truncatedDoc}`;
+      // ✅ BLOQUEANTE #4 RESUELTO: Formato [N] Título | Fuente - Contenido
+      // El guión y contenido van en la misma línea que los metadatos
+      return `[${index + 1}] ${result.metadata.title} | ${result.metadata.source} - ${truncatedDoc}`;
     });
 
     return contextParts.join('\n\n');

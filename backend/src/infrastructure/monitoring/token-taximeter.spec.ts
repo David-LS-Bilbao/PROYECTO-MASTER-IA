@@ -156,24 +156,30 @@ describe('TokenTaximeter - Zona Crítica (100% coverage)', () => {
     it('should provide breakdown by operation type', () => {
       taximeter.logAnalysis('A1', 1000, 500, 1500, 0.001);
       taximeter.logRagChat('Q1', 800, 200, 1000, 0.0005);
-      
+
       const report = taximeter.getReport();
-      
+
       expect(report.analysis).toEqual({
         count: 1,
         tokens: 1500,
+        promptTokens: 1000,
+        completionTokens: 500,
         cost: 0.001,
       });
-      
+
       expect(report.ragChat).toEqual({
         count: 1,
         tokens: 1000,
+        promptTokens: 800,
+        completionTokens: 200,
         cost: 0.0005,
       });
-      
+
       expect(report.groundingChat).toEqual({
         count: 0,
         tokens: 0,
+        promptTokens: 0,
+        completionTokens: 0,
         cost: 0,
       });
     });

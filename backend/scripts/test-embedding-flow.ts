@@ -6,6 +6,7 @@
 import 'dotenv/config';
 import { ChromaClient } from '../src/infrastructure/external/chroma.client';
 import { GeminiClient } from '../src/infrastructure/external/gemini.client';
+import { TokenTaximeter } from '../src/infrastructure/monitoring/token-taximeter';
 
 async function main() {
   console.log('=== Test de Flujo de Embeddings ===\n');
@@ -26,7 +27,8 @@ async function main() {
 
   // 3. Test Gemini embedding
   console.log('3. Probando generación de embedding con Gemini...');
-  const geminiClient = new GeminiClient(process.env.GEMINI_API_KEY || '');
+  const tokenTaximeter = new TokenTaximeter();
+  const geminiClient = new GeminiClient(process.env.GEMINI_API_KEY || '', tokenTaximeter);
 
   const testText = 'El Gobierno de España anuncia nuevas medidas económicas para combatir la inflación.';
   const embedding = await geminiClient.generateEmbedding(testText);

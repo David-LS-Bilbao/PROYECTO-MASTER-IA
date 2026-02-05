@@ -21,6 +21,7 @@ import { IGeminiClient } from '../../domain/services/gemini-client.interface';
 import { IJinaReaderClient } from '../../domain/services/jina-reader-client.interface';
 import { IChromaClient } from '../../domain/services/chroma-client.interface';
 import { EntityNotFoundError, ValidationError } from '../../domain/errors/domain.error';
+import { QuotaService } from '../../domain/services/quota.service';
 import { MetadataExtractor } from '../../infrastructure/external/metadata-extractor';
 import { GeminiErrorMapper } from '../../infrastructure/external/gemini-error-mapper';
 
@@ -43,6 +44,15 @@ const MIN_CONTENT_LENGTH = 100;
 
 export interface AnalyzeArticleInput {
   articleId: string;
+  user?: {
+    id: string;
+    plan: 'FREE' | 'QUOTA' | 'PAY_AS_YOU_GO';
+    usageStats?: {
+      articlesAnalyzed?: number;
+      chatMessages?: number;
+      searchesPerformed?: number;
+    } | null;
+  };
 }
 
 export interface AnalyzeArticleOutput {
@@ -74,18 +84,24 @@ export class AnalyzeArticleUseCase {
     private readonly geminiClient: IGeminiClient,
     private readonly jinaReaderClient: IJinaReaderClient,
     private readonly metadataExtractor: MetadataExtractor,
-    private readonly chromaClient: IChromaClient
+    private readonly chromaClient: IChromaClient,
+    private readonly quotaService?: QuotaService
   ) {}
 
   /**
    * Analyze a single article by ID
    */
   async execute(input: AnalyzeArticleInput): Promise<AnalyzeArticleOutput> {
-    const { articleId } = input;
+    const { articleId, user } = input;
 
     // Validate input
     if (!articleId || articleId.trim() === '') {
       throw new ValidationError('Article ID is required');
+    }
+
+    // Sprint 14: Verify user quota BEFORE processing
+    if (user && this.quotaService) {
+      this.quotaService.verifyQuota(user, 'analysis');
     }
 
     // 1. Fetch article from database

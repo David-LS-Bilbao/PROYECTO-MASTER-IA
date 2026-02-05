@@ -12,12 +12,14 @@ import { GeminiClient } from '../external/gemini.client';
 import { JinaReaderClient } from '../external/jina-reader.client';
 import { MetadataExtractor } from '../external/metadata-extractor';
 import { ChromaClient } from '../external/chroma.client';
+import { TokenTaximeter } from '../monitoring/token-taximeter';
 import { PrismaNewsArticleRepository } from '../persistence/prisma-news-article.repository';
 import { IngestNewsUseCase } from '../../application/use-cases/ingest-news.usecase';
 import { AnalyzeArticleUseCase } from '../../application/use-cases/analyze-article.usecase';
 import { ChatArticleUseCase } from '../../application/use-cases/chat-article.usecase';
 import { SearchNewsUseCase } from '../../application/use-cases/search-news.usecase';
 import { ToggleFavoriteUseCase } from '../../application/use-cases/toggle-favorite.usecase';
+import { QuotaService } from '../../domain/services/quota.service';
 import { IngestController } from '../http/controllers/ingest.controller';
 import { AnalyzeController } from '../http/controllers/analyze.controller';
 import { NewsController } from '../http/controllers/news.controller';
@@ -26,6 +28,7 @@ import { SearchController } from '../http/controllers/search.controller';
 import { SourcesController } from '../http/controllers/sources.controller';
 import { UserController } from '../http/controllers/user.controller';
 import { HealthController } from '../http/controllers/health.controller';
+import { QuotaResetJob } from '../jobs/quota-reset.job';
 
 export class DependencyContainer {
   private static instance: DependencyContainer;
@@ -42,6 +45,7 @@ export class DependencyContainer {
   public readonly sourcesController: SourcesController;
   public readonly userController: UserController;
   public readonly healthController: HealthController;
+  public readonly quotaResetJob: QuotaResetJob;
 
   private constructor() {
     // Use singleton Prisma instance
@@ -57,11 +61,16 @@ export class DependencyContainer {
         ? new GoogleNewsRssClient()
         : new DirectSpanishRssClient(); // Default: Direct Spanish RSS
 
-    this.geminiClient = new GeminiClient(process.env.GEMINI_API_KEY || '');
+    // BLOQUEANTE #2: TokenTaximeter ahora se inyecta (DI Pattern)
+    const tokenTaximeter = new TokenTaximeter();
+    this.geminiClient = new GeminiClient(process.env.GEMINI_API_KEY || '', tokenTaximeter);
     const jinaReaderClient = new JinaReaderClient(process.env.JINA_API_KEY || '');
     const metadataExtractor = new MetadataExtractor();
     this.chromaClient = new ChromaClient();
     this.newsRepository = new PrismaNewsArticleRepository(this.prisma);
+
+    // Domain Services
+    const quotaService = new QuotaService();
 
     // Application Layer
     const ingestNewsUseCase = new IngestNewsUseCase(
@@ -75,7 +84,8 @@ export class DependencyContainer {
       this.geminiClient,
       jinaReaderClient,
       metadataExtractor,
-      this.chromaClient
+      this.chromaClient,
+      quotaService
     );
 
     const chatArticleUseCase = new ChatArticleUseCase(
@@ -104,6 +114,9 @@ export class DependencyContainer {
     this.userController = new UserController(this.geminiClient);
     this.sourcesController = new SourcesController(this.geminiClient);
     this.healthController = new HealthController(this.prisma);
+
+    // Infrastructure Jobs (Sprint 14 - Paso 2: Automatización de Reset de Cuotas)
+    this.quotaResetJob = new QuotaResetJob(this.prisma);
   }
 
   static getInstance(): DependencyContainer {

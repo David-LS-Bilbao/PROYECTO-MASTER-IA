@@ -22,7 +22,9 @@
       "Bash(git commit:*)",
       "Bash(dir /s /b /ad \"c:\\\\Users\\\\David\\\\OneDrive\\\\Desktop\\\\PROYECTO MASTER IA\\\\Verity-News\\\\backend\\\\src\")",
       "Bash(cd:*)",
-      "Bash(npx vitest:*)"
+      "Bash(npx vitest:*)",
+      "Read(//c/Users/David/OneDrive/Desktop/**)",
+      "Bash(npm run:*)"
     ]
   }
 }

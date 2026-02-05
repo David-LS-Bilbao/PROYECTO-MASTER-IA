@@ -9,8 +9,9 @@ import { INewsArticleRepository } from '../../domain/repositories/news-article.r
 import { IGeminiClient, AnalyzeContentInput } from '../../domain/services/gemini-client.interface';
 import { IJinaReaderClient, ScrapedContent } from '../../domain/services/jina-reader-client.interface';
 import { NewsArticle, ArticleAnalysis } from '../../domain/entities/news-article.entity';
-import { EntityNotFoundError, ValidationError } from '../../domain/errors/domain.error';
+import { EntityNotFoundError, ValidationError, QuotaExceededError } from '../../domain/errors/domain.error';
 import { ExternalAPIError } from '../../domain/errors/infrastructure.error';
+import { QuotaService } from '../../domain/services/quota.service';
 
 // Helper to create test articles
 const createTestArticle = (overrides: Partial<{
@@ -44,6 +45,8 @@ const createTestArticle = (overrides: Partial<{
     analyzedAt: overrides.analyzedAt ?? null,
     fetchedAt: new Date(),
     updatedAt: new Date(),
+    internalReasoning: null,
+    isFavorite: false,
   });
 };
 
@@ -51,9 +54,17 @@ const createTestArticle = (overrides: Partial<{
 const mockAnalysis: ArticleAnalysis = {
   summary: 'This is a test summary of the article.',
   biasScore: 0.3,
+  biasRaw: 0,
   biasIndicators: ['slight emotional language'],
   sentiment: 'neutral',
   mainTopics: ['technology', 'innovation'],
+  clickbaitScore: 20,
+  reliabilityScore: 80,
+  factCheck: {
+    claims: ['Main claim from the article'],
+    verdict: 'Verified',
+    reasoning: 'The claims are supported by credible sources',
+  },
 };
 
 // Mock scraped content
@@ -63,6 +74,7 @@ const mockScrapedContent: ScrapedContent = {
   description: 'Test description',
   author: 'Test Author',
   publishedDate: '2024-01-15',
+  imageUrl: 'https://example.com/scraped-image.jpg',
 };
 
 // Mock implementations
@@ -107,8 +119,8 @@ class MockNewsArticleRepository implements INewsArticleRepository {
     return Array.from(this.articles.values()).filter((a) => a.isAnalyzed).length;
   }
 
-  async getBiasDistribution(): Promise<{ left: number; center: number; right: number }> {
-    return { left: 0, center: 0, right: 0 };
+  async getBiasDistribution(): Promise<{ left: number; neutral: number; right: number }> {
+    return { left: 0, neutral: 0, right: 0 };
   }
 
   async findAll(): Promise<NewsArticle[]> {
@@ -148,6 +160,14 @@ class MockGeminiClient implements IGeminiClient {
 
   async chatWithContext(): Promise<any> {
     return { response: 'Mock response', usage: { totalTokens: 100 } };
+  }
+
+  async generateChatResponse(_context: string, _question: string): Promise<string> {
+    return 'Mock chat response';
+  }
+
+  async discoverRssUrl(_mediaName: string): Promise<string | null> {
+    return 'https://example.com/rss';
   }
 
   async isAvailable(): Promise<boolean> {
@@ -196,6 +216,7 @@ describe('AnalyzeArticleUseCase', () => {
   let mockJina: MockJinaReaderClient;
   let mockMetadata: MockMetadataExtractor;
   let mockChroma: MockChromaClient;
+  let mockQuotaService: QuotaService;
 
   beforeEach(() => {
     mockRepository = new MockNewsArticleRepository();
@@ -203,13 +224,15 @@ describe('AnalyzeArticleUseCase', () => {
     mockJina = new MockJinaReaderClient();
     mockMetadata = new MockMetadataExtractor();
     mockChroma = new MockChromaClient();
+    mockQuotaService = new QuotaService();
 
     useCase = new AnalyzeArticleUseCase(
       mockRepository,
       mockGemini,
       mockJina,
       mockMetadata as any,
-      mockChroma as any
+      mockChroma as any,
+      mockQuotaService
     );
   });
 
@@ -566,6 +589,112 @@ describe('AnalyzeArticleUseCase', () => {
         source: 'Specific Source',
         language: 'en',
       });
+    });
+  });
+
+  describe('Quota Enforcement (Sprint 14 - Feature: Enforcement de Límites)', () => {
+    it('should throw QuotaExceededError when user exceeds monthly analysis limit', async () => {
+      const article = createTestArticle({
+        content: 'Long content for analysis. '.repeat(10),
+      });
+      mockRepository.setArticle(article);
+
+      // Mock a user who has already reached the FREE plan limit (500 articles/month)
+      const userAtLimit = {
+        id: 'user-123',
+        plan: 'FREE' as const,
+        usageStats: {
+          articlesAnalyzed: 500, // FREE plan limit
+          chatMessages: 0,
+          searchesPerformed: 0,
+        },
+      };
+
+      // Spy on quotaService.verifyQuota to verify it's called
+      const verifyQuotaSpy = vi.spyOn(mockQuotaService, 'verifyQuota');
+
+      // Execute with user at limit should throw QuotaExceededError
+      await expect(
+        useCase.execute({ articleId: article.id, user: userAtLimit })
+      ).rejects.toThrow(QuotaExceededError);
+
+      // Verify quota was checked
+      expect(verifyQuotaSpy).toHaveBeenCalledWith(userAtLimit, 'analysis');
+    });
+
+    it('should allow analysis when user has remaining quota', async () => {
+      const article = createTestArticle({
+        id: 'article-with-quota',
+        content: 'Long content for analysis. '.repeat(10),
+      });
+      mockRepository.setArticle(article);
+
+      // Mock a user within FREE plan limit
+      const userWithQuota = {
+        id: 'user-123',
+        plan: 'FREE' as const,
+        usageStats: {
+          articlesAnalyzed: 10, // Way below 500 limit
+          chatMessages: 0,
+          searchesPerformed: 0,
+        },
+      };
+
+      // Should succeed without throwing
+      const result = await useCase.execute({
+        articleId: article.id,
+        user: userWithQuota,
+      });
+
+      expect(result.articleId).toBe(article.id);
+      expect(result.summary).toBe(mockAnalysis.summary);
+    });
+
+    it('should allow analysis when no quota service provided', async () => {
+      // Create use case WITHOUT quota service (backward compatibility)
+      const useCaseWithoutQuota = new AnalyzeArticleUseCase(
+        mockRepository,
+        mockGemini,
+        mockJina,
+        mockMetadata as any,
+        mockChroma as any
+        // No quotaService parameter
+      );
+
+      const article = createTestArticle({
+        content: 'Long content for analysis. '.repeat(10),
+      });
+      mockRepository.setArticle(article);
+
+      const userAtLimit = {
+        id: 'user-123',
+        plan: 'FREE' as const,
+        usageStats: {
+          articlesAnalyzed: 500,
+          chatMessages: 0,
+          searchesPerformed: 0,
+        },
+      };
+
+      // Should NOT throw because quotaService is not provided
+      const result = await useCaseWithoutQuota.execute({
+        articleId: article.id,
+        user: userAtLimit,
+      });
+
+      expect(result.articleId).toBe(article.id);
+    });
+
+    it('should allow analysis when no user provided', async () => {
+      const article = createTestArticle({
+        content: 'Long content for analysis. '.repeat(10),
+      });
+      mockRepository.setArticle(article);
+
+      // Should NOT throw when no user is provided (unauthenticated request)
+      const result = await useCase.execute({ articleId: article.id });
+
+      expect(result.articleId).toBe(article.id);
     });
   });
 });
