@@ -13,6 +13,7 @@
 
 import * as Sentry from '@sentry/node';
 import { nodeProfilingIntegration } from '@sentry/profiling-node';
+import { httpIntegration } from '@sentry/node';
 
 /**
  * Initialize Sentry for Express backend
@@ -39,14 +40,11 @@ export function initSentry(): void {
       // Enable Node.js profiling (CPU, memory, throughput)
       nodeProfilingIntegration(),
 
-      // Capture HTTP requests and responses
-      new Sentry.Integrations.Http({ tracing: true }),
+      // Capture HTTP requests and responses (Sentry v8+ API)
+      // Tracing is automatically enabled via tracesSampleRate below
+      httpIntegration(),
 
-      // Capture uncaught exceptions
-      new Sentry.Integrations.OnUncaughtException(),
-
-      // Capture unhandled promise rejections
-      new Sentry.Integrations.OnUncaughtException(),
+      // Note: OnUncaughtException integration is enabled by default in Sentry v8+
     ],
 
     // Sample rate for transactions (traces)
@@ -175,10 +173,12 @@ export function clearUserContext(): void {
 
 /**
  * Start a new transaction for performance monitoring
+ * NOTE: In Sentry v8+, transactions are automatically created by requestHandler()
+ * Use Sentry.startSpan() for custom spans instead
  */
-export function startTransaction(name: string, op: string = 'http.server') {
-  return Sentry.startTransaction({
-    name,
-    op,
-  });
-}
+// export function startTransaction(name: string, op: string = 'http.server') {
+//   return Sentry.startTransaction({
+//     name,
+//     op,
+//   });
+// }

@@ -5,7 +5,7 @@ dotenv.config();
 
 // ✅ CRITICAL: Initialize Sentry BEFORE any other code runs
 // This must be done before importing other modules
-import { initSentry, Sentry } from './infrastructure/monitoring/sentry';
+import { initSentry } from './infrastructure/monitoring/sentry';
 initSentry();
 
 import { createServer } from './infrastructure/http/server';

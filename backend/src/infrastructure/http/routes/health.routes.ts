@@ -38,7 +38,7 @@ export function createHealthRoutes(healthController: HealthController): Router {
    *
    * TODO: Remove this endpoint after validation
    */
-  router.get('/test-sentry-breadcrumbs', (req, res, next) => {
+  router.get('/test-sentry-breadcrumbs', (_req, _res, next) => {
     try {
       // Step 1: Log info (should become breadcrumb)
       logger.info('🧪 Test: Paso 1 - Iniciando operación de prueba');

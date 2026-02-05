@@ -40,7 +40,7 @@ export class SentryStream extends Writable {
    * Process each log chunk from Pino
    * Called for every log entry
    */
-  _write(chunk: any, encoding: string, callback: (error?: Error | null) => void): void {
+  _write(chunk: any, _encoding: string, callback: (error?: Error | null) => void): void {
     try {
       // Parse log entry (Pino emits objects when using multistream)
       const log = typeof chunk === 'string' ? JSON.parse(chunk) : chunk;
@@ -48,7 +48,7 @@ export class SentryStream extends Writable {
       // Extract log metadata
       const level = log.level;
       const message = log.msg || log.message || 'Log without message';
-      const timestamp = log.time;
+      // const timestamp = log.time; // Not currently used
 
       // Map Pino level (number) to Sentry level (string)
       const sentryLevel = LEVEL_MAP[level] || 'info';
