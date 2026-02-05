@@ -47,6 +47,9 @@ export function createServer(): Application {
     origin: process.env.CORS_ORIGIN || ['http://localhost:3001', 'http://localhost:5173'],
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: true,
+    // 🔍 Sprint 15 - Paso 3: Allow Sentry trace headers for distributed tracing
+    allowedHeaders: ['Content-Type', 'Authorization', 'sentry-trace', 'baggage'],
+    exposedHeaders: ['sentry-trace'],
   }));
 
   // Body parser

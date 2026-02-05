@@ -24,6 +24,7 @@ import {
 import { TokenTaximeter } from '../monitoring/token-taximeter';
 import { GeminiErrorMapper } from './gemini-error-mapper';
 import { createModuleLogger } from '../logger/logger';
+import { Sentry } from '../monitoring/sentry'; // Sprint 15 - Paso 3: Custom Spans for distributed tracing
 import {
   ANALYSIS_PROMPT,
   MAX_ARTICLE_CONTENT_LENGTH,
@@ -199,7 +200,21 @@ export class GeminiClient implements IGeminiClient {
         'Starting article analysis'
       );
 
-      const result = await this.model.generateContent(prompt);
+      // 🔍 Sprint 15 - Paso 3: Custom Span for Performance Monitoring
+      // Envuelve la llamada a Gemini en un span para distributed tracing
+      const result = await Sentry.startSpan(
+        {
+          name: 'gemini.analyze_article',
+          op: 'ai.generation',
+          attributes: {
+            'ai.model': 'gemini-2.5-flash',
+            'ai.operation': 'article_analysis',
+            'input.content_length': sanitizedContent.length,
+          },
+        },
+        async () => await this.model.generateContent(prompt)
+      );
+
       const response = result.response;
       const text = response.text();
 
@@ -219,6 +234,15 @@ export class GeminiClient implements IGeminiClient {
           totalTokens,
           costEstimated,
         };
+
+        // 🔍 Sprint 15 - Paso 3: Añadir métricas de tokens al span activo
+        const activeSpan = Sentry.getActiveSpan();
+        if (activeSpan) {
+          activeSpan.setAttribute('ai.tokens.prompt', promptTokens);
+          activeSpan.setAttribute('ai.tokens.completion', completionTokens);
+          activeSpan.setAttribute('ai.tokens.total', totalTokens);
+          activeSpan.setAttribute('ai.cost_eur', costEstimated);
+        }
 
         // Log with taximeter (IMPORTANTE: no loguea títulos, solo metadatos)
         this.taximeter.logAnalysis('[REDACTED]', promptTokens, completionTokens, totalTokens, costEstimated);
@@ -264,9 +288,31 @@ export class GeminiClient implements IGeminiClient {
         'Starting embedding generation'
       );
 
-      const embeddingModel = this.genAI.getGenerativeModel({ model: 'text-embedding-004' });
-      const result = await embeddingModel.embedContent(truncatedText);
-      const embedding = result.embedding.values;
+      // 🔍 Sprint 15 - Paso 3: Custom Span for Embedding Generation
+      const embedding = await Sentry.startSpan(
+        {
+          name: 'gemini.generate_embedding',
+          op: 'ai.embedding',
+          attributes: {
+            'ai.model': 'text-embedding-004',
+            'ai.operation': 'embedding_generation',
+            'input.text_length': truncatedText.length,
+          },
+        },
+        async () => {
+          const embeddingModel = this.genAI.getGenerativeModel({ model: 'text-embedding-004' });
+          const result = await embeddingModel.embedContent(truncatedText);
+          const values = result.embedding.values;
+
+          // Add embedding dimensions to span
+          const activeSpan = Sentry.getActiveSpan();
+          if (activeSpan) {
+            activeSpan.setAttribute('ai.embedding.dimensions', values.length);
+          }
+
+          return values;
+        }
+      );
 
       logger.debug(
         { embeddingDimensions: embedding.length },
@@ -315,7 +361,21 @@ export class GeminiClient implements IGeminiClient {
         'Starting grounding chat with Google Search'
       );
 
-      const result = await this.chatModel.generateContent(prompt);
+      // 🔍 Sprint 15 - Paso 3: Custom Span for Grounding Chat
+      const result = await Sentry.startSpan(
+        {
+          name: 'gemini.chat_with_grounding',
+          op: 'ai.chat',
+          attributes: {
+            'ai.model': 'gemini-2.5-flash',
+            'ai.operation': 'grounding_chat',
+            'ai.grounding.enabled': true,
+            'chat.message_count': recentMessages.length,
+          },
+        },
+        async () => await this.chatModel.generateContent(prompt)
+      );
+
       const response = result.response;
       const text = response.text();
 
@@ -323,6 +383,12 @@ export class GeminiClient implements IGeminiClient {
       const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
       if (groundingMetadata?.searchEntryPoint) {
         logger.debug('Google Search grounding was utilized');
+
+        // 🔍 Add grounding metadata to span
+        const activeSpan = Sentry.getActiveSpan();
+        if (activeSpan) {
+          activeSpan.setAttribute('ai.grounding.used', true);
+        }
       }
 
       // TOKEN TAXIMETER: Capturar uso de tokens para chat grounding
@@ -332,6 +398,15 @@ export class GeminiClient implements IGeminiClient {
         const completionTokens = usageMetadata.candidatesTokenCount || 0;
         const totalTokens = usageMetadata.totalTokenCount || (promptTokens + completionTokens);
         const costEstimated = this.taximeter.calculateCost(promptTokens, completionTokens);
+
+        // 🔍 Sprint 15 - Paso 3: Añadir métricas de tokens al span activo
+        const activeSpan = Sentry.getActiveSpan();
+        if (activeSpan) {
+          activeSpan.setAttribute('ai.tokens.prompt', promptTokens);
+          activeSpan.setAttribute('ai.tokens.completion', completionTokens);
+          activeSpan.setAttribute('ai.tokens.total', totalTokens);
+          activeSpan.setAttribute('ai.cost_eur', costEstimated);
+        }
 
         // SECURITY: No loguear la pregunta del usuario, solo metadatos
         this.taximeter.logGroundingChat('[REDACTED]', promptTokens, completionTokens, totalTokens, costEstimated);
@@ -374,7 +449,21 @@ export class GeminiClient implements IGeminiClient {
     return this.executeWithRetry(async () => {
       logger.info('Starting RAG chat response generation');
 
-      const result = await this.model.generateContent(ragPrompt);
+      // 🔍 Sprint 15 - Paso 3: Custom Span for RAG Chat
+      const result = await Sentry.startSpan(
+        {
+          name: 'gemini.rag_chat',
+          op: 'ai.chat',
+          attributes: {
+            'ai.model': 'gemini-2.5-flash',
+            'ai.operation': 'rag_chat',
+            'ai.grounding.enabled': false,
+            'rag.context_length': context.length,
+          },
+        },
+        async () => await this.model.generateContent(ragPrompt)
+      );
+
       const response = result.response;
       const text = response.text().trim();
 
@@ -385,6 +474,15 @@ export class GeminiClient implements IGeminiClient {
         const completionTokens = usageMetadata.candidatesTokenCount || 0;
         const totalTokens = usageMetadata.totalTokenCount || (promptTokens + completionTokens);
         const costEstimated = this.taximeter.calculateCost(promptTokens, completionTokens);
+
+        // 🔍 Sprint 15 - Paso 3: Añadir métricas de tokens al span activo
+        const activeSpan = Sentry.getActiveSpan();
+        if (activeSpan) {
+          activeSpan.setAttribute('ai.tokens.prompt', promptTokens);
+          activeSpan.setAttribute('ai.tokens.completion', completionTokens);
+          activeSpan.setAttribute('ai.tokens.total', totalTokens);
+          activeSpan.setAttribute('ai.cost_eur', costEstimated);
+        }
 
         // SECURITY: No loguear la pregunta del usuario, solo metadatos
         this.taximeter.logRagChat('[REDACTED]', promptTokens, completionTokens, totalTokens, costEstimated);
@@ -565,8 +663,21 @@ export class GeminiClient implements IGeminiClient {
     try {
       // RESILIENCIA: executeWithRetry maneja reintentos automáticos
       const result = await this.executeWithRetry(async () => {
-        const response = await this.model.generateContent(prompt);
-        return response.response.text().trim().replace(/['"]/g, '');
+        // 🔍 Sprint 15 - Paso 3: Custom Span for RSS Discovery
+        return await Sentry.startSpan(
+          {
+            name: 'gemini.discover_rss',
+            op: 'ai.generation',
+            attributes: {
+              'ai.model': 'gemini-2.5-flash',
+              'ai.operation': 'rss_discovery',
+            },
+          },
+          async () => {
+            const response = await this.model.generateContent(prompt);
+            return response.response.text().trim().replace(/['"]/g, '');
+          }
+        );
       }, 2, 500); // 2 reintentos, 500ms delay (operación menos crítica)
 
       // Si la respuesta es literalmente "null" o vacía, retornar null
