@@ -11,9 +11,14 @@
  * - Proveer reportes de costes acumulados
  *
  * DEUDA TÉCNICA #10 (Sprint 14): Magic numbers centralizados en constants.ts
+ *
+ * OBSERVABILIDAD (Sprint 15 - Paso 4):
+ * - Envío de custom metrics a Sentry
+ * - Dashboards de costes y tokens en tiempo real
  */
 
 import { GEMINI_PRICING, CURRENCY_RATES, CONTENT_CONFIG } from '../../config/constants';
+import * as Sentry from '@sentry/node';
 
 interface SessionCostAccumulator {
   analysisCount: number;
@@ -92,6 +97,25 @@ export class TokenTaximeter {
     this.session.analysisCompletionTokens += completionTokens;
     this.session.analysisTotalCost += costEUR;
 
+    // 🔍 Sprint 15 - Paso 4: Custom Metrics to Sentry
+    if (process.env.SENTRY_DSN) {
+      Sentry.metrics.gauge('verity.analysis.count', 1, {
+        unit: 'none',
+      });
+      Sentry.metrics.gauge('verity.tokens.prompt', promptTokens, {
+        unit: 'none',
+      });
+      Sentry.metrics.gauge('verity.tokens.completion', completionTokens, {
+        unit: 'none',
+      });
+      Sentry.metrics.gauge('verity.tokens.total', totalTokens, {
+        unit: 'none',
+      });
+      Sentry.metrics.gauge('verity.cost.eur', costEUR, {
+        unit: 'none',
+      });
+    }
+
     this.logTaximeter('ANÁLISIS', '📰', title, promptTokens, completionTokens, totalTokens, costEUR);
   }
 
@@ -111,6 +135,19 @@ export class TokenTaximeter {
     this.session.ragChatCompletionTokens += completionTokens;
     this.session.ragChatTotalCost += costEUR;
 
+    // 🔍 Sprint 15 - Paso 4: Custom Metrics to Sentry
+    if (process.env.SENTRY_DSN) {
+      Sentry.metrics.gauge('verity.chat.rag.count', 1, {
+        unit: 'none',
+      });
+      Sentry.metrics.gauge('verity.chat.rag.tokens', totalTokens, {
+        unit: 'none',
+      });
+      Sentry.metrics.gauge('verity.chat.rag.cost', costEUR, {
+        unit: 'none',
+      });
+    }
+
     this.logTaximeter('CHAT RAG', '💬', question, promptTokens, completionTokens, totalTokens, costEUR);
   }
 
@@ -129,6 +166,23 @@ export class TokenTaximeter {
     this.session.groundingChatPromptTokens += promptTokens;
     this.session.groundingChatCompletionTokens += completionTokens;
     this.session.groundingChatTotalCost += costEUR;
+
+    // 🔍 Sprint 15 - Paso 4: Custom Metrics to Sentry
+    if (process.env.SENTRY_DSN) {
+      Sentry.metrics.gauge('verity.chat.grounding.count', 1, {
+        unit: 'none',
+      });
+      Sentry.metrics.gauge('verity.chat.grounding.tokens', totalTokens, {
+        unit: 'none',
+      });
+      Sentry.metrics.gauge('verity.chat.grounding.cost', costEUR, {
+        unit: 'none',
+      });
+      // Métrica específica de grounding para saber cuándo se usa Google Search
+      Sentry.metrics.gauge('verity.grounding.used', 1, {
+        unit: 'none',
+      });
+    }
 
     this.logTaximeter('CHAT GROUNDING', '🌐', query, promptTokens, completionTokens, totalTokens, costEUR);
   }
