@@ -29,9 +29,10 @@ export function createServer(): Application {
   app.use(helmet());
 
   // Rate limiting - prevent abuse
+  // 🔧 Sprint 16 FIX: Relajar rate limit en desarrollo
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // limit each IP to 100 requests per windowMs
+    max: process.env.NODE_ENV === 'production' ? 100 : 10000, // 10k en dev, 100 en prod
     message: { error: 'Too many requests, please try again later.' },
     standardHeaders: true,
     legacyHeaders: false,

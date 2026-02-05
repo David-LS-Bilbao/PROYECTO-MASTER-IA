@@ -1,10 +1,355 @@
 # Estado del Proyecto - Verity News
 
-> Última actualización: Sprint 14.5 - Frontend Polish & Robustness (2026-02-05) - **ZUSTAND + ERROR BOUNDARIES ✅🛡️**
+
+> Última actualización: Sprint 16 (2026-02-05) - **CATEGORÍAS INDEPENDIENTES ✅📰**
 
 ---
 
-## Estado Actual: SPRINT 14.5 COMPLETADO - FRONTEND POLISH & ROBUSTNESS ✅🛡️
+## Sprint 15: Observabilidad & Analytics ("Ojos en Producción") 👁️📊
+
+### Objetivo
+Implementar una capa de observabilidad Full-Stack (Backend + Frontend) para monitorizar errores, rendimiento técnico y métricas de negocio en tiempo real.
+
+### Resumen Ejecutivo
+
+**🎯 Hitos Completados (4/4):**
+
+| Área | Logro | Impacto |
+|------|-------|---------|
+| **Error Tracking** | **Sentry Full-Stack** | ✅ Captura de excepciones distribuidas (Node.js + Next.js). |
+| **Contexto** | **Pino ↔ Sentry Bridge** | ✅ Logs de aplicación adjuntos como "Breadcrumbs" para depuración. |
+| **Performance** | **Distributed Tracing** | ✅ Trazabilidad visual completa: UI → Backend → DB → Gemini API. |
+| **Negocio** | **Custom Metrics & Cost** | ✅ Dashboard en tiempo real de **Coste (€)** y **Consumo de Tokens**. |
+
+### Métricas Finales
+- **Visibilidad:** 100% del stack instrumentado (incluyendo queries de Prisma).
+- **KPIs de Negocio:** Tracking granular de costes por modelo de IA (Input/Output).
+- **Privacidad:** Sanitización automática de PII en todos los niveles.
+
+### Archivos Clave
+- `backend/src/infrastructure/monitoring/sentry.ts` (Configuración e Instrumentación).
+- `backend/src/infrastructure/monitoring/token-taximeter.ts` (Envío de Métricas Custom).
+- `backend/src/infrastructure/logger/sentry-stream.ts` (Stream de Logs).
+- `frontend/components/providers/sentry-provider.tsx` (Contexto Frontend).
+
+
+---
+
+## Sprint 16: Categorías Independientes + Sistema de Ingesta Robusto 📰✅
+
+### Objetivo
+Resolver problemas críticos en el sistema de categorización y distribución de noticias:
+1. **Categoría "General" Independiente**: Eliminar comportamiento de agregador
+2. **Fix Duplicados**: Permitir actualización de categorías en upsert
+3. **Fix Navegación**: Eliminar bug de doble-click en botón Portada
+4. **Tests de Validación**: Suite completa para verificar aislamiento de categorías
+
+### Resumen Ejecutivo
+
+**🎯 4 Problemas Críticos Resueltos**
+
+| Problema | Solución | Estado | Archivos |
+|----------|----------|--------|----------|
+| **Duplicados en categorías** | Upsert permite actualizar categorías | ✅ | 3 archivos |
+| **Bug doble-click Portada** | router.replace + URL sync | ✅ | 2 archivos |
+| **General como agregador** | Frontend siempre envía category | ✅ | 3 archivos |
+| **RSS mezclados** | 6 portadas limpias en General | ✅ | 1 archivo |
+
+**Resultado Final**:
+- ✅ **0 URLs compartidas entre categorías** (aislamiento perfecto)
+- ✅ **5/5 tests de validación pasados** (test-category-isolation.ts)
+- ✅ **4/4 tests de deduplicación pasados** (test-deduplication.ts)
+- ✅ **20 artículos en General** (solo portadas principales)
+- ✅ **101 artículos en Deportes** (solo fuentes deportivas)
+
+---
+
+### Problema 1: Duplicados en Navegación entre Categorías 🔴
+
+**Síntoma**: Al navegar General → Deportes → General, las noticias aparecían duplicadas
+
+**Diagnóstico**:
+```typescript
+// ❌ ANTES: IngestNewsUseCase saltaba duplicados ANTES de upsert
+const existingArticle = await this.newsArticleRepository.findByUrl(article.url);
+if (existingArticle) {
+  console.log(`⏭️  Article already exists: ${article.url}`);
+  duplicatesCount++;
+  continue; // ⚠️ NUNCA LLEGABA AL UPSERT
+}
+```
+
+**Raíz del Problema**:
+- Backend detectaba URL existente y saltaba el proceso
+- El `upsert` nunca se ejecutaba → categoría nunca se actualizaba
+- Artículo quedaba "anclado" a su categoría original
+
+**Solución Implementada**:
+```typescript
+// ✅ DESPUÉS: TODOS los artículos pasan por upsert
+for (const rawArticle of fetchedArticles.articles) {
+  const article = this.transformArticle(rawArticle, fetchedArticles.category);
+  const existingArticle = await this.newsArticleRepository.findByUrl(article.url);
+  
+  if (existingArticle) {
+    console.log(`🔄 Updating existing article: ${article.url}`);
+  } else {
+    console.log(`✨ New article: ${article.url}`);
+  }
+  
+  // ✅ Siempre ejecuta upsert (insert OR update)
+  await this.newsArticleRepository.save(article);
+}
+```
+
+**Archivos modificados**:
+- ✅ `backend/src/application/use-cases/ingest-news.usecase.ts` (líneas 109-166)
+- ✅ `backend/src/infrastructure/persistence/article-mapper.ts` (update selectivo)
+- ✅ `backend/src/infrastructure/persistence/prisma-news-article.repository.ts` (logging mejorado)
+
+**Estrategia de Preservación de Datos**:
+```typescript
+// ✅ ArticleMapper: Update SELECTIVO preserva análisis IA
+update: {
+  title: data.title,
+  description: data.description,
+  category: data.category,          // ✅ SE ACTUALIZA
+  urlToImage: data.urlToImage,
+  updatedAt: data.updatedAt,
+  // ✅ NO TOCAR: summary, biasScore, analysis, analyzedAt
+}
+```
+
+---
+
+### Problema 2: Bug de Doble Click en Botón "Portada" 🔴
+
+**Síntoma**: Usuario debía pulsar 2 veces el botón "Portada" para ver contenido
+
+**Diagnóstico**:
+```typescript
+// ❌ ANTES: router.push causaba re-render antes de actualizar estado
+const handleCategoryChange = (newCategory: Category) => {
+  setCategory(newCategory);
+  router.push(`/?category=${newCategory}`); // ⚠️ Re-render con categoría VIEJA
+};
+
+// ❌ useEffect no manejaba urlCategory=null → category='general'
+useEffect(() => {
+  if (urlCategory && urlCategory !== category) {
+    setCategory(urlCategory as Category);
+  }
+}, [urlCategory, category]);
+```
+
+**Raíz del Problema**:
+1. `router.push` → Next.js re-renderiza el componente
+2. Re-render ocurre ANTES de que `setCategory` actualice el estado
+3. React Query ejecuta fetch con categoría VIEJA
+4. `useEffect` no sincronizaba `urlCategory=null` con `category='general'`
+
+**Solución Implementada**:
+```typescript
+// ✅ DESPUÉS: router.replace + useEffect mejorado
+const handleCategoryChange = (newCategory: Category) => {
+  setCategory(newCategory);
+  router.replace(`/?category=${newCategory}`, { scroll: false }); // ✅ Sin re-render completo
+};
+
+// ✅ useEffect maneja caso null → 'general'
+useEffect(() => {
+  const targetCategory = (urlCategory as Category) || 'general';
+  if (targetCategory !== category) {
+    setCategory(targetCategory);
+  }
+}, [urlCategory, category]);
+```
+
+**Archivos modificados**:
+- ✅ `frontend/app/page.tsx` (líneas 98-105, 168-172)
+- ✅ `frontend/hooks/useNews.ts` (invalidación global + logging optimizado)
+
+---
+
+### Problema 3: "General" Actuando como Agregador 🔴
+
+**Síntoma**: Al seleccionar "General", se mostraban noticias de TODAS las categorías
+
+**Diagnóstico**:
+```typescript
+// ❌ ANTES: Frontend omitía parámetro category para "general"
+const params = new URLSearchParams();
+if (category && category !== 'general') { // ⚠️ Condicional
+  params.append('category', category);
+}
+```
+
+**Raíz del Problema**:
+- Backend interpretaba ausencia de parámetro como "devolver todo"
+- SQL: `WHERE category IS NULL OR category = ANY(...)` → devolvía todas
+
+**Solución Implementada**:
+```typescript
+// ✅ DESPUÉS: Frontend SIEMPRE envía category (incluido 'general')
+const params = new URLSearchParams({
+  category: category, // ✅ Sin condicional
+  page: page.toString(),
+  limit: limit.toString(),
+});
+
+// ✅ Backend ejecuta: WHERE category = 'general'
+```
+
+**Archivos modificados**:
+- ✅ `frontend/app/page.tsx` (línea 168)
+- ✅ `backend/src/infrastructure/http/controllers/news.controller.ts` (documentación)
+
+---
+
+### Problema 4: Fuentes RSS Mezcladas en "General" 🔴
+
+**Síntoma**: General contenía portadas + secciones internacionales mezcladas
+
+**Diagnóstico**:
+```typescript
+// ❌ ANTES: 10 feeds mezclados en 'general'
+general: [
+  'https://rss.elmundo.es/rss/portada.xml',             // ✅ Portada
+  'https://rss.elmundo.es/rss/america.xml',             // ❌ Sección específica
+  'https://e00-elmundo.uecdn.es/elmundo/rss/internacional.xml', // ❌ Internacional
+  ...
+]
+```
+
+**Solución Implementada**:
+```typescript
+// ✅ DESPUÉS: 6 feeds SOLO portadas principales
+general: [
+  'https://rss.elmundo.es/rss/portada.xml',
+  'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada',
+  'https://www.abc.es/rss/2.0/portada/',
+  'https://www.lavanguardia.com/rss/home.xml',
+  'https://www.eldiario.es/rss/',
+  'https://www.20minutos.es/rss/',
+]
+
+// ✅ Movidos a 'internacional':
+internacional: [
+  'https://rss.elmundo.es/rss/america.xml',
+  'https://e00-elmundo.uecdn.es/elmundo/rss/internacional.xml',
+  ...
+]
+```
+
+**Archivos modificados**:
+- ✅ `backend/src/infrastructure/external/direct-spanish-rss.client.ts` (líneas 35-65)
+
+---
+
+### Tests Implementados 🧪
+
+#### 1. test-category-isolation.ts (5 tests)
+```typescript
+✅ TEST 1: Distribución de artículos por categoría
+  - General: 20 artículos
+  - Deportes: 101 artículos
+  - Ciencia: 62 artículos
+  - Tecnología: 47 artículos
+
+✅ TEST 2: Verificar URLs únicas por categoría
+  - 0 URLs compartidas entre categorías
+
+✅ TEST 3: Verificar fuentes de "General" (solo portadas)
+  - ABC, La Vanguardia, elDiario.es, El Mundo, El País, 20 Minutos
+  - NO contiene fuentes deportivas
+
+✅ TEST 4: Verificar fuentes de "Deportes" (solo medios deportivos)
+  - Sport, Marca, Mundo Deportivo, ABC Deportes
+
+✅ TEST 5: Muestra de artículos (primeros 3 de cada categoría)
+  - General: Bad Bunny Super Bowl, evacuados incendios, Cuba-Trump
+  - Deportes: Scariolo, Carlos Sainz, Supervivientes
+```
+
+#### 2. test-deduplication.ts (4 tests)
+```typescript
+✅ TEST 1: Verificar duplicados por URL en BD
+  ➜ 0 duplicados encontrados
+
+✅ TEST 2: Distribución de artículos por categoría
+  ➜ 691 artículos totales en 9 categorías
+
+✅ TEST 3: Simular ingesta que actualiza categoría
+  ➜ General → Deportes → Revertido (ID preservado)
+
+✅ TEST 4: Verificar que análisis IA se preserva en updates
+  ➜ Summary y BiasScore intactos después de cambio de categoría
+```
+
+---
+
+### Archivos Clave
+
+**Backend (4 archivos modificados + 2 tests creados)**:
+- `backend/src/application/use-cases/ingest-news.usecase.ts` (líneas 109-166)
+- `backend/src/infrastructure/persistence/article-mapper.ts` (update selectivo)
+- `backend/src/infrastructure/persistence/prisma-news-article.repository.ts` (logging)
+- `backend/src/infrastructure/external/direct-spanish-rss.client.ts` (6 portadas)
+- `backend/src/infrastructure/http/controllers/news.controller.ts` (docs)
+- ✅ **NUEVO**: `backend/tests/manual/test-category-isolation.ts` (194 líneas)
+- ✅ **NUEVO**: `backend/scripts/verify-category-isolation.sql` (SQL tests)
+- ✅ **CORREGIDO**: `backend/tests/manual/test-deduplication.ts` (import path)
+
+**Frontend (2 archivos modificados)**:
+- `frontend/app/page.tsx` (router.replace + useEffect fix + category siempre)
+- `frontend/hooks/useNews.ts` (invalidación global + logging optimizado)
+
+---
+
+### Métricas Finales
+
+| Métrica | Valor | Objetivo | Estado |
+|---------|-------|----------|--------|
+| **URLs compartidas entre categorías** | 0 | 0 | ✅ |
+| **Artículos en General** | 20 | >0 | ✅ |
+| **Artículos en Deportes** | 101 | >0 | ✅ |
+| **Fuentes RSS en General** | 6 (portadas) | Solo portadas | ✅ |
+| **Tests de validación** | 5/5 passing | 100% | ✅ |
+| **Tests de deduplicación** | 4/4 passing | 100% | ✅ |
+
+---
+
+### Comandos de Ejecución
+
+```bash
+# Ejecutar tests de validación
+cd backend
+npx tsx tests/manual/test-category-isolation.ts
+
+# Ejecutar tests de deduplicación
+npx tsx tests/manual/test-deduplication.ts
+
+# Ejecutar ingesta manual para General
+curl -X POST http://localhost:3000/api/ingest/news \
+  -H "Content-Type: application/json" \
+  -d '{"category":"general"}'
+```
+
+---
+
+### Lecciones Aprendidas
+
+1. **Upsert ≠ Always Update**: El `continue` antes del upsert impedía actualizaciones
+2. **router.push vs router.replace**: `push` causa full re-render, `replace` es más suave
+3. **Conditional Parameters**: Omitir parámetros puede cambiar la semántica de la query
+4. **RSS Granularity**: Portadas vs secciones específicas deben separarse
+
+---
+
+
+---
+
+## Estado Actual: SPRINT 16 COMPLETADO - CATEGORÍAS INDEPENDIENTES ✅📰
 
 | Componente | Estado | Cobertura | Notas |
 |------------|--------|-----------|-------|
@@ -63,6 +408,8 @@
 | **13.7** | **UX Dashboard Inteligencia de Medios** | ✅ | **2026-02-04** |
 | **14** | **Auditoría de Seguridad + 4 Bloqueantes Críticos** | ✅ | **2026-02-05** |
 | **14.5** | **Frontend Polish & Robustness (Zustand + Error Boundaries)** | ✅ | **2026-02-05** |
+| **15** | **Observabilidad Full-Stack (Sentry + Custom Metrics)** | ✅ | **2026-02-05** |
+| **16** | **Categorías Independientes + Sistema de Ingesta Robusto** | ✅ | **2026-02-05** |
 
 ---
 

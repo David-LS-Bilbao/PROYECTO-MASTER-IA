@@ -11,7 +11,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:dedup": "tsx tests/manual/test-deduplication.ts",
+    "db:check-duplicates": "npx prisma db execute --file ./scripts/check-duplicates.sql --schema ./prisma/schema.prisma"
   },
   "keywords": [
     "news",

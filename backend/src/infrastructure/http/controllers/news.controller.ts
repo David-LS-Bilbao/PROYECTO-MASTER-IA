@@ -36,6 +36,10 @@ export class NewsController {
       // Parse query parameters with type casting
       const limit = Number(req.query.limit) || 20;
       const offset = Number(req.query.offset) || 0;
+      
+      // ✅ CAMBIO FEB 2026: 'general' ahora es categoría INDEPENDIENTE
+      // Si category='general' → Filtra solo noticias con category='general' en BD
+      // Si category=undefined → Sin filtro (devuelve TODAS las noticias)
       const category = req.query.category as string | undefined;
       const onlyFavorites = req.query.favorite === 'true';
 

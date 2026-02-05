@@ -42,6 +42,11 @@ export class ArticleMapper {
   /**
    * NewsArticle domain entity → Prisma upsert data
    * Usa getters de la entidad (no toJSON) para incluir internalReasoning en persistencia.
+   * 
+   * ESTRATEGIA DE UPDATE (Sprint 16 - Fix Duplicados):
+   * - Actualiza SOLO metadata que puede cambiar (category, urlToImage, description)
+   * - Preserva análisis IA existente (summary, biasScore, analysis, analyzedAt)
+   * - Esto evita re-analizar artículos que solo están en otra categoría
    */
   toUpsertData(article: NewsArticle): {
     where: Prisma.ArticleWhereUniqueInput;
@@ -51,19 +56,16 @@ export class ArticleMapper {
     return {
       where: { url: article.url },
       update: {
+        // Actualizar metadata que puede cambiar con el tiempo
         title: article.title,
         description: article.description,
         content: article.content,
         urlToImage: article.urlToImage,
         author: article.author,
-        category: article.category,
-        embedding: article.embedding,
-        summary: article.summary,
-        biasScore: article.biasScore,
-        analysis: article.analysis,
-        analyzedAt: article.analyzedAt,
-        internalReasoning: article.internalReasoning,
-        isFavorite: article.isFavorite,
+        category: article.category, // ✅ CRÍTICO: Actualizar categoría si la noticia aparece en otro feed
+        // NO actualizar análisis IA (preservar trabajo ya hecho)
+        // embedding, summary, biasScore, analysis, analyzedAt, internalReasoning se mantienen
+        // isFavorite no se toca (preservar favoritos del usuario)
         updatedAt: new Date(),
       },
       create: {

@@ -18,8 +18,9 @@ import { NewsArticle } from '../../domain/entities/news-article.entity';
 import { ValidationError } from '../../domain/errors/domain.error';
 import { PrismaClient } from '@prisma/client';
 
-// OPTIMIZATION: Limit items per source to avoid flooding the database
-const MAX_ITEMS_PER_SOURCE = 5;
+// OPTIMIZATION: Limit items per ingestion to avoid flooding the database
+// Increased from 5 to 30 to allow better coverage for dynamic categories like sports
+const MAX_ITEMS_PER_SOURCE = 30;
 
 // Valid categories (Spanish)
 const VALID_CATEGORIES = [
@@ -109,27 +110,31 @@ export class IngestNewsUseCase {
         );
       }
 
-      // OPTIMIZATION: Batch check for existing URLs to avoid N+1 queries
+      // OPTIMIZATION: Batch check for existing URLs to track what's new vs updated
       const incomingUrls = limitedArticles.map(a => a.url);
       const existingUrls = await this.getExistingUrls(incomingUrls);
       
-      console.log(`🔍 Verificación de duplicados: ${existingUrls.size} URLs ya existen en la base de datos`);
+      console.log(`🔍 Pre-ingesta: ${existingUrls.size} URLs ya existen, ${totalFetched - existingUrls.size} son nuevas`);
+      console.log(`📝 Estrategia: Usar UPSERT para TODAS las URLs (actualiza metadata si existe, crea si es nueva)`);
 
-      // Transform to domain entities and filter duplicates
+      // Transform to domain entities - NO FILTRAR duplicados, dejar que upsert maneje todo
       const articlesToSave: NewsArticle[] = [];
+      let updatedArticles = 0;
 
       for (const apiArticle of limitedArticles) {
         try {
-          // OPTIMIZATION: Check against in-memory Set instead of database query
-          if (existingUrls.has(apiArticle.url)) {
-            duplicates++;
-            continue;
+          // Trackear si es update o insert (solo para logging/stats)
+          const isExisting = existingUrls.has(apiArticle.url);
+          if (isExisting) {
+            updatedArticles++;
+            console.log(`♻️  URL existente (se actualizará): ${apiArticle.url.substring(0, 60)}...`);
           }
 
           // Create domain entity with normalized category
           // IMPORTANT: Only raw data is saved here, NO AI analysis
+          // El mapper decidirá si hacer INSERT (nueva) o UPDATE (existente)
           const article = NewsArticle.create({
-            id: randomUUID(),
+            id: randomUUID(), // Si es update, el upsert ignorará este ID
             title: apiArticle.title || 'Untitled',
             description: apiArticle.description,
             content: apiArticle.content,
@@ -138,7 +143,7 @@ export class IngestNewsUseCase {
             source: apiArticle.source.name,
             author: apiArticle.author,
             publishedAt: new Date(apiArticle.publishedAt),
-            category: normalizedCategory, // Always save the normalized category
+            category: normalizedCategory, // Se actualizará si la noticia existe con otra categoría
             language: request.language || 'es',
             embedding: null,
             summary: null,
@@ -158,14 +163,17 @@ export class IngestNewsUseCase {
         }
       }
 
-      // Save articles in batch
+      // Save/Update articles in batch with UPSERT
       if (articlesToSave.length > 0) {
         await this.articleRepository.saveMany(articlesToSave);
-        newArticles = articlesToSave.length;
-        console.log(`✅ Ingesta completada: Ignoradas ${duplicates} noticias por duplicidad. Insertando ${newArticles} nuevas.`);
-        console.log(`[IngestNewsUseCase] Saved ${newArticles} articles with category: "${normalizedCategory}"`);
+        newArticles = articlesToSave.length - updatedArticles; // Solo contar las NUEVAS
+        duplicates = updatedArticles; // Las "duplicadas" ahora son "actualizadas"
+        
+        console.log(`✅ Ingesta completada:`);
+        console.log(`   📝 Nuevas: ${newArticles} | ♻️  Actualizadas: ${updatedArticles} | ❌ Errores: ${errors}`);
+        console.log(`   📂 Categoría aplicada: "${normalizedCategory}"`);
       } else {
-        console.log(`⚠️ Ingesta completada: Todas las ${duplicates} noticias ya existían en la base de datos.`);
+        console.log(`⚠️ Ingesta completada: No se procesaron artículos.`);
       }
 
       // Record ingestion metadata

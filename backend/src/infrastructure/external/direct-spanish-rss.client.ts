@@ -19,18 +19,16 @@ import { InfrastructureError } from '../../domain/errors/infrastructure.error';
  * FEATURE: RSS AUTO-DISCOVERY (Sprint 9) - Base catalog of Spanish media
  */
 const RSS_SOURCES: Record<string, string[]> = {
-  // 1. GENERAL (TOP 10 - MIX IDEOLÓGICO)
+  // 1. GENERAL - CATEGORÍA INDEPENDIENTE (SOLO PORTADAS PRINCIPALES)
+  // ✅ CAMBIO FEB 2026: 'general' YA NO es agregador, solo contiene noticias de portadas
+  // Separación estricta: NO mezclar con secciones específicas (internacional, política, etc.)
   general: [
-    'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada', // ACTIVO por defecto
-    'https://e00-elmundo.uecdn.es/elmundo/rss/portada.xml', // ACTIVO por defecto
-    'https://www.20minutos.es/rss/', // ACTIVO por defecto
-    'https://www.abc.es/rss/2.0/portada',
-    'https://www.lavanguardia.com/mvc/feed/rss/home',
-    'https://rss.elconfidencial.com/espana/',
-    'https://www.elespanol.com/rss/',
-    'https://www.larazon.es/rss/portada.xml',
-    'https://www.eldiario.es/rss/',
-    'https://www.publico.es/rss/',
+    'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada', // Portada principal
+    'https://e00-elmundo.uecdn.es/elmundo/rss/portada.xml', // Portada principal
+    'https://www.20minutos.es/rss/', // Portada principal
+    'https://www.abc.es/rss/2.0/portada', // Portada principal
+    'https://www.lavanguardia.com/rss/home.xml', // Portada principal
+    'https://www.eldiario.es/rss/', // Portada principal
   ],
 
   // 2. ECONOMÍA (TOP 10)
@@ -47,18 +45,16 @@ const RSS_SOURCES: Record<string, string[]> = {
     'https://www.businessinsider.es/rss',
   ],
 
-  // 3. DEPORTES (TOP 10)
+  // 3. DEPORTES (TOP 8 - FEEDS VERIFICADOS FEB 2026)
   deportes: [
-    'https://e00-marca.uecdn.es/rss/portada.xml',
-    'https://as.com/rss/tikitakas/portada.xml',
-    'https://www.mundodeportivo.com/mvc/feed/rss/home',
-    'https://www.sport.es/rss/last-news/news.xml',
-    'https://www.estadiodeportivo.com/rss/',
-    'https://www.superdeporte.es/rss/section/2',
-    'https://www.defensacentral.com/rss/',
-    'https://www.palco23.com/rss',
-    'https://espanol.eurosport.com/rss.xml',
-    'https://es.besoccer.com/rss/noticias',
+    'https://e00-marca.uecdn.es/rss/portada.xml', // 68 items, actualizado
+    'https://www.mundodeportivo.com/rss/home', // 149 items, 2h ago (URL corregida)
+    'https://www.sport.es/es/rss/last-news/news.xml', // 50 items, tiempo real (URL corregida)
+    'https://www.abc.es/rss/2.0/deportes/', // 25 items, tiempo real
+    'https://www.lavanguardia.com/rss/deportes.xml', // 100 items, 1h ago
+    'https://www.elespanol.com/rss/deportes', // 30 items, tiempo real
+    'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/deportes/portada', // 29 items, 14h ago
+    'https://www.20minutos.es/rss/deportes/', // 25 items, 11h ago
   ],
 
   // 4. TECNOLOGÍA (TOP 10)
@@ -99,12 +95,15 @@ const RSS_SOURCES: Record<string, string[]> = {
     'https://www.elplural.com/rss',
   ],
 
-  // 7. INTERNACIONAL (Heredado)
+  // 7. INTERNACIONAL - SECCIÓN ESPECÍFICA (AMPLIADO FEB 2026)
+  // ✅ Fuentes movidas desde 'general' para evitar contaminación
   internacional: [
     'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional',
     'https://e00-elmundo.uecdn.es/elmundo/rss/internacional.xml',
     'https://www.abc.es/rss/2.0/internacional/',
     'https://www.lavanguardia.com/rss/internacional.xml',
+    'https://rss.elconfidencial.com/mundo/', // Añadido para cobertura internacional
+    'https://www.elespanol.com/rss/mundo', // Añadido para cobertura internacional
   ],
 
   // 8. CULTURA (Heredado)
@@ -249,17 +248,26 @@ export class DirectSpanishRssClient implements INewsAPIClient {
 
       const feedResults = await Promise.allSettled(feedPromises);
 
-      // Aggregate articles from successful feeds
+      // Aggregate articles from successful feeds with BALANCED DISTRIBUTION
+      // Instead of taking all articles and sorting globally, we take N articles from each source
+      // to ensure diversity across all sources
       const allArticles: NewsAPIArticle[] = [];
       let successfulFeeds = 0;
+      const pageSize = params.pageSize || 20;
+
+      // Calculate how many articles to take per source for balanced distribution
+      // This ensures we get content from multiple sources, not just the most frequently updated one
+      const articlesPerSource = Math.max(2, Math.ceil(pageSize / feedUrls.length));
 
       feedResults.forEach((result: PromiseSettledResult<NewsAPIArticle[]>, index: number) => {
         const source = getSourceFromUrl(feedUrls[index]);
         if (result.status === 'fulfilled') {
-          allArticles.push(...result.value);
+          // Take only the N most recent articles from this source
+          const recentArticles = result.value.slice(0, articlesPerSource);
+          allArticles.push(...recentArticles);
           successfulFeeds++;
           console.log(
-            `[DirectSpanishRssClient] ✅ ${source.name}: ${result.value.length} articles`
+            `[DirectSpanishRssClient] ✅ ${source.name}: ${result.value.length} available, taking ${recentArticles.length}`
           );
         } else {
           console.warn(
@@ -276,19 +284,18 @@ export class DirectSpanishRssClient implements INewsAPIClient {
         );
       }
 
-      // Sort by publication date (newest first)
+      // Sort by publication date (newest first) AFTER balancing sources
       allArticles.sort((a, b) => {
         const dateA = new Date(a.publishedAt).getTime();
         const dateB = new Date(b.publishedAt).getTime();
         return dateB - dateA;
       });
 
-      // Apply pageSize limit
-      const pageSize = params.pageSize || 20;
+      // Final limit to pageSize (may have slightly more due to rounding)
       const articles = allArticles.slice(0, pageSize);
 
       console.log(
-        `[DirectSpanishRssClient] 📊 Total: ${articles.length} articles from ${successfulFeeds}/${feedUrls.length} sources (${category})`
+        `[DirectSpanishRssClient] 📊 Total: ${articles.length} articles from ${successfulFeeds}/${feedUrls.length} sources (${articlesPerSource} per source, ${category})`
       );
 
       return {

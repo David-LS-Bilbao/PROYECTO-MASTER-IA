@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { type NewsArticle, type BiasDistribution } from '@/lib/api';
@@ -9,7 +9,7 @@ import { Sidebar, DashboardDrawer } from '@/components/layout';
 import { SourcesDrawer } from '@/components/sources-drawer';
 import { Badge } from '@/components/ui/badge';
 import { CategoryPills, type CategoryId, CATEGORIES } from '@/components/category-pills';
-import { useNews } from '@/hooks/useNews';
+import { useNews, useInvalidateNews } from '@/hooks/useNews';
 import { useDashboardStats } from '@/hooks/useDashboardStats';
 
 
@@ -24,19 +24,27 @@ export default function Home() {
   // =========================================================================
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
   const [isSourcesOpen, setIsSourcesOpen] = useState(false);
-  
+
   // Category state (UI state, synced with URL)
   const [category, setCategory] = useState<CategoryId>(() => {
     const validCategories = CATEGORIES.map(c => c.id);
     return urlCategory && validCategories.includes(urlCategory) ? urlCategory : 'general';
   });
 
+  // Sprint 16: Track si es la primera carga para evitar ingesta innecesaria
+  const isFirstMount = useRef(true);
+
+  // Sprint 16: Track si el backend está disponible para auto-ingesta
+  const [isBackendAvailable, setIsBackendAvailable] = useState(true);
+
   // =========================================================================
-  // REACT QUERY: Fetch de noticias con caché automático (60s stale time)
+  // REACT QUERY: Fetch de noticias con caché automático (30s stale time)
+  // Sprint 16: Freshness strategy con auto-ingesta al cambiar categoría
   // =========================================================================
   const {
     data: newsData,
     isLoading,
+    isFetching,
     isError,
     error: queryError,
   } = useNews({
@@ -49,6 +57,11 @@ export default function Home() {
   // REACT QUERY: Dashboard stats con auto-refresh cada 5 minutos
   // =========================================================================
   const { data: stats } = useDashboardStats();
+
+  // =========================================================================
+  // REACT QUERY: Invalidación manual de caché para forzar refetch
+  // =========================================================================
+  const invalidateNews = useInvalidateNews();
 
   // =========================================================================
   // COMPUTED: Error message (compatible con código legacy)
@@ -71,24 +84,161 @@ export default function Home() {
 
   // =========================================================================
   // SYNC: Categoría con URL (cuando cambia el search param externo)
+  // FIX: Manejar caso de 'general' donde urlCategory es null
   // =========================================================================
   useEffect(() => {
     const validCategories = CATEGORIES.map(c => c.id);
-    if (urlCategory && validCategories.includes(urlCategory) && urlCategory !== category) {
-      setCategory(urlCategory);
+    const targetCategory = urlCategory && validCategories.includes(urlCategory) ? urlCategory : 'general';
+    
+    // Solo actualizar si la categoría cambió (evitar loops infinitos)
+    if (targetCategory !== category) {
+      console.log(`🔗 [URL SYNC] URL cambió: Actualizando category de "${category}" a "${targetCategory}"`);
+      setCategory(targetCategory);
     }
   }, [urlCategory, category]);
 
   // =========================================================================
+  // SPRINT 16: Health Check del Backend (una sola vez al montar)
+  // Verifica si el backend está disponible para habilitar auto-ingesta
+  // =========================================================================
+  useEffect(() => {
+    const checkBackendHealth = async () => {
+      try {
+        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+        const response = await fetch(`${API_BASE_URL}/health/check`, {
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+          console.log('✅ [HEALTH CHECK] Backend disponible para auto-ingesta');
+          setIsBackendAvailable(true);
+        } else {
+          console.warn('⚠️ [HEALTH CHECK] Backend respondió con error:', response.status);
+          setIsBackendAvailable(false);
+        }
+      } catch (error) {
+        console.warn('🔌 [HEALTH CHECK] Backend no disponible - Auto-ingesta deshabilitada');
+        setIsBackendAvailable(false);
+      }
+    };
+
+    checkBackendHealth();
+  }, []); // Solo ejecutar una vez al montar
+
+  // =========================================================================
+  // SPRINT 16: Auto-Ingesta al cambiar de categoría
+  // Dispara ingesta RSS + invalidación + refetch (como botón "Últimas noticias")
+  // Solo se ejecuta en cambios de categoría, NO en primera carga
+  // =========================================================================
+  useEffect(() => {
+    // Skip primera carga - solo queremos ingesta en cambios de categoría
+    if (isFirstMount.current) {
+      isFirstMount.current = false;
+      console.log(`🚀 [AUTO-INGESTA] Primera carga de categoría: ${category} (sin ingesta)`);
+      return;
+    }
+
+    // Skip favoritos - no necesitan ingesta RSS, solo invalidar para refetch
+    if (category === 'favorites') {
+      console.log('⭐ [AUTO-INGESTA] Categoría FAVORITOS: invalidando para refetch (sin ingesta RSS)');
+      invalidateNews(category);
+      return;
+    }
+
+    // Skip si backend no está disponible - solo hacer refetch de BD
+    if (!isBackendAvailable) {
+      console.log('🔌 [AUTO-INGESTA] Backend no disponible - Solo refetch de BD');
+      invalidateNews(category);
+      return;
+    }
+
+    // Debounce: Esperar 300ms para evitar múltiples ingestas rápidas al cambiar categorías
+    const timeoutId = setTimeout(async () => {
+      console.log(`📥 [AUTO-INGESTA] Iniciando ingesta automática para: ${category}`);
+
+      try {
+        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+
+        const requestBody: any = {
+          pageSize: 50, // Aumentado de 20 a 50 para mejor cobertura y más artículos frescos
+          category: category, // ✅ SIEMPRE enviar category, incluso si es 'general'
+        };
+
+        // ✅ CAMBIO: 'general' ahora es una categoría INDEPENDIENTE (no un agregador)
+        // Se envía explícitamente para que backend filtre solo noticias de fuentes de portada
+
+        // Fetch con timeout de 5 segundos para evitar hangs
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+        const response = await fetch(`${API_BASE_URL}/api/ingest/news`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log('✅ [AUTO-INGESTA] Completada:', data.message);
+          console.log('📊 [AUTO-INGESTA] Nuevos artículos:', data.data?.newArticles || 0);
+          console.log('♻️  [AUTO-INGESTA] Artículos actualizados:', data.data?.duplicates || 0);
+
+          // CRÍTICO: Invalidar TODAS las categorías, no solo la actual
+          // Razón: Una noticia puede aparecer en múltiples feeds RSS y actualizarse
+          // Ejemplo: Noticia de inflación aparece en "general" y "economía"
+          invalidateNews(category, true); // true = invalidateAll
+        } else {
+          console.warn(`⚠️ [AUTO-INGESTA] Error HTTP ${response.status}:`, response.statusText);
+          // Aún así, invalidar todas las categorías por si hay cambios previos
+          invalidateNews(category, true);
+        }
+      } catch (error) {
+        // Manejo de errores más específico
+        if (error instanceof Error) {
+          if (error.name === 'AbortError') {
+            console.warn('⏱️ [AUTO-INGESTA] Timeout (5s) - Backend puede estar lento o no disponible');
+          } else if (error.message.includes('fetch')) {
+            console.warn('🔌 [AUTO-INGESTA] Backend no disponible - Mostrando datos de BD actual');
+          } else {
+            console.warn('❌ [AUTO-INGESTA] Error:', error.message);
+          }
+        } else {
+          console.warn('❌ [AUTO-INGESTA] Error desconocido:', error);
+        }
+
+        // Siempre invalidar TODAS las categorías, incluso si falla ingesta
+        // Esto asegura refetch de BD con los últimos datos disponibles
+        invalidateNews(category, true);
+      }
+    }, 300); // Debounce de 300ms
+
+    return () => clearTimeout(timeoutId);
+  }, [category, invalidateNews, isBackendAvailable]); // Ejecutar cada vez que cambia la categoría o disponibilidad del backend
+
+  // =========================================================================
   // HANDLER: Cambio de categoría (UI state + URL navigation)
+  // Sprint 16 FIX: Usar router.replace para evitar re-renders que causan doble fetch
   // =========================================================================
   const handleCategoryChange = (newCategory: CategoryId) => {
     if (newCategory === category) return;
-    setCategory(newCategory);
 
+    console.log(`🔄 [CATEGORY CHANGE] ${category} → ${newCategory}`);
+
+    // 1. PRIMERO actualizar URL (shallow replace, sin re-render completo)
     const url = newCategory === 'general' ? '/' : `/?category=${newCategory}`;
-    router.push(url, { scroll: false });
-    // React Query auto-refetches when category changes (dynamic queryKey)
+    router.replace(url, { scroll: false });
+
+    // 2. LUEGO actualizar estado local (esto dispara useNews y auto-ingesta)
+    // El useEffect de sync se ejecutará DESPUÉS y verá que category ya está actualizado
+    setCategory(newCategory);
   };
 
   // =========================================================================
@@ -231,7 +381,7 @@ export default function Home() {
             )}
 
             {/* Empty State */}
-            {!isLoading && !error && newsData && newsData.data.length === 0 && (
+            {!error && newsData && newsData.data.length === 0 && !isFetching && (
               <div className="max-w-2xl mx-auto text-center py-16">
                 <div className="text-6xl mb-4">
                   {category === 'favorites' ? '❤️' : '📰'}
@@ -254,12 +404,12 @@ export default function Home() {
               <CategoryPills
                 selectedCategory={category}
                 onSelect={handleCategoryChange}
-                disabled={isLoading}
+                disabled={isFetching}
               />
             </div>
 
-            {/* Loading State */}
-            {isLoading && (
+            {/* Loading State - Solo mostrar en carga inicial (sin datos en caché) */}
+            {isLoading && !newsData && (
               <div className="max-w-7xl mx-auto">
                 <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                   {[...Array(6)].map((_, i) => (
@@ -276,13 +426,22 @@ export default function Home() {
               </div>
             )}
 
-            {/* News Grid */}
-            {!isLoading && !error && newsData && newsData.data.length > 0 && (
+            {/* News Grid - Mostrar mientras haya datos (viejos o nuevos) */}
+            {!error && newsData && newsData.data.length > 0 && (
               <>
                 <div className="flex items-center justify-between mb-6 max-w-7xl mx-auto">
-                  <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">
-                    {category === 'favorites' ? 'Tus favoritos' : 'Últimas noticias'}
-                  </h2>
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">
+                      {category === 'favorites' ? 'Tus favoritos' : 'Últimas noticias'}
+                    </h2>
+                    {/* Indicador discreto de refetch en background */}
+                    {isFetching && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent"></div>
+                        <span className="hidden sm:inline">Actualizando...</span>
+                      </div>
+                    )}
+                  </div>
                   <span className="text-sm text-muted-foreground">
                     Mostrando {newsData.data.length} de {newsData.pagination.total}
                   </span>

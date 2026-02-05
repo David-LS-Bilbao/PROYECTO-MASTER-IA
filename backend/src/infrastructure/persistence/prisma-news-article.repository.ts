@@ -33,13 +33,19 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
     try {
       // Log what we're saving for debugging
       const categories = [...new Set(articles.map(a => a.category))];
-      console.log(`[Repository] Saving ${articles.length} articles with categories: ${categories.join(', ')}`);
+      const urls = articles.map(a => a.url.substring(0, 60));
+      
+      console.log(`[Repository] 💾 Ejecutando UPSERT para ${articles.length} artículos`);
+      console.log(`[Repository] 📂 Categorías: ${categories.join(', ')}`);
+      console.log(`[Repository] 🔗 Primeras URLs: ${urls.slice(0, 3).join(' | ')}...`);
 
       await this.prisma.$transaction(async (tx) => {
         for (const article of articles) {
           await tx.article.upsert(this.mapper.toUpsertData(article));
         }
       });
+      
+      console.log(`[Repository] ✅ UPSERT completado exitosamente para ${articles.length} artículos`);
     } catch (error) {
       throw new DatabaseError(
         `Failed to save articles in batch: ${(error as Error).message}`,
