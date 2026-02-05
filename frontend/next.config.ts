@@ -30,9 +30,11 @@ export default withSentryConfig(nextConfig, {
   // Automatically tree-shake Sentry logger statements to reduce bundle size
   silent: false,
 
-  // Hide source maps from browser to protect source code
-  hideSourceMaps: true,
-
   // Tunnel for CSP compatibility
   tunnelRoute: "/monitoring",
+
+  // Source maps configuration
+  sourcemaps: {
+    disable: false, // Upload source maps for better error tracking
+  },
 });

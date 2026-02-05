@@ -51,12 +51,8 @@ export function initSentryClient() {
     // Integrations for browser
     integrations: [
       // Capture session replays (video of user actions before error)
-      new Sentry.Replay({
-        // Mask all sensitive text to protect user privacy
-        maskAllText: true,
-        // Block all media (images, etc.) to reduce data transfer
-        blockAllMedia: true,
-      }),
+      // Note: Replay integration is automatically enabled by @sentry/nextjs
+      // Manual configuration via replaysSessionSampleRate and replaysOnErrorSampleRate
     ],
 
     // Before sending event to Sentry
