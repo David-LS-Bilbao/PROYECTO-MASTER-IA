@@ -42,7 +42,13 @@ export class AnalyzeController {
         ? {
             id: req.user.uid,
             plan: req.user.plan,
-            usageStats: req.user.usageStats,
+            usageStats: req.user.usageStats
+              ? {
+                  articlesAnalyzed: req.user.usageStats.currentMonthUsage,
+                  chatMessages: 0, // No disponible en auth middleware
+                  searchesPerformed: 0, // No disponible en auth middleware
+                }
+              : null,
           }
         : undefined,
     };

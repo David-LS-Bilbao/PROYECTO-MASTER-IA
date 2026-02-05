@@ -10,12 +10,12 @@
  * - Job continues running even if a single reset fails
  */
 
-import cron from 'node-cron';
+import cron, { ScheduledTask } from 'node-cron';
 import { PrismaClient } from '@prisma/client';
 
 export class QuotaResetJob {
-  private dailyTask?: cron.ScheduledTask;
-  private monthlyTask?: cron.ScheduledTask;
+  private dailyTask?: ScheduledTask;
+  private monthlyTask?: ScheduledTask;
 
   constructor(private readonly prisma: PrismaClient) {}
 

@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { TokenUsageCard } from '@/components/token-usage-card';
 import { useProfileAuth } from '@/hooks/useProfileAuth';
 import { useProfile } from '@/hooks/useProfile';
-import { useCategoryToggle } from '@/hooks/useCategoryToggle';
+import { useProfileFormStore } from '@/stores/profile-form.store';
 import { ArrowLeft, Loader2, Save } from 'lucide-react';
 
 import {
@@ -32,25 +32,35 @@ export default function ProfilePage() {
   const router = useRouter();
   const { profile, loading, saving, authToken, save } = useProfile(user, authLoading, getToken);
 
-  // Form state
-  const [name, setName] = useState('');
-  const { selected: selectedCategories, toggle: toggleCategory, setSelected: setSelectedCategories } = useCategoryToggle([]);
-  const [showTokenUsage, setShowTokenUsage] = useState(false);
+  // Zustand Store - Gestión global de estado del formulario
+  const {
+    name,
+    selectedCategories,
+    showTokenUsage,
+    setName,
+    toggleCategory,
+    toggleTokenUsage,
+    setInitialState,
+    getSavePayload,
+  } = useProfileFormStore();
 
-  // Sincronizar form state cuando el perfil carga
+  // Sincronizar store con datos del backend cuando el perfil carga
   useEffect(() => {
     if (profile) {
-      setName(profile.name || '');
-      setSelectedCategories(profile.preferences?.categories || []);
+      setInitialState({
+        name: profile.name,
+        preferences: profile.preferences,
+      });
     }
-  }, [profile]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [profile, setInitialState]);
 
   const handleSave = async () => {
+    const payload = getSavePayload();
     await save({
-      name: name || undefined,
+      ...payload,
       preferences: {
         ...profile?.preferences,
-        categories: selectedCategories,
+        ...payload.preferences,
       },
     });
   };
@@ -148,7 +158,7 @@ export default function ProfilePage() {
                 plan={profile.plan}
                 createdAt={profile.createdAt}
                 userId={profile.id}
-                onShowTokenUsage={() => setShowTokenUsage(!showTokenUsage)}
+                onShowTokenUsage={toggleTokenUsage}
                 showingTokenUsage={showTokenUsage}
               />
             </div>
