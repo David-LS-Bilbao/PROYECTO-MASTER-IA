@@ -3,6 +3,7 @@
 import { ErrorBoundary, FallbackProps } from 'react-error-boundary';
 import { useQueryClient } from '@tanstack/react-query';
 import { ErrorCard } from '@/components/ui/error-card';
+import { captureSentryException } from '@/sentry.client.config'; // Sprint 15: Sentry error tracking
 
 interface GlobalErrorBoundaryProps {
   children: React.ReactNode;
@@ -78,9 +79,13 @@ export function GlobalErrorBoundary({ children }: GlobalErrorBoundaryProps) {
           console.error('❌ Error Boundary capturó un error:', error);
           console.error('📍 Component Stack:', info.componentStack);
         }
-        
-        // Aquí se podría integrar con Sentry o Datadog para producción
-        // Ejemplo: Sentry.captureException(error, { contexts: { react: info } });
+
+        // 🔍 Sprint 15: Capture error in Sentry for production monitoring
+        captureSentryException(error, {
+          errorBoundary: true,
+          componentStack: info.componentStack,
+          source: 'GlobalErrorBoundary',
+        });
       }}
     >
       {children}

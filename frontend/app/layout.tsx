@@ -5,6 +5,7 @@ import { AuthProvider } from "@/context/AuthContext";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { GlobalErrorBoundary } from "@/components/providers/global-error-boundary";
 import { Toaster } from "@/components/ui/sonner";
+import { SentryProvider } from "@/components/providers/sentry-provider"; // Sprint 15: Sentry initialization
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,14 +34,16 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-zinc-50 dark:bg-zinc-950`}
       >
-        <QueryProvider>
-          <GlobalErrorBoundary>
-            <AuthProvider>
-              {children}
-              <Toaster />
-            </AuthProvider>
-          </GlobalErrorBoundary>
-        </QueryProvider>
+        <SentryProvider>
+          <QueryProvider>
+            <GlobalErrorBoundary>
+              <AuthProvider>
+                {children}
+                <Toaster />
+              </AuthProvider>
+            </GlobalErrorBoundary>
+          </QueryProvider>
+        </SentryProvider>
       </body>
     </html>
   );

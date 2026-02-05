@@ -1,9 +1,15 @@
 import dotenv from 'dotenv';
+
+// Load environment variables FIRST (needed for Sentry DSN)
+dotenv.config();
+
+// ✅ CRITICAL: Initialize Sentry BEFORE any other code runs
+// This must be done before importing other modules
+import { initSentry, Sentry } from './infrastructure/monitoring/sentry';
+initSentry();
+
 import { createServer } from './infrastructure/http/server';
 import { DependencyContainer } from './infrastructure/config/dependencies';
-
-// Load environment variables
-dotenv.config();
 
 const PORT = process.env.PORT || 3000;
 

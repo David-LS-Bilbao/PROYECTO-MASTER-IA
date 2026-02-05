@@ -2,6 +2,7 @@ import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import { Sentry } from '../monitoring/sentry'; // Sprint 15: Sentry integration
 import { DependencyContainer } from '../config/dependencies';
 import { createIngestRoutes } from './routes/ingest.routes';
 import { createAnalyzeRoutes } from './routes/analyze.routes';
@@ -20,6 +21,10 @@ export function createServer(): Application {
 
   // Initialize dependencies
   const container = DependencyContainer.getInstance();
+
+  // 🔍 Sprint 15: Sentry request handler - MUST be early in middleware chain
+  // This captures the request for distributed tracing
+  app.use(Sentry.Handlers.requestHandler());
 
   // Request Logger - PRIMERO para capturar todas las peticiones desde el inicio
   app.use(requestLogger);
@@ -66,6 +71,10 @@ export function createServer(): Application {
   app.use((req: Request, _res: Response, next: NextFunction) => {
     next(new EntityNotFoundError('Route', req.path));
   });
+
+  // 🔍 Sprint 15: Sentry error handler - MUST be before global error handler
+  // This captures errors and sends them to Sentry
+  app.use(Sentry.Handlers.errorHandler());
 
   // Global Error Handler - DEBE IR AL FINAL de todos los middlewares y rutas
   app.use(errorHandler);
