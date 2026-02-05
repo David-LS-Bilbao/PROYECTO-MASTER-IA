@@ -7,27 +7,39 @@
  * - Logs pretty en desarrollo (legibles en consola)
  * - Redaction de datos sensibles (authorization, cookies)
  * - Niveles configurables por NODE_ENV
+ *
+ * OBSERVABILIDAD (Sprint 15 - Paso 2):
+ * - Integración con Sentry: logs → breadcrumbs
+ * - Multistream: Console + Sentry (contexto para errores)
+ * - Redacción PII ANTES de enviar a Sentry
  */
 
 import pino from 'pino';
+import { createSentryStream } from './sentry-stream';
 
 const isDevelopment = process.env.NODE_ENV === 'development';
 const isTest = process.env.NODE_ENV === 'test';
+const isSentryEnabled = !!process.env.SENTRY_DSN && !isTest;
 
 /**
- * Configuración de Pino Logger
+ * Base logger configuration (shared between streams)
  */
-export const logger = pino({
+const baseConfig: pino.LoggerOptions = {
   // Nivel de log según entorno
   level: isTest ? 'silent' : process.env.LOG_LEVEL || 'info',
 
   // Redact - Ocultar datos sensibles en logs
+  // CRÍTICO: Se aplica ANTES de enviar a cualquier stream (incluido Sentry)
   redact: {
     paths: [
       'req.headers.authorization',
       'req.headers.cookie',
       'req.headers["x-api-key"]',
       'res.headers["set-cookie"]',
+      'password',
+      'token',
+      'apiKey',
+      'secret',
     ],
     remove: true, // Eliminar completamente los campos sensibles
   },
@@ -50,25 +62,71 @@ export const logger = pino({
     err: pino.stdSerializers.err, // Serializer estándar para errores
   },
 
-  // Transport para desarrollo - pino-pretty
-  ...(isDevelopment && {
-    transport: {
-      target: 'pino-pretty',
-      options: {
-        colorize: true,
-        translateTime: 'HH:MM:ss',
-        ignore: 'pid,hostname',
-        singleLine: false,
-        messageFormat: '{msg} {req.method} {req.url} {res.statusCode}',
-      },
-    },
-  }),
-
   // Metadata base para todos los logs
   base: {
     env: process.env.NODE_ENV || 'development',
   },
-});
+};
+
+/**
+ * Create logger with multistream support
+ * Stream 1: Console (pretty in dev, JSON in prod)
+ * Stream 2: Sentry (breadcrumbs for error context)
+ */
+function createLogger() {
+  // If Sentry is not enabled, use simple logger
+  if (!isSentryEnabled) {
+    return pino({
+      ...baseConfig,
+      // Transport para desarrollo - pino-pretty
+      ...(isDevelopment && {
+        transport: {
+          target: 'pino-pretty',
+          options: {
+            colorize: true,
+            translateTime: 'HH:MM:ss',
+            ignore: 'pid,hostname',
+            singleLine: false,
+            messageFormat: '{msg} {req.method} {req.url} {res.statusCode}',
+          },
+        },
+      }),
+    });
+  }
+
+  // Create multistream logger (Console + Sentry)
+  const streams: pino.StreamEntry[] = [
+    // Stream 1: Console output
+    {
+      level: baseConfig.level as pino.Level,
+      stream: isDevelopment
+        ? pino.transport({
+            target: 'pino-pretty',
+            options: {
+              colorize: true,
+              translateTime: 'HH:MM:ss',
+              ignore: 'pid,hostname',
+              singleLine: false,
+              messageFormat: '{msg} {req.method} {req.url} {res.statusCode}',
+            },
+          })
+        : process.stdout, // JSON output in production
+    },
+
+    // Stream 2: Sentry breadcrumbs
+    {
+      level: 'debug', // Send all logs >= debug to Sentry
+      stream: createSentryStream(),
+    },
+  ];
+
+  return pino(baseConfig, pino.multistream(streams));
+}
+
+/**
+ * Exportar logger configurado
+ */
+export const logger = createLogger();
 
 /**
  * Logger específico para módulos/contextos
