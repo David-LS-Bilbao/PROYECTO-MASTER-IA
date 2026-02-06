@@ -4,8 +4,12 @@ import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { GlobalErrorBoundary } from "@/components/providers/global-error-boundary";
+import { ThemeProvider } from "@/components/providers/theme-provider"; // Sprint 19.8: Theme support
 import { Toaster } from "@/components/ui/sonner";
+import { ScrollToTop } from "@/components/ui/scroll-to-top";
 import { SentryProvider } from "@/components/providers/sentry-provider"; // Sprint 15: Sentry initialization
+import Footer from "@/components/layout/footer";
+import CookieBanner from "@/components/ui/cookie-banner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -35,14 +39,21 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-zinc-50 dark:bg-zinc-950`}
       >
         <SentryProvider>
-          <QueryProvider>
-            <GlobalErrorBoundary>
-              <AuthProvider>
-                {children}
-                <Toaster />
-              </AuthProvider>
-            </GlobalErrorBoundary>
-          </QueryProvider>
+          <ThemeProvider>
+            <QueryProvider>
+              <GlobalErrorBoundary>
+                <AuthProvider>
+                   {children}
+                   <Toaster />
+                   <ScrollToTop />
+                   {/* Footer global */}
+                   <Footer />
+                   {/* Cookie Banner */}
+                   <CookieBanner />
+                </AuthProvider>
+              </GlobalErrorBoundary>
+            </QueryProvider>
+          </ThemeProvider>
         </SentryProvider>
       </body>
     </html>

@@ -123,3 +123,69 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ============================================================================
+   PREFERENCES STYLES (Sprint 19.8)
+   Estilos globales para preferencias de visualización del usuario
+   ============================================================================ */
+
+/* Font Size Preferences */
+html.theme-font-sm {
+  font-size: 14px;
+}
+
+html.theme-font-base {
+  font-size: 16px; /* Default */
+}
+
+html.theme-font-lg {
+  font-size: 18px;
+}
+
+html.theme-font-xl {
+  font-size: 20px;
+}
+
+/* Reduce Motion Preference */
+html.reduce-motion *,
+html.reduce-motion *::before,
+html.reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* View Mode: Compact (to be implemented in news cards) */
+html[data-view-mode="compact"] .news-card {
+  /* Placeholder for compact view styles */
+  /* Will be implemented in news card components */
+}
+
+/* Max Content Width (Accessibility for dyslexia and focus) */
+/* UNE-EN 301549: Ayuda con legibilidad y concentración */
+html[data-content-width="narrow"] .content-container,
+html[data-content-width="narrow"] main > div {
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+html[data-content-width="normal"] .content-container,
+html[data-content-width="normal"] main > div {
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+html[data-content-width="wide"] .content-container,
+html[data-content-width="wide"] main > div {
+  max-width: 1000px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+html[data-content-width="full"] .content-container,
+html[data-content-width="full"] main > div {
+  max-width: 100%;
+}
