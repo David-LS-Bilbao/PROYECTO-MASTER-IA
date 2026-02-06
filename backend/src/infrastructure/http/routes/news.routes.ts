@@ -22,6 +22,10 @@ export class NewsRoutes {
     // PATCH /api/news/:id/favorite - Toggle favorite (REQUIRES AUTH for per-user isolation)
     router.patch('/:id/favorite', authenticate, newsController.toggleFavorite.bind(newsController));
 
+    // GET /api/news/search - Search news with Waterfall strategy (Sprint 19)
+    // IMPORTANT: Must be BEFORE /:id route to avoid route collision
+    router.get('/search', optionalAuthenticate, newsController.search.bind(newsController));
+
     // GET /api/news - Get all news (optional auth for per-user favorite enrichment)
     router.get('/', optionalAuthenticate, newsController.getNews.bind(newsController));
 

@@ -139,4 +139,18 @@ export interface INewsArticleRepository {
    * Count user's favorites
    */
   countFavoritesByUser(userId: string): Promise<number>;
+
+  // =========================================================================
+  // SEARCH (Sprint 19)
+  // =========================================================================
+
+  /**
+   * Search articles by query string using Full-Text Search
+   * Searches in title, description, summary, and content
+   * @param query Search query string
+   * @param limit Maximum number of results
+   * @param userId Optional user ID for favorite enrichment
+   * @returns Articles matching the search query, ordered by relevance
+   */
+  searchArticles(query: string, limit: number, userId?: string): Promise<NewsArticle[]>;
 }

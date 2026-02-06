@@ -563,4 +563,122 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
     return where;
   }
 
+  // =========================================================================
+  // SEARCH (Sprint 19: Waterfall Search Engine)
+  // =========================================================================
+
+  /**
+   * Search articles using Full-Text Search (PostgreSQL)
+   * Falls back to LIKE search if FTS is not available
+   */
+  async searchArticles(query: string, limit: number, userId?: string): Promise<NewsArticle[]> {
+    try {
+      if (!query || query.trim().length === 0) {
+        return [];
+      }
+
+      const trimmedQuery = query.trim();
+
+      console.log(`[Repository.searchArticles] Query: "${trimmedQuery}", Limit: ${limit}`);
+
+      // Try Full-Text Search first (requires fulltext index)
+      // If FTS not available, Prisma will throw error and we'll fallback to LIKE
+      let articles;
+
+      try {
+        // Full-Text Search using Prisma's search feature
+        articles = await this.prisma.article.findMany({
+          where: {
+            OR: [
+              {
+                title: {
+                  search: trimmedQuery,
+                },
+              },
+              {
+                description: {
+                  search: trimmedQuery,
+                },
+              },
+              {
+                summary: {
+                  search: trimmedQuery,
+                },
+              },
+            ],
+          },
+          orderBy: {
+            publishedAt: 'desc', // Most recent first
+          },
+          take: limit,
+        });
+
+        console.log(`[Repository.searchArticles] FTS found ${articles.length} results`);
+      } catch (ftsError) {
+        // Fallback to LIKE search if FTS not available
+        console.warn(`[Repository.searchArticles] FTS failed, falling back to LIKE search`);
+
+        articles = await this.prisma.article.findMany({
+          where: {
+            OR: [
+              {
+                title: {
+                  contains: trimmedQuery,
+                  mode: 'insensitive',
+                },
+              },
+              {
+                description: {
+                  contains: trimmedQuery,
+                  mode: 'insensitive',
+                },
+              },
+              {
+                summary: {
+                  contains: trimmedQuery,
+                  mode: 'insensitive',
+                },
+              },
+              {
+                content: {
+                  contains: trimmedQuery,
+                  mode: 'insensitive',
+                },
+              },
+            ],
+          },
+          orderBy: {
+            publishedAt: 'desc',
+          },
+          take: limit,
+        });
+
+        console.log(`[Repository.searchArticles] LIKE search found ${articles.length} results`);
+      }
+
+      if (articles.length === 0) {
+        return [];
+      }
+
+      // Convert to domain entities
+      let domainArticles = articles.map((article) => this.mapper.toDomain(article));
+
+      // Enrich with per-user favorite status if userId provided
+      if (userId && domainArticles.length > 0) {
+        domainArticles = await this.enrichWithUserFavorites(domainArticles, userId);
+      } else {
+        domainArticles = domainArticles.map(a =>
+          NewsArticle.reconstitute({ ...a.toJSON(), isFavorite: false })
+        );
+      }
+
+      return domainArticles;
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to search articles: ${(error as Error).message}`,
+        error as Error
+      );
+    }
+  }
+
 }

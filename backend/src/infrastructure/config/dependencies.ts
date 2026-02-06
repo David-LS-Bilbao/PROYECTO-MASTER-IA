@@ -107,7 +107,8 @@ export class DependencyContainer {
     this.analyzeController = new AnalyzeController(analyzeArticleUseCase);
     this.newsController = new NewsController(
       this.newsRepository,
-      toggleFavoriteUseCase
+      toggleFavoriteUseCase,
+      ingestNewsUseCase // Sprint 19: Inject for reactive ingestion in search
     );
     this.chatController = new ChatController(chatArticleUseCase);
     this.searchController = new SearchController(searchNewsUseCase);

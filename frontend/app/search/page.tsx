@@ -1,186 +1,224 @@
+/**
+ * Search Results Page - Sprint 19: Waterfall Search Engine
+ *
+ * Implements 3-level waterfall search strategy:
+ * - LEVEL 1: Quick DB search (Full-Text Search / LIKE)
+ * - LEVEL 2: Reactive ingestion + retry (8s timeout)
+ * - LEVEL 3: Google News suggestion fallback
+ *
+ * Features:
+ * - Debounced search (500ms)
+ * - Per-user favorite enrichment
+ * - Responsive UI with loading states
+ * - External fallback when no results found
+ */
+
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Search, Loader2 } from 'lucide-react';
-import { searchNews, type NewsArticle } from '@/lib/api';
-import { NewsCard } from '@/components/news-card';
+import { ArrowLeft, Search, ExternalLink, AlertCircle, Zap, RefreshCw, Sparkles } from 'lucide-react';
 import { SearchBar } from '@/components/search-bar';
+import { NewsCard } from '@/components/news-card';
+import { useNewsSearch } from '@/hooks/useNewsSearch';
 import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 
-function SearchContent() {
+function SearchResults() {
   const searchParams = useSearchParams();
-  const query = searchParams.get('q') || '';
+  const initialQuery = searchParams.get('q') || '';
+  const [query, setQuery] = useState(initialQuery);
 
-  const [results, setResults] = useState<NewsArticle[]>([]);
-  const [totalFound, setTotalFound] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [hasSearched, setHasSearched] = useState(false);
-
+  // Update query when URL changes
   useEffect(() => {
-    if (!query.trim()) {
-      setResults([]);
-      setTotalFound(0);
-      setHasSearched(false);
-      return;
+    const urlQuery = searchParams.get('q') || '';
+    if (urlQuery !== query) {
+      setQuery(urlQuery);
     }
+  }, [searchParams]);
 
-    const performSearch = async () => {
-      setIsLoading(true);
-      setError(null);
-      setHasSearched(true);
+  const { data, isLoading, error, isFetching } = useNewsSearch(query);
 
-      try {
-        const response = await searchNews(query, 20);
-        setResults(response.data.results);
-        setTotalFound(response.data.totalFound);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Error al buscar');
-        setResults([]);
-        setTotalFound(0);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    performSearch();
-  }, [query]);
+  const hasResults = data && data.data && data.data.length > 0;
+  const hasSuggestion = data && data.suggestion;
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
-      {/* Header */}
-      <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/80 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-900/80">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" asChild>
-              <Link href="/">
-                <ArrowLeft className="h-5 w-5" />
-              </Link>
-            </Button>
-            <div className="flex-1">
-              <SearchBar
-                defaultValue={query}
-                placeholder="Buscar noticias con IA semántica..."
-                autoFocus={!query}
-              />
-            </div>
-          </div>
+    <div className="min-h-screen bg-gradient-to-br from-zinc-50 via-white to-blue-50/30 dark:from-zinc-950 dark:via-zinc-900 dark:to-blue-950/20">
+      <div className="container mx-auto px-4 py-8 max-w-6xl">
+        {/* Header with Back Button */}
+        <div className="flex items-center justify-between mb-6">
+          <Link
+            href="/"
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Volver al inicio
+          </Link>
         </div>
-      </header>
 
-      {/* Content */}
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
-        {/* Initial State - No query */}
-        {!query && !hasSearched && (
-          <div className="text-center py-16">
-            <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-primary/10 flex items-center justify-center">
-              <Search className="h-8 w-8 text-primary" />
-            </div>
-            <h1 className="text-2xl font-bold text-zinc-900 dark:text-white mb-2">
-              Búsqueda Semántica
-            </h1>
-            <p className="text-muted-foreground max-w-md mx-auto mb-4">
-              Encuentra noticias usando búsqueda inteligente con IA.
-              El sistema entiende el significado de tu consulta, no solo palabras clave.
-            </p>
-            <div className="flex flex-wrap gap-2 justify-center text-sm">
-              <Badge variant="secondary">Ejemplo: cambio climático</Badge>
-              <Badge variant="secondary">Ejemplo: economía española</Badge>
-              <Badge variant="secondary">Ejemplo: tecnología y empleo</Badge>
-            </div>
-          </div>
-        )}
+        {/* Search Bar */}
+        <div className="mb-8">
+          <SearchBar
+            defaultValue={query}
+            autoFocus={!query}
+            className="max-w-3xl mx-auto"
+            onSearch={(newQuery) => {
+              // Update URL when search is submitted
+              const url = new URL(window.location.href);
+              url.searchParams.set('q', newQuery);
+              window.history.pushState({}, '', url);
+              setQuery(newQuery);
+            }}
+          />
+        </div>
 
         {/* Loading State */}
-        {isLoading && (
-          <div className="flex flex-col items-center justify-center py-16">
-            <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
-            <p className="text-muted-foreground">Buscando con IA semántica...</p>
+        {(isLoading || isFetching) && (
+          <div className="space-y-6">
+            <div className="text-center text-sm text-muted-foreground flex items-center justify-center gap-2">
+              <Search className="h-4 w-4 animate-pulse" />
+              <span>Buscando "{query}"...</span>
+            </div>
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="space-y-3">
+                  <Skeleton className="h-48 w-full" />
+                  <Skeleton className="h-6 w-3/4" />
+                  <Skeleton className="h-4 w-full" />
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
         {/* Error State */}
         {error && !isLoading && (
-          <div className="max-w-2xl mx-auto p-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-            <h2 className="text-lg font-semibold text-red-800 dark:text-red-400 mb-2">
-              Error en la búsqueda
-            </h2>
-            <p className="text-red-700 dark:text-red-300">{error}</p>
-            <p className="text-sm text-red-600 dark:text-red-400 mt-4">
-              Asegúrate de que el backend y ChromaDB están corriendo.
-            </p>
-          </div>
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Error en la búsqueda</AlertTitle>
+            <AlertDescription>
+              {error.message || 'No se pudo completar la búsqueda. Por favor, inténtalo de nuevo.'}
+            </AlertDescription>
+          </Alert>
         )}
 
-        {/* Results */}
-        {!isLoading && !error && hasSearched && (
+        {/* Results or Empty State */}
+        {!isLoading && !isFetching && !error && (
           <>
-            {/* Results Header */}
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h1 className="text-xl font-semibold text-zinc-900 dark:text-white">
-                  Resultados para "{query}"
+            {/* Search Info Header */}
+            {query && (
+              <div className="mb-6">
+                <h1 className="text-2xl font-bold text-foreground">
+                  Resultados de búsqueda
                 </h1>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {totalFound} {totalFound === 1 ? 'resultado encontrado' : 'resultados encontrados'}
-                </p>
-              </div>
-              <Badge variant="outline" className="hidden sm:flex">
-                Búsqueda semántica
-              </Badge>
-            </div>
-
-            {/* No Results */}
-            {results.length === 0 && (
-              <div className="text-center py-12 border rounded-lg border-dashed">
-                <Search className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
-                <h2 className="text-lg font-medium text-zinc-900 dark:text-white mb-2">
-                  No se encontraron resultados
-                </h2>
-                <p className="text-muted-foreground max-w-md mx-auto">
-                  Intenta con otros términos. La búsqueda semántica funciona mejor
-                  con consultas descriptivas.
-                </p>
+                <div className="flex items-center gap-3 flex-wrap mt-2">
+                  <p className="text-sm text-muted-foreground">
+                    Buscando: <span className="font-medium text-foreground">"{query}"</span>
+                    {hasResults && (
+                      <span className="ml-1">
+                        ({data.data.length} resultado{data.data.length === 1 ? '' : 's'})
+                      </span>
+                    )}
+                  </p>
+                  {data?.level === 1 && (
+                    <Badge variant="secondary" className="gap-1">
+                      <Zap className="h-3 w-3" />
+                      Búsqueda rápida
+                    </Badge>
+                  )}
+                  {data?.level === 2 && (
+                    <Badge variant="secondary" className="gap-1">
+                      <RefreshCw className="h-3 w-3" />
+                      Búsqueda profunda
+                    </Badge>
+                  )}
+                  {data?.isFresh && (
+                    <Badge variant="default" className="gap-1">
+                      <Sparkles className="h-3 w-3" />
+                      Artículos actualizados
+                    </Badge>
+                  )}
+                </div>
               </div>
             )}
 
             {/* Results Grid */}
-            {results.length > 0 && (
-              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                {results.map((article) => (
+            {hasResults && (
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {data.data.map((article: any) => (
                   <NewsCard key={article.id} article={article} />
                 ))}
               </div>
             )}
+
+            {/* LEVEL 3 Fallback: Google News Suggestion */}
+            {hasSuggestion && query && (
+              <div className="max-w-2xl mx-auto">
+                <Alert>
+                  <Search className="h-4 w-4" />
+                  <AlertTitle>No se encontraron resultados</AlertTitle>
+                  <AlertDescription className="mt-2 space-y-4">
+                    <p>{data.suggestion.message}</p>
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => window.open(data.suggestion.externalLink, '_blank')}
+                    >
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      {data.suggestion.actionText}
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              </div>
+            )}
+
+            {/* Empty Query State */}
+            {!query && (
+              <div className="text-center py-12">
+                <Search className="h-16 w-16 mx-auto text-muted-foreground/50 mb-4" />
+                <h2 className="text-xl font-semibold text-foreground mb-2">
+                  Busca noticias
+                </h2>
+                <p className="text-sm text-muted-foreground max-w-md mx-auto mb-6">
+                  Introduce un término de búsqueda para encontrar noticias relevantes.
+                  Nuestro sistema inteligente buscará en múltiples niveles para ofrecerte
+                  los mejores resultados.
+                </p>
+                <div className="flex flex-wrap gap-2 justify-center text-sm">
+                  <Badge variant="secondary" className="gap-1">
+                    <Zap className="h-3 w-3" />
+                    Nivel 1: Búsqueda instantánea
+                  </Badge>
+                  <Badge variant="secondary" className="gap-1">
+                    <RefreshCw className="h-3 w-3" />
+                    Nivel 2: Ingesta reactiva
+                  </Badge>
+                  <Badge variant="secondary" className="gap-1">
+                    <ExternalLink className="h-3 w-3" />
+                    Nivel 3: Fuentes externas
+                  </Badge>
+                </div>
+              </div>
+            )}
           </>
         )}
-      </main>
-
-      {/* Footer */}
-      <footer className="border-t border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900 mt-auto">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 text-center text-sm text-muted-foreground">
-          <p>
-            Búsqueda potenciada por ChromaDB + Gemini Embeddings
-          </p>
-        </div>
-      </footer>
+      </div>
     </div>
   );
 }
 
+// Wrapper with Suspense to handle useSearchParams
 export default function SearchPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      }
-    >
-      <SearchContent />
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <Search className="h-8 w-8 animate-pulse text-muted-foreground" />
+      </div>
+    }>
+      <SearchResults />
     </Suspense>
   );
 }
