@@ -46,7 +46,7 @@ function SearchResults() {
   const hasSuggestion = data && data.suggestion;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-50 via-white to-blue-50/30 dark:from-zinc-950 dark:via-zinc-900 dark:to-blue-950/20">
+    <div className="min-h-screen bg-linear-to-br from-zinc-50 via-white to-blue-50/30 dark:from-zinc-950 dark:via-zinc-900 dark:to-blue-950/20">
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         {/* Header with Back Button */}
         <div className="flex items-center justify-between mb-6">
