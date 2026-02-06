@@ -250,6 +250,40 @@ export async function chatWithArticle(
 }
 
 /**
+ * Chat general response from backend (Sprint 19.6)
+ */
+export interface ChatGeneralResponse {
+  success: boolean;
+  data: {
+    response: string;
+    sourcesCount: number;
+  };
+  message: string;
+}
+
+/**
+ * Send a general chat message (Sprint 19.6)
+ */
+export async function chatGeneral(
+  messages: ChatMessage[]
+): Promise<ChatGeneralResponse> {
+  const res = await fetch(`${API_BASE_URL}/api/chat/general`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ messages }),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.message || `Chat failed: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
  * Search response from semantic search endpoint
  */
 export interface SearchResponse {

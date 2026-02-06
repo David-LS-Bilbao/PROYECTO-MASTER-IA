@@ -2,17 +2,83 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { useInView } from 'react-intersection-observer';
 import { useAuth } from '@/context/AuthContext';
 import { type NewsArticle, type BiasDistribution } from '@/lib/api';
 import { NewsCard } from '@/components/news-card';
 import { Sidebar, DashboardDrawer } from '@/components/layout';
 import { SourcesDrawer } from '@/components/sources-drawer';
+import { GeneralChatDrawer } from '@/components/general-chat-drawer';
 import { SearchBar } from '@/components/search-bar';
 import { Badge } from '@/components/ui/badge';
 import { CategoryPills, type CategoryId, CATEGORIES } from '@/components/category-pills';
-import { useNews, useInvalidateNews } from '@/hooks/useNews';
+import { DateSeparator } from '@/components/date-separator';
+import { ScrollToTop } from '@/components/ui/scroll-to-top';
+import { useNewsInfinite } from '@/hooks/useNewsInfinite';
+import { useInvalidateNews } from '@/hooks/useNews';
 import { useDashboardStats } from '@/hooks/useDashboardStats';
+import { groupArticlesByDate } from '@/lib/date-utils';
 
+
+/**
+ * InfiniteScrollSentinel - Componente que detecta cuando el usuario llega al final
+ * y dispara la carga de más noticias automáticamente
+ *
+ * SPRINT 20: Infinite Scroll
+ */
+interface InfiniteScrollSentinelProps {
+  hasNextPage: boolean | undefined;
+  isFetchingNextPage: boolean;
+  fetchNextPage: () => void;
+}
+
+function InfiniteScrollSentinel({ hasNextPage, isFetchingNextPage, fetchNextPage }: InfiniteScrollSentinelProps) {
+  const { ref, inView } = useInView({
+    threshold: 0,
+    rootMargin: '100px', // Trigger 100px before reaching the element
+  });
+
+  // Auto-fetch when sentinel comes into view
+  useEffect(() => {
+    if (inView && hasNextPage && !isFetchingNextPage) {
+      console.log('[InfiniteScroll] 📄 Sentinel in view - Fetching next page...');
+      fetchNextPage();
+    }
+  }, [inView, hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  // Si estamos cargando la siguiente página, mostrar spinner
+  if (isFetchingNextPage) {
+    return (
+      <div className="mt-8 text-center py-8">
+        <div className="flex flex-col items-center gap-3">
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent"></div>
+          <p className="text-sm text-muted-foreground">Cargando más noticias...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Si ya no hay más páginas, mostrar mensaje final
+  if (!hasNextPage) {
+    return (
+      <div className="mt-8 mb-8 text-center py-8">
+        <div className="flex flex-col items-center gap-2">
+          <div className="text-4xl mb-2">✨</div>
+          <p className="text-sm font-medium text-zinc-900 dark:text-white">
+            Has visto todo por hoy
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Vuelve más tarde para ver nuevas noticias
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Elemento invisible que actúa como "centinela"
+  // Cuando entra en el viewport, dispara la carga
+  return <div ref={ref} className="h-20" />;
+}
 
 export default function Home() {
   const { user, loading: authLoading } = useAuth();
@@ -25,6 +91,7 @@ export default function Home() {
   // =========================================================================
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
   const [isSourcesOpen, setIsSourcesOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
   // Category state (UI state, synced with URL)
   const [category, setCategory] = useState<CategoryId>(() => {
@@ -39,20 +106,45 @@ export default function Home() {
   const [isBackendAvailable, setIsBackendAvailable] = useState(true);
 
   // =========================================================================
-  // REACT QUERY: Fetch de noticias con caché automático (30s stale time)
-  // Sprint 16: Freshness strategy con auto-ingesta al cambiar categoría
+  // REACT QUERY: Infinite Scroll con useInfiniteQuery
+  // Sprint 20: Eliminamos paginación estática y usamos carga bajo demanda
   // =========================================================================
   const {
-    data: newsData,
+    data,
     isLoading,
     isFetching,
+    isFetchingNextPage,
     isError,
     error: queryError,
-  } = useNews({
+    fetchNextPage,
+    hasNextPage,
+  } = useNewsInfinite({
     category,
-    limit: 50,
-    offset: 0,
+    limit: 20, // Páginas de 20 artículos
   });
+
+  // Flatten pages into single array + remove duplicates (Sprint 20 FIX)
+  const newsData = data ? {
+    data: (() => {
+      const allArticles = data.pages.flatMap(page => page.data);
+      // Remove duplicates by ID (in case backend returns same article in multiple pages)
+      const seen = new Set<string>();
+      return allArticles.filter(article => {
+        if (seen.has(article.id)) {
+          console.warn(`[InfiniteScroll] ⚠️ Duplicate article removed: ${article.id.substring(0, 8)}...`);
+          return false;
+        }
+        seen.add(article.id);
+        return true;
+      });
+    })(),
+    pagination: data.pages[data.pages.length - 1]?.pagination || {
+      total: 0,
+      hasMore: false,
+      limit: 20,
+      offset: 0,
+    },
+  } : null;
 
   // =========================================================================
   // REACT QUERY: Dashboard stats con auto-refresh cada 5 minutos
@@ -339,9 +431,10 @@ export default function Home() {
   return (
     <div className="flex h-screen bg-zinc-50 dark:bg-zinc-950">
       {/* Sidebar */}
-      <Sidebar 
+      <Sidebar
         onOpenDashboard={() => setIsDashboardOpen(true)}
         onOpenSources={() => setIsSourcesOpen(true)}
+        onOpenChat={() => setIsChatOpen(true)}
       />
 
       {/* Dashboard Drawer */}
@@ -361,6 +454,12 @@ export default function Home() {
       <SourcesDrawer
         isOpen={isSourcesOpen}
         onOpenChange={setIsSourcesOpen}
+      />
+
+      {/* General Chat Drawer (Sprint 19.6) */}
+      <GeneralChatDrawer
+        isOpen={isChatOpen}
+        onOpenChange={setIsChatOpen}
       />
 
       {/* Main Content */}
@@ -487,20 +586,29 @@ export default function Home() {
                   </span>
                 </div>
 
-                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 max-w-7xl mx-auto">
-                  {newsData.data.map((article: NewsArticle) => (
-                    <NewsCard key={article.id} article={article} />
+                {/* Sprint 19.5: Date Separators + Grouped News Grid */}
+                <div className="max-w-7xl mx-auto">
+                  {groupArticlesByDate(newsData.data).map((group, groupIndex) => (
+                    <div key={group.date}>
+                      {/* Date Separator */}
+                      <DateSeparator label={group.label} articleCount={group.articles.length} />
+
+                      {/* Articles Grid for this date */}
+                      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                        {group.articles.map((article: NewsArticle) => (
+                          <NewsCard key={article.id} article={article} />
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
 
-                {/* Load More */}
-                {newsData.pagination.hasMore && (
-                  <div className="mt-8 text-center">
-                    <p className="text-sm text-muted-foreground">
-                      Hay más noticias disponibles. Implementa paginación para verlas.
-                    </p>
-                  </div>
-                )}
+                {/* Infinite Scroll Component */}
+                <InfiniteScrollSentinel
+                  hasNextPage={hasNextPage}
+                  isFetchingNextPage={isFetchingNextPage}
+                  fetchNextPage={fetchNextPage}
+                />
               </>
             )}
           </div>
@@ -516,6 +624,9 @@ export default function Home() {
             </p>
           </div>
         </footer>
+
+        {/* Scroll to Top Button (Sprint 19.6) */}
+        <ScrollToTop />
       </main>
     </div>
   );

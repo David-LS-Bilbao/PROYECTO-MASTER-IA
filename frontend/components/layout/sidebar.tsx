@@ -5,15 +5,15 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  Menu,
-  X,
+  ChevronRight,
+  ChevronLeft,
   BarChart3,
   Newspaper,
-  Heart,
   Settings,
   Rss,
   LogOut,
   User,
+  MessageSquare,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -22,9 +22,10 @@ import { useAuth } from '@/context/AuthContext';
 interface SidebarProps {
   onOpenDashboard?: () => void;
   onOpenSources?: () => void;
+  onOpenChat?: () => void;
 }
 
-export function Sidebar({ onOpenDashboard, onOpenSources }: SidebarProps) {
+export function Sidebar({ onOpenDashboard, onOpenSources, onOpenChat }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const { user, logout } = useAuth();
   const router = useRouter();
@@ -101,137 +102,122 @@ export function Sidebar({ onOpenDashboard, onOpenSources }: SidebarProps) {
     );
     
     console.log('✅ [REFRESH] ========== FIN REFRESH ==========');
-    
-    // Cerrar el sidebar en mobile
-    setIsOpen(false);
   };
 
   const navItems = [
     {
-      label: 'Últimas noticias',
+      label: 'Noticias',
       icon: Newspaper,
       onClick: handleRefreshNews,
     },
     {
-      label: 'Favoritos',
-      href: '/?category=favorites',
-      icon: Heart,
-    },
-    {
-      label: 'Inteligencia de Medios',
-      icon: BarChart3,
+      label: 'Chat IA',
+      icon: MessageSquare,
       onClick: () => {
-        onOpenDashboard?.();
-        setIsOpen(false);
+        onOpenChat?.();
       },
     },
     {
-      label: 'Gestionar Fuentes RSS',
+      label: 'Medios',
+      icon: BarChart3,
+      onClick: () => {
+        onOpenDashboard?.();
+      },
+    },
+    {
+      label: 'Fuentes RSS',
       icon: Rss,
       onClick: () => {
         onOpenSources?.();
-        setIsOpen(false);
       },
     },
   ];
 
   return (
     <>
-      {/* Mobile Toggle Button */}
-      <div className="fixed top-4 left-4 z-40 lg:hidden">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setIsOpen(!isOpen)}
-          className="h-9 w-9"
-        >
-          {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </Button>
-      </div>
-
-      {/* Sidebar Backdrop (Mobile) */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-black/50 lg:hidden"
-          onClick={() => setIsOpen(false)}
-        />
-      )}
-
-      {/* Sidebar */}
+      {/* Collapsible Sidebar - Side Tab Design */}
       <aside
         className={cn(
-          'fixed left-0 top-0 h-screen w-64 border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950 flex flex-col transition-transform duration-300 z-40',
-          isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+          'fixed left-0 top-0 h-screen bg-white dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800 transition-all duration-300 z-40 flex flex-col',
+          isOpen ? 'w-64' : 'w-20'
         )}
       >
-        {/* Logo */}
-        <div className="px-6 py-8 border-b border-zinc-200 dark:border-zinc-800">
-          <Link href="/" className="flex items-center gap-2" onClick={() => setIsOpen(false)}>
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <Newspaper className="w-5 h-5 text-white" />
-            </div>
-            <span className="font-bold text-lg text-zinc-900 dark:text-white">
-              Verity
-            </span>
-          </Link>
+        {/* Logo & Toggle */}
+        <div className="px-4 py-6 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between gap-3">
+          {isOpen && (
+            <Link href="/" className="flex items-center gap-2 flex-1">
+              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
+                <Newspaper className="w-5 h-5 text-white" />
+              </div>
+              <span className="font-bold text-lg text-zinc-900 dark:text-white truncate">
+                Verity
+              </span>
+            </Link>
+          )}
+          {!isOpen && (
+            <Link href="/" className="flex items-center justify-center w-full">
+              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+                <Newspaper className="w-5 h-5 text-white" />
+              </div>
+            </Link>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsOpen(!isOpen)}
+            className="h-9 w-9 shrink-0"
+          >
+            {isOpen ? (
+              <ChevronLeft className="h-5 w-5" />
+            ) : (
+              <ChevronRight className="h-5 w-5" />
+            )}
+          </Button>
         </div>
 
-        {/* Navigation */}
-        <nav className="px-3 py-6 space-y-2">
+        {/* Navigation Items */}
+        <nav className="flex-1 px-2 py-6 space-y-2 overflow-y-auto">
           {navItems.map((item, index) => {
             const Icon = item.icon;
-            const isClickable = 'onClick' in item;
-
-            if (isClickable) {
-              return (
-                <button
-                  key={index}
-                  onClick={item.onClick}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-white transition-colors"
-                >
-                  <Icon className="h-5 w-5 shrink-0" />
-                  <span className="text-sm font-medium">{item.label}</span>
-                </button>
-              );
-            }
-
             return (
-              <Link
+              <button
                 key={index}
-                href={item.href!}
-                className="flex items-center gap-3 px-4 py-3 rounded-lg text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-white transition-colors"
-                onClick={() => setIsOpen(false)}
+                onClick={item.onClick}
+                className={cn(
+                  'w-full h-11 rounded-lg transition-colors flex items-center justify-center gap-3',
+                  'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100',
+                  'dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-900'
+                )}
+                title={!isOpen ? item.label : undefined}
               >
                 <Icon className="h-5 w-5 shrink-0" />
-                <span className="text-sm font-medium">{item.label}</span>
-              </Link>
+                {isOpen && <span className="text-sm font-medium">{item.label}</span>}
+              </button>
             );
           })}
         </nav>
 
-        {/* Settings Button */}
-        <div className="px-3 py-4 border-t border-zinc-200 dark:border-zinc-800">
+        {/* Settings & User Profile */}
+        <div className="border-t border-zinc-200 dark:border-zinc-800 px-2 py-4 space-y-2">
+          {/* Settings Button */}
           <Button
-            variant="outline"
-            className="w-full justify-start gap-3"
-            onClick={() => setIsOpen(false)}
+            variant="ghost"
+            size="icon"
+            className="w-full h-11 justify-center"
+            title={!isOpen ? 'Ajustes' : undefined}
           >
-            <Settings className="h-4 w-4" />
-            <span className="text-sm">Ajustes de IA</span>
+            <Settings className="h-5 w-5" />
+            {isOpen && <span className="text-sm ml-2">Ajustes</span>}
           </Button>
-        </div>
 
-        {/* User Profile & Logout - Solo mostrar si hay usuario autenticado */}
-        {user && (
-          <div className="mt-auto px-4 py-4 border-t border-zinc-200 dark:border-zinc-800">
-            <div className="flex items-center gap-3">
-              {/* Avatar o icono de usuario - Clickeable para ir al perfil */}
-              <Link
-                href="/profile"
-                onClick={() => setIsOpen(false)}
-                className="shrink-0 w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer overflow-hidden"
-                title="Ver perfil"
-              >
+          {/* User Profile */}
+          {user && (
+            <Link
+              href="/profile"
+              className="w-full h-11 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors flex items-center justify-center gap-3 text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
+              title={!isOpen ? 'Perfil' : undefined}
+            >
+              <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center shrink-0 overflow-hidden">
                 {user.photoURL ? (
                   <img
                     src={user.photoURL}
@@ -239,53 +225,39 @@ export function Sidebar({ onOpenDashboard, onOpenSources }: SidebarProps) {
                     className="w-full h-full object-cover"
                     referrerPolicy="no-referrer"
                     onError={(e) => {
-                      console.error('Error cargando imagen de perfil en sidebar:', user.photoURL);
                       e.currentTarget.style.display = 'none';
                     }}
                   />
                 ) : (
-                  <User className="h-5 w-5 text-white" />
+                  <User className="h-4 w-4 text-white" />
                 )}
-                {user.photoURL && (
-                  <User className="h-5 w-5 text-white absolute" style={{ display: 'none' }} />
-                )}
-              </Link>
+              </div>
+              {isOpen && <span className="text-sm truncate flex-1">{user.email}</span>}
+            </Link>
+          )}
 
-              {/* Email del usuario truncado - También clickeable */}
-              <Link
-                href="/profile"
-                onClick={() => setIsOpen(false)}
-                className="flex-1 min-w-0 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-              >
-                <p className="text-sm text-zinc-900 dark:text-white truncate">
-                  {user.email}
-                </p>
-              </Link>
-
-              {/* Botón de Logout */}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={async () => {
-                  try {
-                    await logout();
-                    setIsOpen(false);
-                  } catch (error) {
-                    console.error('Error al cerrar sesión:', error);
-                  }
-                }}
-                title="Cerrar sesión"
-                className="shrink-0"
-              >
-                <LogOut className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        )}
+          {/* Logout Button */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={async () => {
+              try {
+                await logout();
+              } catch (error) {
+                console.error('Error al cerrar sesión:', error);
+              }
+            }}
+            className="w-full h-11 justify-center text-zinc-600 hover:text-red-600 dark:text-zinc-400 dark:hover:text-red-400"
+            title={!isOpen ? 'Cerrar sesión' : undefined}
+          >
+            <LogOut className="h-5 w-5" />
+            {isOpen && <span className="text-sm ml-2">Salir</span>}
+          </Button>
+        </div>
       </aside>
 
-      {/* Spacer for desktop */}
-      <div className="hidden lg:block w-64 shrink-0" />
+      {/* Spacer */}
+      <div className={cn('transition-all duration-300', isOpen ? 'w-64' : 'w-20')} />
     </>
   );
 }

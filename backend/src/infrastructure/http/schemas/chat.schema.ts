@@ -42,6 +42,20 @@ export const chatArticleSchema = z.object({
     .max(50, 'cannot exceed 50 messages in conversation'), // Validation limit
 });
 
+/**
+ * Schema for chat general request (Sprint 19.6)
+ * Similar to chatArticleSchema but without articleId
+ *
+ * COST OPTIMIZATION: max 50 mensajes en validación, pero solo 6 se envían a Gemini.
+ */
+export const chatGeneralSchema = z.object({
+  messages: z
+    .array(chatMessageSchema)
+    .min(1, 'at least one message is required')
+    .max(50, 'cannot exceed 50 messages in conversation'), // Validation limit
+});
+
 // Type exports for use in controllers
 export type ChatMessageInput = z.infer<typeof chatMessageSchema>;
 export type ChatArticleInput = z.infer<typeof chatArticleSchema>;
+export type ChatGeneralInput = z.infer<typeof chatGeneralSchema>;

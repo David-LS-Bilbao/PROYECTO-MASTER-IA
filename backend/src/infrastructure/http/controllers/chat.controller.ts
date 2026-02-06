@@ -5,7 +5,8 @@
 
 import { Request, Response } from 'express';
 import { ChatArticleUseCase } from '../../../application/use-cases/chat-article.usecase';
-import { chatArticleSchema } from '../schemas/chat.schema';
+import { ChatGeneralUseCase } from '../../../application/use-cases/chat-general.usecase';
+import { chatArticleSchema, chatGeneralSchema } from '../schemas/chat.schema';
 import { ValidationError, EntityNotFoundError } from '../../../domain/errors/domain.error';
 import {
   ExternalAPIError,
@@ -16,7 +17,10 @@ import { ZodError } from 'zod';
 import { UserStatsTracker } from '../../monitoring/user-stats-tracker';
 
 export class ChatController {
-  constructor(private readonly chatArticleUseCase: ChatArticleUseCase) {}
+  constructor(
+    private readonly chatArticleUseCase: ChatArticleUseCase,
+    private readonly chatGeneralUseCase: ChatGeneralUseCase
+  ) {}
 
   /**
    * POST /api/chat/article
@@ -32,7 +36,7 @@ export class ChatController {
 
       // Track user stats (if authenticated)
       if (req.user?.uid) {
-        UserStatsTracker.incrementChatMessages(req.user.uid, 1).catch(err => 
+        UserStatsTracker.incrementChatMessages(req.user.uid, 1).catch(err =>
           console.error('[ChatController] Failed to track chat message:', err)
         );
       }
@@ -45,6 +49,39 @@ export class ChatController {
           response: result.response,
         },
         message: 'Chat response generated successfully',
+      });
+    } catch (error) {
+      this.handleError(error, res);
+    }
+  }
+
+  /**
+   * POST /api/chat/general
+   * Send a general chat message about all news
+   * Sprint 19.6 - Tarea 3: Chat General
+   */
+  async chatGeneral(req: Request, res: Response): Promise<void> {
+    try {
+      // Validate request body with Zod (Shift Left Security)
+      const validatedInput = chatGeneralSchema.parse(req.body);
+
+      // Execute use case
+      const result = await this.chatGeneralUseCase.execute(validatedInput);
+
+      // Track user stats (if authenticated)
+      if (req.user?.uid) {
+        UserStatsTracker.incrementChatMessages(req.user.uid, 1).catch(err =>
+          console.error('[ChatController] Failed to track chat message:', err)
+        );
+      }
+
+      res.status(200).json({
+        success: true,
+        data: {
+          response: result.response,
+          sourcesCount: result.sourcesCount,
+        },
+        message: 'General chat response generated successfully',
       });
     } catch (error) {
       this.handleError(error, res);

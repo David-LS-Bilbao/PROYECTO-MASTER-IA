@@ -17,6 +17,7 @@ import { PrismaNewsArticleRepository } from '../persistence/prisma-news-article.
 import { IngestNewsUseCase } from '../../application/use-cases/ingest-news.usecase';
 import { AnalyzeArticleUseCase } from '../../application/use-cases/analyze-article.usecase';
 import { ChatArticleUseCase } from '../../application/use-cases/chat-article.usecase';
+import { ChatGeneralUseCase } from '../../application/use-cases/chat-general.usecase';
 import { SearchNewsUseCase } from '../../application/use-cases/search-news.usecase';
 import { ToggleFavoriteUseCase } from '../../application/use-cases/toggle-favorite.usecase';
 import { QuotaService } from '../../domain/services/quota.service';
@@ -29,6 +30,7 @@ import { SourcesController } from '../http/controllers/sources.controller';
 import { UserController } from '../http/controllers/user.controller';
 import { HealthController } from '../http/controllers/health.controller';
 import { QuotaResetJob } from '../jobs/quota-reset.job';
+import { CleanupNewsJob } from '../jobs/cleanup-news.job';
 
 export class DependencyContainer {
   private static instance: DependencyContainer;
@@ -46,6 +48,7 @@ export class DependencyContainer {
   public readonly userController: UserController;
   public readonly healthController: HealthController;
   public readonly quotaResetJob: QuotaResetJob;
+  public readonly cleanupNewsJob: CleanupNewsJob;
 
   private constructor() {
     // Use singleton Prisma instance
@@ -94,6 +97,12 @@ export class DependencyContainer {
       this.chromaClient // Añadido para RAG
     );
 
+    const chatGeneralUseCase = new ChatGeneralUseCase(
+      this.geminiClient,
+      this.chromaClient, // Sprint 19.6: RAG sobre toda la base de datos
+      this.newsRepository // Fallback cuando ChromaDB no está disponible
+    );
+
     const searchNewsUseCase = new SearchNewsUseCase(
       this.newsRepository,
       this.geminiClient,
@@ -110,7 +119,7 @@ export class DependencyContainer {
       toggleFavoriteUseCase,
       ingestNewsUseCase // Sprint 19: Inject for reactive ingestion in search
     );
-    this.chatController = new ChatController(chatArticleUseCase);
+    this.chatController = new ChatController(chatArticleUseCase, chatGeneralUseCase);
     this.searchController = new SearchController(searchNewsUseCase);
     this.userController = new UserController(this.geminiClient);
     this.sourcesController = new SourcesController(this.geminiClient);
@@ -118,6 +127,9 @@ export class DependencyContainer {
 
     // Infrastructure Jobs (Sprint 14 - Paso 2: Automatización de Reset de Cuotas)
     this.quotaResetJob = new QuotaResetJob(this.prisma);
+
+    // News Cleanup Job (Sprint 19.5 - Tarea 1: Limpieza Automática)
+    this.cleanupNewsJob = new CleanupNewsJob(this.prisma);
   }
 
   static getInstance(): DependencyContainer {

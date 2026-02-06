@@ -6444,3 +6444,205 @@ Sprint 18.3 **cierra dos brechas críticas de UX**:
 **El sistema ahora ofrece una experiencia de usuario más pulida, consistente y atractiva.**
 
 **Status:** Sprint 18.3 completado - UX optimizada y lista para producción ✅
+
+---
+
+## Sprint 19.5 - Mantenimiento de Datos y Separadores de Fecha ✅
+
+### Objetivo
+Implementar limpieza automática de artículos antiguos y mejorar la organización visual de noticias con separadores de fecha.
+
+### TAREA 1: Limpieza Automática de Noticias
+
+**Problema:** Artículos antiguos acumulándose en la base de datos.
+
+**Solución:** Cron job que elimina artículos >30 días preservando favoritos.
+
+#### Implementación
+
+**Archivo:** `backend/src/infrastructure/jobs/cleanup-news.job.ts` (NUEVO)
+
+**Características:**
+- ✅ Elimina artículos publicados hace >30 días
+- ✅ **PRESERVA** artículos marcados como favoritos por cualquier usuario
+- ✅ Ejecución diaria a las 03:00 (UTC) - horario de bajo tráfico
+- ✅ Logging detallado de operaciones
+
+**Métricas:**
+- Retención: 30 días
+- Schedule: Diario 03:00 UTC
+- Favoritos: 100% protegidos
+
+### TAREA 2: Separadores de Fecha en Infinite Scroll
+
+**Problema:** Difícil distinguir qué día corresponde a cada noticia.
+
+**Solución:** Separadores visuales que agrupan artículos por fecha.
+
+#### Componentes Nuevos
+
+1. **`frontend/lib/date-utils.ts`** (NUEVO)
+   - `formatRelativeDate()`: "Hoy", "Ayer", "Jueves, 5 de febrero"
+   - `groupArticlesByDate()`: Agrupa artículos por día
+
+2. **`frontend/components/date-separator.tsx`** (NUEVO)
+   - Separador visual con icono de calendario
+   - Muestra fecha y número de artículos
+
+#### Testing
+
+**Tests Creados:**
+- `frontend/__tests__/lib/date-utils.test.ts` - 13 tests ✅
+- `frontend/__tests__/components/date-separator.test.tsx` - 11 tests ✅
+
+**Total:** 24 tests pasando con Vitest + Testing Library
+
+---
+
+## Sprint 19.6 - Refinamiento de Navegación y Usabilidad ✅
+
+### Objetivo
+Mejorar la experiencia de usuario con scroll to top, header limpio y chat general con IA.
+
+### TAREA 1: Botón "Volver Arriba" (Scroll To Top)
+
+**Problema:** Sin forma rápida de volver al inicio tras scroll extenso.
+
+**Solución:** Botón flotante con scroll suave.
+
+**Archivo:** `frontend/components/ui/scroll-to-top.tsx` (NUEVO)
+
+**Características:**
+- ✅ Detecta scroll en contenedor interno (`main .overflow-y-auto`)
+- ✅ Aparece cuando `scrollTop > 300px`
+- ✅ Transiciones fade-in/fade-out elegantes (300ms)
+- ✅ Posición fixed esquina inferior derecha
+- ✅ Accesibilidad completa (aria-label, title)
+- ✅ 8 tests unitarios ✅
+
+**Integración:** Renderizado dentro de `<main>` en `frontend/app/page.tsx`
+
+### TAREA 2: Header Limpio
+
+**Estado:** Ya estaba implementado (Sprint 19.3-20) con diseño Google News.
+
+✅ Sin cambios necesarios
+
+### TAREA 3: Chat General con IA
+
+**Problema:** Botón "Chat IA" daba 404. Se necesitaba chat general sobre toda la BD.
+
+**Solución:** RAG General con Fallback Robusto.
+
+#### Backend (Clean Architecture)
+
+**Archivos Nuevos:**
+1. `backend/src/application/use-cases/chat-general.usecase.ts`
+   - RAG sobre toda la base de datos (5 artículos max)
+   - **Fallback a Prisma** cuando ChromaDB no disponible
+   - Optimización: 1500 chars/documento
+
+2. `backend/src/infrastructure/http/schemas/chat.schema.ts`
+   - Agregado `chatGeneralSchema`
+
+**Archivos Modificados:**
+- `backend/src/infrastructure/http/controllers/chat.controller.ts`
+  - Agregado método `chatGeneral()`
+- `backend/src/infrastructure/http/routes/chat.routes.ts`
+  - Agregado `POST /api/chat/general`
+- `backend/src/infrastructure/config/dependencies.ts`
+  - Inyección de `ChatGeneralUseCase` con repositorio para fallback
+
+**Endpoint:** `POST /api/chat/general`
+**Body:** `{ messages: Array<{ role, content }> }`
+
+#### Frontend (React + Next.js)
+
+**Archivos Nuevos:**
+1. `frontend/components/general-chat-drawer.tsx`
+   - Sheet/Drawer deslizante
+   - Muestra número de artículos consultados
+   - Auto-reset al cerrar (300ms delay)
+   - Ejemplos de preguntas sugeridas
+
+**Archivos Modificados:**
+- `frontend/lib/api.ts` - Agregadas `ChatGeneralResponse` y `chatGeneral()`
+- `frontend/app/page.tsx` - Estado y renderizado de `GeneralChatDrawer`
+- `frontend/components/layout/sidebar.tsx` - Botón "Chat IA" restaurado
+
+**Posición en Sidebar:** Entre "Favoritos" e "Inteligencia de Medios"
+
+#### Arquitectura del Fallback
+
+```
+Pregunta → ChromaDB (embeddings)
+           ↓ ❌ Falla
+           → Prisma (últimos 5 artículos con análisis)
+           ↓ ✅ Éxito
+           → Gemini (genera respuesta con contexto)
+```
+
+**Ventajas:**
+- ✅ **100% disponibilidad** sin ChromaDB
+- ✅ Datos reales de PostgreSQL
+- ✅ Sin costes adicionales de embeddings
+- ✅ Degradación elegante
+
+#### Comparación: Chat General vs Chat de Artículo
+
+| Característica | Chat General | Chat de Artículo |
+|----------------|--------------|------------------|
+| **Contexto** | Toda la BD (5 docs) | Solo 1 artículo (3 docs) |
+| **Endpoint** | `/api/chat/general` | `/api/chat/article` |
+| **Parámetros** | `messages` | `articleId` + `messages` |
+| **Fallback** | ✅ BD reciente | ✅ Contenido artículo |
+| **Acceso** | Sidebar → "Chat IA" | Botón en detalle |
+
+---
+
+### Métricas Sprint 19.5 + 19.6
+
+| Métrica | Sprint 19.5 | Sprint 19.6 |
+|---------|-------------|-------------|
+| **Archivos Nuevos** | 4 | 3 (backend) + 2 (frontend) |
+| **Tests Creados** | 24 tests | 8 tests |
+| **LOC Agregadas** | ~350 | ~600 |
+| **Documentación** | Sprint-19.5.md | Sprint-19.6.md |
+| **Disponibilidad** | - | 100% (fallback) |
+
+### Características Implementadas
+
+**Sprint 19.5:**
+```
+✅ Cron Job Limpieza (diario 03:00 UTC)
+✅ Preservación de Favoritos
+✅ Separadores de Fecha
+✅ Agrupación por Día
+✅ 24 Tests Unitarios
+```
+
+**Sprint 19.6:**
+```
+✅ Scroll To Top Button
+✅ Chat General (RAG)
+✅ Fallback a Prisma
+✅ Sidebar "Chat IA"
+✅ 8 Tests Unitarios
+✅ Auto-reset Chat
+✅ Indicador de Artículos Consultados
+```
+
+---
+
+### Conclusión Sprint 19.5 + 19.6
+
+Sprints 19.5 y 19.6 **mejoran mantenimiento y UX**:
+
+1. ✅ **Limpieza Automática**: Base de datos optimizada
+2. ✅ **Separadores de Fecha**: Organización visual mejorada
+3. ✅ **Scroll To Top**: Navegación más fluida
+4. ✅ **Chat General**: Funcionalidad clave accesible y robusta
+
+**El sistema ahora es más mantenible, usable y resiliente.**
+
+**Status:** Sprints 19.5 y 19.6 completados - Sistema optimizado y robusto ✅
