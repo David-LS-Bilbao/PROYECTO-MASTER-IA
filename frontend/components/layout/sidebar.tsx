@@ -199,16 +199,16 @@ export function Sidebar({ onOpenDashboard, onOpenSources, onOpenChat }: SidebarP
 
         {/* Settings & User Profile */}
         <div className="border-t border-zinc-200 dark:border-zinc-800 px-2 py-4 space-y-2">
-          {/* Settings Button */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="w-full h-11 justify-center"
-            title={!isOpen ? 'Ajustes' : undefined}
+          {/* Settings Button (Sprint 19.8) */}
+          <Link
+            href="/settings"
+            className="w-full h-11 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors flex items-center justify-center gap-3 text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
+            title={!isOpen ? 'Ajustes de Visualización' : undefined}
+            onClick={() => setIsOpen(false)}
           >
             <Settings className="h-5 w-5" />
-            {isOpen && <span className="text-sm ml-2">Ajustes</span>}
-          </Button>
+            {isOpen && <span className="text-sm">Ajustes</span>}
+          </Link>
 
           {/* User Profile */}
           {user && (

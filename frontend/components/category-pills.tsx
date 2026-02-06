@@ -4,7 +4,6 @@ import { cn } from '@/lib/utils';
 
 const CATEGORIES = [
   { id: 'general', label: '🔥 Portada' },
-  { id: 'favorites', label: '❤️ Favoritos' },
   { id: 'deportes', label: '⚽ Deportes' },
   { id: 'economia', label: '💰 Economía' },
   { id: 'politica', label: '⚖️ Política' },

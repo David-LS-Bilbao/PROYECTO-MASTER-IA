@@ -170,7 +170,7 @@ export function NewsChatDrawer({ articleId, articleTitle }: NewsChatDrawerProps)
         </div>
 
         {/* Input area */}
-        <form onSubmit={handleSubmit} className="border-t pt-4 flex gap-2">
+        <form onSubmit={handleSubmit} className="border-t pt-4 pb-6 px-2 flex gap-2">
           <Input
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
