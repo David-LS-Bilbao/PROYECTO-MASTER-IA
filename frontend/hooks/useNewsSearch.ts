@@ -12,7 +12,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useDebounce } from './useDebounce';
-import { useAuth } from './useAuth';
+import { useAuth } from '@/context/AuthContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 

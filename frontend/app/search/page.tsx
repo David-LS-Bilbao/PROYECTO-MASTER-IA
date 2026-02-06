@@ -155,7 +155,7 @@ function SearchResults() {
             )}
 
             {/* LEVEL 3 Fallback: Google News Suggestion */}
-            {hasSuggestion && query && (
+            {hasSuggestion && query && data?.suggestion && (
               <div className="max-w-2xl mx-auto">
                 <Alert>
                   <Search className="h-4 w-4" />
@@ -165,7 +165,7 @@ function SearchResults() {
                     <Button
                       variant="outline"
                       className="w-full"
-                      onClick={() => window.open(data.suggestion.externalLink, '_blank')}
+                      onClick={() => window.open(data.suggestion!.externalLink, '_blank')}
                     >
                       <ExternalLink className="h-4 w-4 mr-2" />
                       {data.suggestion.actionText}
