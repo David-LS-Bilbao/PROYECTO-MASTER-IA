@@ -581,6 +581,42 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
   }
 
   /**
+   * Generate common Spanish accent variants for a normalized term
+   * Example: "andalucia" → ["andalucia", "andalucía", "andalucìa", ...]
+   *
+   * SPRINT 19.3.1 - ACCENT VARIANTS for robust search
+   */
+  private generateAccentVariants(normalizedTerm: string): string[] {
+    const variants = [normalizedTerm]; // Always include the normalized version
+
+    // Common Spanish vowel substitutions: a→á, e→é, i→í, o→ó, u→ú, u→ü
+    const accentMap: Record<string, string[]> = {
+      'a': ['á', 'à', 'ä'],
+      'e': ['é', 'è', 'ë'],
+      'i': ['í', 'ì', 'ï'],
+      'o': ['ó', 'ò', 'ö'],
+      'u': ['ú', 'ù', 'ü'],
+      'n': ['ñ'],
+    };
+
+    // For each vowel in the term, generate a variant with accent
+    for (let i = 0; i < normalizedTerm.length; i++) {
+      const char = normalizedTerm[i];
+      const accents = accentMap[char];
+
+      if (accents) {
+        // Generate variants with this character accented
+        for (const accentedChar of accents) {
+          const variant = normalizedTerm.substring(0, i) + accentedChar + normalizedTerm.substring(i + 1);
+          variants.push(variant);
+        }
+      }
+    }
+
+    return variants;
+  }
+
+  /**
    * Search articles using Multi-Term Tokenized Search (Case + Accent Insensitive)
    *
    * SPRINT 19.3 - TOKENIZATION: Flexible multi-word search
@@ -621,25 +657,25 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
       console.log(`[Repository.searchArticles]    👤 User: ${userId ? '***' : 'anonymous'}`);
 
       // =========================================================================
-      // SPRINT 19.3.1: ACCENT-INSENSITIVE SEARCH
+      // SPRINT 19.3.1: SIMPLIFIED ACCENT-INSENSITIVE SEARCH
       // =========================================================================
-      // Build dynamic WHERE clause with DUAL search strategy:
-      // - Search for BOTH original term (e.g., "Andalucía") AND normalized term (e.g., "andalucia")
-      // - This handles accented text in DB matching non-accented queries and vice versa
+      // Strategy: For each term, search BOTH the original AND common accent variants
+      // This is simpler and more reliable than using PostgreSQL unaccent()
       // =========================================================================
-      const whereConditions = terms.map((term, index) => {
-        const normalizedTerm = normalizedTerms[index];
+
+      const whereConditions = terms.map((term) => {
+        const normalizedTerm = this.normalizeText(term);
         const searchFields = ['title', 'description', 'summary', 'content'] as const;
 
-        // For each field, search both original and normalized term
-        const fieldConditions = searchFields.flatMap(field => [
-          { [field]: { contains: term, mode: 'insensitive' as const } },
-          // Only add normalized search if it's different from original
-          ...(normalizedTerm !== term.toLowerCase()
-            ? [{ [field]: { contains: normalizedTerm, mode: 'insensitive' as const } }]
-            : []
-          ),
-        ]);
+        // Generate common accent variants for Spanish
+        const variants = this.generateAccentVariants(normalizedTerm);
+
+        // For each field, search all variants (original + normalized + variants)
+        const fieldConditions = searchFields.flatMap(field =>
+          variants.map(variant => ({
+            [field]: { contains: variant, mode: 'insensitive' as const }
+          }))
+        );
 
         return { OR: fieldConditions };
       });

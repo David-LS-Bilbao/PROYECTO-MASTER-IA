@@ -35,6 +35,14 @@ try {
   // Don't crash the server: quota enforcement can still work manually
 }
 
+// Start News Cleanup Job (Sprint 19.5 - Tarea 1: Limpieza Automática)
+try {
+  container.cleanupNewsJob.start();
+} catch (error) {
+  console.error('❌ Failed to start News Cleanup Job:', error);
+  // Don't crash the server: cleanup can still work manually
+}
+
 app.listen(PORT, () => {
   console.log(`🚀 Verity News API running on http://localhost:${PORT}`);
   console.log(`📋 Health check: http://localhost:${PORT}/health`);

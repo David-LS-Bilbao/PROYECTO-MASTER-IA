@@ -28,7 +28,9 @@
       "Bash(netstat:*)",
       "Bash(findstr:*)",
       "Bash(powershell -Command:*)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "Bash(python -m json.tool:*)",
+      "Bash(npm start)"
     ]
   }
 }

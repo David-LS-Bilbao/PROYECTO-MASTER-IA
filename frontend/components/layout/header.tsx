@@ -18,7 +18,7 @@ import { SearchBar } from '@/components/search-bar';
 
 export function Header() {
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-zinc-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80 dark:border-zinc-800 dark:bg-zinc-950/95">
+    <header className="sticky top-0 z-50 w-full border-b border-zinc-200 bg-white/95 backdrop-blur supports-backdrop-filter:bg-white/80 dark:border-zinc-800 dark:bg-zinc-950/95">
       <div className="container flex h-16 items-center px-4">
         {/* Logo/Brand */}
         <Link

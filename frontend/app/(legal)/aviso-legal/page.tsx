@@ -6,15 +6,15 @@ export default function AvisoLegalPage() {
       <h1 className="text-3xl font-bold mb-6">Aviso Legal</h1>
       <section className="mb-4">
         <h2 className="text-xl font-semibold mb-2">Titular</h2>
-        <p>Este sitio web, Verity News, es propiedad de [NOMBRE_EMPRESA], con CIF [CIF] y domicilio en [DIRECCIÓN].</p>
+        <p>Este sitio web, Verity News, es propiedad de David Lopez Sotelo, con CIF 78874938-A y domicilio en GALDAKAO, BIZKAIA.</p>
       </section>
       <section className="mb-4">
         <h2 className="text-xl font-semibold mb-2">Datos Identificativos</h2>
-        <p>Contacto: [EMAIL] | Teléfono: [TELÉFONO]</p>
+        <p>Contacto: lopezsotelo77@gmail.com | Teléfono: 605279603</p>
       </section>
       <section className="mb-4">
         <h2 className="text-xl font-semibold mb-2">Propiedad Intelectual</h2>
-        <p>Todos los contenidos de este sitio web (textos, imágenes, logotipos, etc.) son propiedad de [NOMBRE_EMPRESA] o de sus licenciantes. Queda prohibida su reproducción total o parcial sin autorización expresa.</p>
+        <p>Todos los contenidos de este sitio web (textos, imágenes, logotipos, etc.) son propiedad de DAVID-LS-BILBAO o de sus licenciantes. Queda prohibida su reproducción total o parcial sin autorización expresa.</p>
       </section>
       <section className="mb-4">
         <h2 className="text-xl font-semibold mb-2">Exclusión de Garantías</h2>
