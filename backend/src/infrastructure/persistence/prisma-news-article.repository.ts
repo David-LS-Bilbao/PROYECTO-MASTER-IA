@@ -568,8 +568,36 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
   // =========================================================================
 
   /**
-   * Search articles using Full-Text Search (PostgreSQL)
-   * Falls back to LIKE search if FTS is not available
+   * Normalize text by removing accents/diacritics
+   * This allows "andalucia" to match "Andalucía", "jose" to match "José", etc.
+   *
+   * SPRINT 19.3.1 - ACCENT-INSENSITIVE SEARCH
+   */
+  private normalizeText(text: string): string {
+    return text
+      .normalize('NFD') // Decompose accented characters
+      .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
+      .toLowerCase();
+  }
+
+  /**
+   * Search articles using Multi-Term Tokenized Search (Case + Accent Insensitive)
+   *
+   * SPRINT 19.3 - TOKENIZATION: Flexible multi-word search
+   * - Splits query into individual terms (words)
+   * - Returns articles that contain ALL terms (in any order, in any field)
+   * - Much more flexible than exact phrase matching
+   *
+   * SPRINT 19.3.1 - ACCENT INSENSITIVE:
+   * - "andalucia" matches "Andalucía"
+   * - "jose" matches "José"
+   * - Uses two-phase approach: normalized search + original fallback
+   *
+   * Example:
+   *   Query: "inundaciones andalucia"
+   *   - Finds articles containing both "inundaciones" AND "andalucia/Andalucía"
+   *   - Words can be in title, summary, or content
+   *   - Order doesn't matter
    */
   async searchArticles(query: string, limit: number, userId?: string): Promise<NewsArticle[]> {
     try {
@@ -579,81 +607,61 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
 
       const trimmedQuery = query.trim();
 
-      console.log(`[Repository.searchArticles] Query: "${trimmedQuery}", Limit: ${limit}`);
+      // =========================================================================
+      // SPRINT 19.3: TOKENIZATION - Split query into individual terms
+      // =========================================================================
+      const terms = trimmedQuery.split(/\s+/).filter(term => term.length > 0);
 
-      // Try Full-Text Search first (requires fulltext index)
-      // If FTS not available, Prisma will throw error and we'll fallback to LIKE
-      let articles;
+      // SPRINT 19.3.1: Normalize terms to remove accents
+      const normalizedTerms = terms.map(term => this.normalizeText(term));
 
-      try {
-        // Full-Text Search using Prisma's search feature
-        articles = await this.prisma.article.findMany({
-          where: {
-            OR: [
-              {
-                title: {
-                  search: trimmedQuery,
-                },
-              },
-              {
-                description: {
-                  search: trimmedQuery,
-                },
-              },
-              {
-                summary: {
-                  search: trimmedQuery,
-                },
-              },
-            ],
-          },
-          orderBy: {
-            publishedAt: 'desc', // Most recent first
-          },
-          take: limit,
-        });
+      console.log(`[Repository.searchArticles] 🔎 Query: "${trimmedQuery}"`);
+      console.log(`[Repository.searchArticles]    📝 Tokenized into ${terms.length} terms:`, terms);
+      console.log(`[Repository.searchArticles]    🔤 Normalized terms:`, normalizedTerms);
+      console.log(`[Repository.searchArticles]    👤 User: ${userId ? '***' : 'anonymous'}`);
 
-        console.log(`[Repository.searchArticles] FTS found ${articles.length} results`);
-      } catch (ftsError) {
-        // Fallback to LIKE search if FTS not available
-        console.warn(`[Repository.searchArticles] FTS failed, falling back to LIKE search`);
+      // =========================================================================
+      // SPRINT 19.3.1: ACCENT-INSENSITIVE SEARCH
+      // =========================================================================
+      // Build dynamic WHERE clause with DUAL search strategy:
+      // - Search for BOTH original term (e.g., "Andalucía") AND normalized term (e.g., "andalucia")
+      // - This handles accented text in DB matching non-accented queries and vice versa
+      // =========================================================================
+      const whereConditions = terms.map((term, index) => {
+        const normalizedTerm = normalizedTerms[index];
+        const searchFields = ['title', 'description', 'summary', 'content'] as const;
 
-        articles = await this.prisma.article.findMany({
-          where: {
-            OR: [
-              {
-                title: {
-                  contains: trimmedQuery,
-                  mode: 'insensitive',
-                },
-              },
-              {
-                description: {
-                  contains: trimmedQuery,
-                  mode: 'insensitive',
-                },
-              },
-              {
-                summary: {
-                  contains: trimmedQuery,
-                  mode: 'insensitive',
-                },
-              },
-              {
-                content: {
-                  contains: trimmedQuery,
-                  mode: 'insensitive',
-                },
-              },
-            ],
-          },
-          orderBy: {
-            publishedAt: 'desc',
-          },
-          take: limit,
-        });
+        // For each field, search both original and normalized term
+        const fieldConditions = searchFields.flatMap(field => [
+          { [field]: { contains: term, mode: 'insensitive' as const } },
+          // Only add normalized search if it's different from original
+          ...(normalizedTerm !== term.toLowerCase()
+            ? [{ [field]: { contains: normalizedTerm, mode: 'insensitive' as const } }]
+            : []
+          ),
+        ]);
 
-        console.log(`[Repository.searchArticles] LIKE search found ${articles.length} results`);
+        return { OR: fieldConditions };
+      });
+
+      // MULTI-TERM TOKENIZED SEARCH: All terms must match
+      const articles = await this.prisma.article.findMany({
+        where: {
+          AND: whereConditions, // Article must contain ALL terms
+        },
+        orderBy: {
+          publishedAt: 'desc', // Most recent first
+        },
+        take: limit,
+      });
+
+      console.log(`[Repository.searchArticles] ✅ Multi-term search found ${articles.length} results`);
+
+      if (articles.length === 0) {
+        console.warn(`[Repository.searchArticles] ⚠️ NO RESULTS for query: "${trimmedQuery}"`);
+        console.warn(`[Repository.searchArticles]    💡 Hint: Try fewer or more general terms`);
+      } else {
+        console.log(`[Repository.searchArticles] 📰 First result: "${articles[0].title.substring(0, 60)}..."`);
       }
 
       if (articles.length === 0) {

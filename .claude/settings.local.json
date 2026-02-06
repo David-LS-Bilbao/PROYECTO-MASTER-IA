@@ -24,7 +24,11 @@
       "Bash(cd:*)",
       "Bash(npx vitest:*)",
       "Read(//c/Users/David/OneDrive/Desktop/**)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(taskkill:*)"
     ]
   }
 }

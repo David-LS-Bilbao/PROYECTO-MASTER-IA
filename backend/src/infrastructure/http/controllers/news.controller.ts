@@ -282,9 +282,18 @@ export class NewsController {
     try {
       const query = req.query.q as string;
       const limit = Number(req.query.limit) || 20;
+      const offset = Number(req.query.offset) || 0;
       const userId = (req.user as any)?.uid;
 
-      console.log(`\n[NewsController.search] 🔍 Query: "${query}", Limit: ${limit}, User: ${userId ? userId.substring(0, 8) + '...' : 'anonymous'}`);
+      console.log(`\n========================================`);
+      console.log(`🔍 SEARCH REQUEST:`, {
+        query,
+        limit,
+        offset,
+        userId: userId ? userId.substring(0, 8) + '...' : 'anonymous',
+        timestamp: new Date().toISOString(),
+      });
+      console.log(`========================================`);
 
       // Validate query
       if (!query || query.trim().length === 0) {
@@ -303,6 +312,11 @@ export class NewsController {
       let results = await this.repository.searchArticles(query, limit, userId);
 
       console.log(`[NewsController.search]    📊 LEVEL 1: Found ${results.length} results`);
+
+      // If NO results, log warning
+      if (results.length === 0) {
+        console.warn(`⚠️ LEVEL 1: Search returned 0 results for query: "${query}"`);
+      }
 
       // If results found, return immediately
       if (results.length > 0) {
