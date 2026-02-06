@@ -13,6 +13,7 @@ export interface FindAllParams {
   offset: number;
   category?: string;
   onlyFavorites?: boolean;
+  userId?: string; // Per-user favorite filtering & enrichment
 }
 
 export interface INewsArticleRepository {
@@ -68,7 +69,7 @@ export interface INewsArticleRepository {
   /**
    * Count articles matching filter criteria
    */
-  countFiltered(params: { category?: string; onlyFavorites?: boolean }): Promise<number>;
+  countFiltered(params: { category?: string; onlyFavorites?: boolean; userId?: string }): Promise<number>;
 
   /**
    * Count articles that have been analyzed
@@ -95,9 +96,47 @@ export interface INewsArticleRepository {
   findByIds(ids: string[]): Promise<NewsArticle[]>;
 
   /**
-   * Toggle favorite status of an article
-   * @param id Article UUID
-   * @returns Updated article or null if not found
+   * Toggle favorite status of an article (LEGACY - global)
+   * @deprecated Use toggleFavoriteForUser instead
    */
   toggleFavorite(id: string): Promise<NewsArticle | null>;
+
+  // =========================================================================
+  // PER-USER FAVORITES (Privacy-compliant)
+  // =========================================================================
+
+  /**
+   * Toggle favorite for a specific user (uses Favorite junction table)
+   * @returns true if now favorited, false if unfavorited
+   */
+  toggleFavoriteForUser(userId: string, articleId: string): Promise<boolean>;
+
+  /**
+   * Add article to user's favorites
+   * @param unlocked - If true, marks analysis as unlocked (user requested analysis)
+   *                   If false, user only liked the article (no analysis access)
+   */
+  addFavoriteForUser(userId: string, articleId: string, unlocked?: boolean): Promise<void>;
+
+  /**
+   * Get set of article IDs that a user has favorited
+   * Used for enriching article lists with per-user favorite status
+   */
+  getUserFavoriteArticleIds(userId: string, articleIds: string[]): Promise<Set<string>>;
+
+  /**
+   * Get set of article IDs where user has unlocked analysis
+   * Used for determining which articles' analysis should be visible to user
+   */
+  getUserUnlockedArticleIds(userId: string, articleIds: string[]): Promise<Set<string>>;
+
+  /**
+   * Find user's favorite articles with pagination
+   */
+  findFavoritesByUser(userId: string, limit: number, offset: number): Promise<NewsArticle[]>;
+
+  /**
+   * Count user's favorites
+   */
+  countFavoritesByUser(userId: string): Promise<number>;
 }

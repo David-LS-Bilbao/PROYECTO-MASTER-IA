@@ -1,32 +1,32 @@
 /**
  * News Routes (Infrastructure/Presentation Layer)
- * Defines HTTP routes for news article endpoints
+ * Defines HTTP routes for news article endpoints.
+ *
+ * PRIVACY: Favorite endpoints require authentication.
+ * GET endpoints use optional auth to enrich with per-user data.
  */
 
 import { Router } from 'express';
 import { NewsController } from '../controllers/news.controller';
+import { authenticate, optionalAuthenticate } from '../middleware/auth.middleware';
 
 export class NewsRoutes {
   static get routes(): Router {
     const router = Router();
-
-    // NOTE: This is a placeholder - controller is injected when routes are created
-    // The actual controller is provided by the server configuration
     return router;
   }
 
   static createRoutes(newsController: NewsController): Router {
     const router = Router();
 
-    // PATCH /api/news/:id/favorite - Toggle favorite status (MUST be FIRST for route specificity)
-    // Use .bind() to ensure 'this' context is preserved in the controller method
-    router.patch('/:id/favorite', newsController.toggleFavorite.bind(newsController));
+    // PATCH /api/news/:id/favorite - Toggle favorite (REQUIRES AUTH for per-user isolation)
+    router.patch('/:id/favorite', authenticate, newsController.toggleFavorite.bind(newsController));
 
-    // GET /api/news - Get all news articles (paginated)
-    router.get('/', newsController.getNews.bind(newsController));
+    // GET /api/news - Get all news (optional auth for per-user favorite enrichment)
+    router.get('/', optionalAuthenticate, newsController.getNews.bind(newsController));
 
-    // GET /api/news/:id - Get a single news article by ID
-    router.get('/:id', newsController.getNewsById.bind(newsController));
+    // GET /api/news/:id - Get single article (optional auth for per-user favorite status)
+    router.get('/:id', optionalAuthenticate, newsController.getNewsById.bind(newsController));
 
     return router;
   }

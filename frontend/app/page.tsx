@@ -159,7 +159,31 @@ export default function Home() {
 
     // Debounce: Esperar 300ms para evitar múltiples ingestas rápidas al cambiar categorías
     const timeoutId = setTimeout(async () => {
-      console.log(`📥 [AUTO-INGESTA] Iniciando ingesta automática para: ${category}`);
+      // =========================================================================
+      // SMART INGESTION: Verificar TTL de 1 hora antes de disparar ingesta
+      // Optimización de costes - Solo ingestar si no hay datos o son antiguos
+      // =========================================================================
+      const latestArticle = newsData?.data?.[0]; // Artículo más reciente (ordenado por fecha desc)
+      const lastUpdate = latestArticle?.publishedAt
+        ? new Date(latestArticle.publishedAt).getTime()
+        : 0;
+      const now = Date.now();
+      const oneHour = 60 * 60 * 1000; // 1 hora en milisegundos
+      const ageInMinutes = Math.round((now - lastUpdate) / (60 * 1000));
+
+      const shouldAutoRefresh = !latestArticle || (now - lastUpdate > oneHour);
+
+      if (!shouldAutoRefresh) {
+        console.log(`💰 [SMART INGESTION] Datos frescos en BD (${ageInMinutes} min) - SALTANDO ingesta automática`);
+        console.log(`   → Ahorro: ~50 artículos × análisis IA no procesados innecesariamente`);
+        console.log(`   → Última noticia: "${latestArticle?.title?.substring(0, 60)}..."`);
+        // Solo invalidar caché para refetch de BD, sin ingesta RSS
+        invalidateNews(category);
+        return;
+      }
+
+      console.log(`📥 [AUTO-INGESTA] Iniciando ingesta (datos > 1h o vacíos)`);
+      console.log(`   → Antigüedad: ${ageInMinutes > 60 ? `${Math.round(ageInMinutes / 60)}h` : `${ageInMinutes}min`}`);
 
       try {
         const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
@@ -190,6 +214,12 @@ export default function Home() {
           console.log('✅ [AUTO-INGESTA] Completada:', data.message);
           console.log('📊 [AUTO-INGESTA] Nuevos artículos:', data.data?.newArticles || 0);
           console.log('♻️  [AUTO-INGESTA] Artículos actualizados:', data.data?.duplicates || 0);
+
+          if (data.data?.newArticles === 0) {
+            console.log('💰 [SMART INGESTION] Sin artículos nuevos - próxima vez se saltará por TTL');
+          } else {
+            console.log('🔄 [SMART INGESTION] Artículos frescos ingresados - BD actualizada');
+          }
 
           // CRÍTICO: Invalidar TODAS las categorías, no solo la actual
           // Razón: Una noticia puede aparecer en múltiples feeds RSS y actualizarse

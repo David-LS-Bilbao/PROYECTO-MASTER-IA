@@ -31,21 +31,20 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
     if (articles.length === 0) return;
 
     try {
-      // Log what we're saving for debugging
       const categories = [...new Set(articles.map(a => a.category))];
       const urls = articles.map(a => a.url.substring(0, 60));
-      
-      console.log(`[Repository] 💾 Ejecutando UPSERT para ${articles.length} artículos`);
-      console.log(`[Repository] 📂 Categorías: ${categories.join(', ')}`);
-      console.log(`[Repository] 🔗 Primeras URLs: ${urls.slice(0, 3).join(' | ')}...`);
+
+      console.log(`[Repository] Ejecutando UPSERT para ${articles.length} articulos`);
+      console.log(`[Repository] Categorias: ${categories.join(', ')}`);
+      console.log(`[Repository] Primeras URLs: ${urls.slice(0, 3).join(' | ')}...`);
 
       await this.prisma.$transaction(async (tx) => {
         for (const article of articles) {
           await tx.article.upsert(this.mapper.toUpsertData(article));
         }
       });
-      
-      console.log(`[Repository] ✅ UPSERT completado exitosamente para ${articles.length} artículos`);
+
+      console.log(`[Repository] UPSERT completado exitosamente para ${articles.length} articulos`);
     } catch (error) {
       throw new DatabaseError(
         `Failed to save articles in batch: ${(error as Error).message}`,
@@ -142,9 +141,14 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
     }
   }
 
-  async countFiltered(params: { category?: string; onlyFavorites?: boolean }): Promise<number> {
+  async countFiltered(params: { category?: string; onlyFavorites?: boolean; userId?: string }): Promise<number> {
     try {
-      const where = this.buildWhereClause(params);
+      // Per-user favorites: count from junction table
+      if (params.onlyFavorites && params.userId) {
+        return this.countFavoritesByUser(params.userId);
+      }
+
+      const where = this.buildWhereClause({ category: params.category });
       return await this.prisma.article.count({ where });
     } catch (error) {
       throw new DatabaseError(
@@ -202,8 +206,6 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
         },
       });
 
-      // biasScore normalizado: 0-1 donde 0.5 es neutral
-      // Left: 0.0 - 0.4, Neutral: 0.4 - 0.6, Right: 0.6 - 1.0
       const distribution = { left: 0, neutral: 0, right: 0 };
 
       articles.forEach((article) => {
@@ -227,30 +229,104 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
   }
 
   /**
-   * Find all articles with pagination and optional filtering
+   * Find all articles with pagination and optional filtering.
+   * When userId is provided and onlyFavorites=true, uses the Favorite junction table.
+   * When userId is provided without onlyFavorites, enriches articles with per-user isFavorite.
+   *
+   * Sprint 18.3: Implements Round Robin source interleaving to avoid "clumping" effect.
    */
   async findAll(params: FindAllParams): Promise<NewsArticle[]> {
-    const { limit, offset, category, onlyFavorites } = params;
+    const { limit, offset, category, onlyFavorites, userId } = params;
 
     try {
-      const where = this.buildWhereClause({ category, onlyFavorites });
+      // Per-user favorites: query from junction table (no interleaving)
+      if (onlyFavorites && userId) {
+        return this.findFavoritesByUser(userId, limit, offset);
+      }
 
-      // Debug log
-      console.log(`[Repository.findAll] Query params:`, { limit, offset, category, onlyFavorites });
-      console.log(`[Repository.findAll] Where clause:`, JSON.stringify(where));
+      const where = this.buildWhereClause({ category });
+
+      console.log(`[Repository.findAll] Query params:`, { limit, offset, category, onlyFavorites, userId: userId ? '***' : undefined });
+
+      // =========================================================================
+      // SPRINT 18.3: SOURCE INTERLEAVING (Round Robin) - UX Improvement
+      // =========================================================================
+      // PROBLEMA: Articles from the same source appear clustered together,
+      // creating a "clumping" effect that reduces perceived variety.
+      //
+      // SOLUCIÓN: Fetch more articles than requested, group by source,
+      // and interleave them using Round Robin algorithm.
+      //
+      // BENEFICIO: Users see a diverse mix of sources, improving UX and
+      // perceived content variety while maintaining chronological relevance.
+      // =========================================================================
+
+      // 1. BUFFER: Fetch 3x more articles (minimum 60) for diversity
+      const bufferSize = Math.max(limit * 3, 60);
 
       const articles = await this.prisma.article.findMany({
         where,
         orderBy: {
           publishedAt: 'desc',
         },
-        take: limit,
+        take: bufferSize,
         skip: offset,
       });
 
-      console.log(`[Repository.findAll] Found ${articles.length} articles`);
+      console.log(`[Repository.findAll] Fetched ${articles.length} articles (buffer for interleaving)`);
 
-      return articles.map((article) => this.mapper.toDomain(article));
+      if (articles.length === 0) {
+        return [];
+      }
+
+      // 2. GROUP BY SOURCE: Maintain chronological order within each group
+      const sourceGroups = new Map<string, typeof articles>();
+
+      for (const article of articles) {
+        const source = article.source;
+        if (!sourceGroups.has(source)) {
+          sourceGroups.set(source, []);
+        }
+        sourceGroups.get(source)!.push(article);
+      }
+
+      console.log(`[Repository.findAll] Grouped into ${sourceGroups.size} sources:`,
+        Array.from(sourceGroups.entries()).map(([src, arts]) => `${src}:${arts.length}`).join(', ')
+      );
+
+      // 3. ROUND ROBIN INTERLEAVING: Mix sources evenly
+      const interleavedArticles: typeof articles = [];
+      const sourceIterators = Array.from(sourceGroups.values());
+      let round = 0;
+
+      while (interleavedArticles.length < limit && sourceIterators.some(group => group.length > 0)) {
+        for (const group of sourceIterators) {
+          if (interleavedArticles.length >= limit) break;
+
+          if (group.length > 0) {
+            const article = group.shift()!; // Take first (most recent in this source)
+            interleavedArticles.push(article);
+          }
+        }
+        round++;
+      }
+
+      console.log(`[Repository.findAll] Interleaved ${interleavedArticles.length} articles in ${round} rounds`);
+
+      // 4. CONVERT TO DOMAIN ENTITIES
+      let domainArticles = interleavedArticles.map((article) => this.mapper.toDomain(article));
+
+      // Enrich with per-user favorite status
+      if (userId && domainArticles.length > 0) {
+        domainArticles = await this.enrichWithUserFavorites(domainArticles, userId);
+      } else {
+        // No user = all isFavorite = false
+        domainArticles = domainArticles.map(a =>
+          NewsArticle.reconstitute({ ...a.toJSON(), isFavorite: false })
+        );
+      }
+
+      return domainArticles;
     } catch (error) {
       throw new DatabaseError(
         `Failed to find articles: ${(error as Error).message}`,
@@ -278,6 +354,9 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
     }
   }
 
+  /**
+   * @deprecated Use toggleFavoriteForUser instead
+   */
   async toggleFavorite(id: string): Promise<NewsArticle | null> {
     try {
       const article = await this.prisma.article.findUnique({
@@ -303,22 +382,168 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
     }
   }
 
+  // =========================================================================
+  // PER-USER FAVORITES (Favorite junction table)
+  // =========================================================================
+
+  async toggleFavoriteForUser(userId: string, articleId: string): Promise<boolean> {
+    try {
+      const existing = await this.prisma.favorite.findUnique({
+        where: { userId_articleId: { userId, articleId } },
+      });
+
+      if (existing) {
+        await this.prisma.favorite.delete({
+          where: { userId_articleId: { userId, articleId } },
+        });
+        console.log(`   [Favorites] Usuario ${userId.substring(0, 8)}... QUITÓ favorito: ${articleId.substring(0, 8)}...`);
+        return false;
+      } else {
+        await this.prisma.favorite.create({
+          data: { userId, articleId },
+        });
+        console.log(`   [Favorites] Usuario ${userId.substring(0, 8)}... AGREGÓ favorito: ${articleId.substring(0, 8)}...`);
+        return true;
+      }
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to toggle favorite for user: ${(error as Error).message}`,
+        error as Error
+      );
+    }
+  }
+
+  async addFavoriteForUser(userId: string, articleId: string, unlocked = false): Promise<void> {
+    try {
+      await this.prisma.favorite.upsert({
+        where: { userId_articleId: { userId, articleId } },
+        update: {
+          // If already exists, update unlocked status (e.g., user first liked, then analyzed)
+          unlockedAnalysis: unlocked,
+        },
+        create: {
+          userId,
+          articleId,
+          unlockedAnalysis: unlocked,
+        },
+      });
+      console.log(`   [Favorites] ${unlocked ? 'Análisis desbloqueado' : 'Favorito'} para usuario ${userId.substring(0, 8)}...`);
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to add favorite for user: ${(error as Error).message}`,
+        error as Error
+      );
+    }
+  }
+
+  async getUserFavoriteArticleIds(userId: string, articleIds: string[]): Promise<Set<string>> {
+    try {
+      if (articleIds.length === 0) return new Set();
+
+      const favorites = await this.prisma.favorite.findMany({
+        where: {
+          userId,
+          articleId: { in: articleIds },
+        },
+        select: { articleId: true },
+      });
+
+      return new Set(favorites.map(f => f.articleId));
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to get user favorite IDs: ${(error as Error).message}`,
+        error as Error
+      );
+    }
+  }
+
+  async getUserUnlockedArticleIds(userId: string, articleIds: string[]): Promise<Set<string>> {
+    try {
+      if (articleIds.length === 0) return new Set();
+
+      const favorites = await this.prisma.favorite.findMany({
+        where: {
+          userId,
+          articleId: { in: articleIds },
+          unlockedAnalysis: true, // Only articles with unlocked analysis
+        },
+        select: { articleId: true },
+      });
+
+      return new Set(favorites.map(f => f.articleId));
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to get user unlocked article IDs: ${(error as Error).message}`,
+        error as Error
+      );
+    }
+  }
+
+  async findFavoritesByUser(userId: string, limit: number, offset: number): Promise<NewsArticle[]> {
+    try {
+      const favorites = await this.prisma.favorite.findMany({
+        where: { userId },
+        include: { article: true },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset,
+      });
+
+      console.log(`[Repository] Favorites for user ${userId.substring(0, 8)}...: ${favorites.length} found`);
+
+      return favorites.map(f => {
+        const article = this.mapper.toDomain(f.article);
+        // Mark as favorite since it's in the user's favorites list
+        return NewsArticle.reconstitute({ ...article.toJSON(), isFavorite: true });
+      });
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to find favorites by user: ${(error as Error).message}`,
+        error as Error
+      );
+    }
+  }
+
+  async countFavoritesByUser(userId: string): Promise<number> {
+    try {
+      return await this.prisma.favorite.count({
+        where: { userId },
+      });
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to count favorites by user: ${(error as Error).message}`,
+        error as Error
+      );
+    }
+  }
+
+  // =========================================================================
+  // PRIVATE HELPERS
+  // =========================================================================
+
   /**
-   * Build Prisma where clause from filter params
-   * Uses case-insensitive matching and contains for flexible category matching
+   * Enrich articles with per-user favorite status from junction table
+   */
+  private async enrichWithUserFavorites(articles: NewsArticle[], userId: string): Promise<NewsArticle[]> {
+    const articleIds = articles.map(a => a.id);
+    const favoriteIds = await this.getUserFavoriteArticleIds(userId, articleIds);
+
+    return articles.map(article => {
+      const isFav = favoriteIds.has(article.id);
+      return NewsArticle.reconstitute({ ...article.toJSON(), isFavorite: isFav });
+    });
+  }
+
+  /**
+   * Build Prisma where clause from filter params.
+   * NOTE: onlyFavorites removed - per-user favorites now handled by junction table queries.
    */
   private buildWhereClause(params: {
     category?: string;
-    onlyFavorites?: boolean;
   }): Prisma.ArticleWhereInput {
     const where: Prisma.ArticleWhereInput = {};
 
-    if (params.onlyFavorites) {
-      where.isFavorite = true;
-    }
-
     if (params.category) {
-      // Use case-insensitive exact match OR contains for partial matches
       where.OR = [
         {
           category: {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import DOMPurify from 'dompurify';
@@ -55,9 +55,11 @@ function ArticleSkeleton() {
 export default function NewsDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { getToken } = useAuth();
   const queryClient = useQueryClient();
   const id = params.id as string;
+  const shouldAutoAnalyze = searchParams.get('analyze') === 'true';
 
   // Validate UUID format to prevent injection attacks
   const validUUID = isValidUUID(id);
@@ -89,6 +91,9 @@ export default function NewsDetailPage() {
     }
   }, [isError, queryError, router]);
 
+  // Auto-trigger state (must be declared before handleAnalyze for hooks order)
+  const [autoAnalyzeTriggered, setAutoAnalyzeTriggered] = useState(false);
+
   // Sanitize HTML content to prevent XSS attacks
   // Must be before any conditional returns to follow Rules of Hooks
   const sanitizedContent = useMemo(() => {
@@ -101,11 +106,18 @@ export default function NewsDetailPage() {
   }, [article?.content]);
 
   const handleAnalyze = async () => {
-    if (!article) return;
+    console.log(`[page.tsx] 🟡 handleAnalyze called`);
+    if (!article) {
+      console.log(`[page.tsx]    ❌ No article - aborting`);
+      return;
+    }
+
+    console.log(`[page.tsx]    Article ID: ${article.id.substring(0, 8)}...`);
 
     // Rate limiting: cooldown to prevent spam
     const now = Date.now();
     if (now - lastAnalyzeTime < ANALYSIS_COOLDOWN_MS) {
+      console.log(`[page.tsx]    ⏱️ Rate limit - waiting ${ANALYSIS_COOLDOWN_MS / 1000}s`);
       setAnalyzeError(`Espera ${ANALYSIS_COOLDOWN_MS / 1000} segundos antes de re-analizar`);
       return;
     }
@@ -113,25 +125,65 @@ export default function NewsDetailPage() {
     setIsAnalyzing(true);
     setAnalyzeError(null);
     setLastAnalyzeTime(now);
+    console.log(`[page.tsx]    📡 Starting analysis API call...`);
 
     try {
       // Get authentication token
       const token = await getToken();
       if (!token) {
+        console.log(`[page.tsx]    ❌ No auth token available`);
         setAnalyzeError('No se pudo obtener el token de autenticación');
         return;
       }
 
-      await analyzeArticle(article.id, token);
+      console.log(`[page.tsx]    ✅ Token obtained, calling analyzeArticle API...`);
+      const result = await analyzeArticle(article.id, token);
+      console.log(`[page.tsx]    ✅ Analysis API response:`, result);
 
-      // Invalidate query cache to refetch article with new analysis
+      // Invalidate caches to refetch article and update dashboard buttons
+      console.log(`[page.tsx]    🔄 Invalidating caches...`);
       queryClient.invalidateQueries({ queryKey: ['article', id] });
+      queryClient.invalidateQueries({ queryKey: ['news'] });
+      console.log(`[page.tsx]    ✅ Caches invalidated`);
     } catch (e) {
+      console.error(`[page.tsx]    ❌ Analysis failed:`, e);
       setAnalyzeError(e instanceof Error ? e.message : 'Error al analizar');
     } finally {
       setIsAnalyzing(false);
+      console.log(`[page.tsx]    🏁 Analysis flow completed`);
     }
   };
+
+  // Auto-trigger analysis when navigating from card with ?analyze=true
+  useEffect(() => {
+    console.log(`[page.tsx] 🟢 Auto-trigger useEffect fired`);
+    console.log(`[page.tsx]    shouldAutoAnalyze: ${shouldAutoAnalyze}`);
+    console.log(`[page.tsx]    autoAnalyzeTriggered: ${autoAnalyzeTriggered}`);
+    console.log(`[page.tsx]    article exists: ${!!article}`);
+    console.log(`[page.tsx]    isAnalyzing: ${isAnalyzing}`);
+
+    if (article) {
+      console.log(`[page.tsx]    article.id: ${article.id.substring(0, 8)}...`);
+      console.log(`[page.tsx]    article.analyzedAt: ${article.analyzedAt ? 'YES' : 'NO'}`);
+      console.log(`[page.tsx]    article.isFavorite: ${article.isFavorite}`);
+    }
+
+    if (!shouldAutoAnalyze || autoAnalyzeTriggered || !article || isAnalyzing) {
+      console.log(`[page.tsx]    ❌ Skipping auto-trigger (conditions not met)`);
+      return;
+    }
+
+    // Case 1: Article not analyzed at all → trigger fresh analysis
+    // Case 2: Article analyzed globally but user hasn't seen it → trigger to add auto-favorite
+    if (!article.analyzedAt || (article.analyzedAt && !article.isFavorite)) {
+      console.log(`[page.tsx]    ✅ Conditions met! Triggering handleAnalyze()`);
+      setAutoAnalyzeTriggered(true);
+      handleAnalyze();
+    } else {
+      console.log(`[page.tsx]    ℹ️ Article already analyzed AND in favorites - no action needed`);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldAutoAnalyze, autoAnalyzeTriggered, article]);
 
   if (isLoading) {
     return <ArticleSkeleton />;

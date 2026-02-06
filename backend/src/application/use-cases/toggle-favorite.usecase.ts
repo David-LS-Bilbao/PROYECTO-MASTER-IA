@@ -1,18 +1,19 @@
 /**
  * ToggleFavoriteUseCase (Application Layer)
- * Toggles the favorite status of a news article
+ * Toggles the favorite status of a news article FOR A SPECIFIC USER.
+ * Uses the Favorite junction table (userId + articleId) for per-user isolation.
  */
 
 import { INewsArticleRepository } from '../../domain/repositories/news-article.repository';
-import { NewsArticle } from '../../domain/entities/news-article.entity';
 import { DomainError } from '../../domain/errors/domain.error';
 
 export interface ToggleFavoriteInput {
-  id: string;
+  articleId: string;
+  userId: string;
 }
 
 export interface ToggleFavoriteOutput {
-  article: NewsArticle;
+  articleId: string;
   isFavorite: boolean;
 }
 
@@ -20,23 +21,28 @@ export class ToggleFavoriteUseCase {
   constructor(private readonly newsArticleRepository: INewsArticleRepository) {}
 
   async execute(input: ToggleFavoriteInput): Promise<ToggleFavoriteOutput> {
-    const { id } = input;
+    const { articleId, userId } = input;
 
-    // Validate input
-    if (!id || id.trim() === '') {
+    if (!articleId || articleId.trim() === '') {
       throw new DomainError('Article ID is required');
     }
 
-    // Toggle favorite in repository
-    const article = await this.newsArticleRepository.toggleFavorite(id);
-
-    if (!article) {
-      throw new DomainError(`Article with ID ${id} not found`);
+    if (!userId || userId.trim() === '') {
+      throw new DomainError('User ID is required for favorites');
     }
 
+    // Verify article exists
+    const article = await this.newsArticleRepository.findById(articleId);
+    if (!article) {
+      throw new DomainError(`Article with ID ${articleId} not found`);
+    }
+
+    // Toggle in per-user junction table
+    const isFavorite = await this.newsArticleRepository.toggleFavoriteForUser(userId, articleId);
+
     return {
-      article,
-      isFavorite: article.isFavorite,
+      articleId,
+      isFavorite,
     };
   }
 }

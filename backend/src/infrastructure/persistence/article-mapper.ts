@@ -63,9 +63,19 @@ export class ArticleMapper {
         urlToImage: article.urlToImage,
         author: article.author,
         category: article.category, // ✅ CRÍTICO: Actualizar categoría si la noticia aparece en otro feed
-        // NO actualizar análisis IA (preservar trabajo ya hecho)
-        // embedding, summary, biasScore, analysis, analyzedAt, internalReasoning se mantienen
-        // isFavorite no se toca (preservar favoritos del usuario)
+
+        // ✅ FIX Sprint 18: Actualizar análisis IA si el dominio entity lo tiene
+        // El domain entity solo tiene análisis cuando se ejecuta analyze-article.usecase
+        // Si viene de RSS ingestion, estos campos serán null
+        ...(article.analyzedAt && {
+          summary: article.summary,
+          biasScore: article.biasScore,
+          analysis: article.analysis,
+          analyzedAt: article.analyzedAt,
+          internalReasoning: article.internalReasoning,
+        }),
+
+        // isFavorite no se toca (manejado por junction table Favorite)
         updatedAt: new Date(),
       },
       create: {

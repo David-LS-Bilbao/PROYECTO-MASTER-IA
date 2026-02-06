@@ -15,7 +15,7 @@
  * - El bucle de batch solo procesa artículos NO analizados (findUnanalyzed)
  */
 
-import { ArticleAnalysis, NewsArticle } from '../../domain/entities/news-article.entity';
+import { ArticleAnalysis } from '../../domain/entities/news-article.entity';
 import { INewsArticleRepository } from '../../domain/repositories/news-article.repository';
 import { IGeminiClient } from '../../domain/services/gemini-client.interface';
 import { IJinaReaderClient } from '../../domain/services/jina-reader-client.interface';
@@ -113,16 +113,35 @@ export class AnalyzeArticleUseCase {
     console.log(`\n🔍 [Análisis] Iniciando noticia: "${article.title}"`);
 
     // =========================================================================
-    // COST OPTIMIZATION: CACHÉ DE ANÁLISIS EN BASE DE DATOS
+    // SPRINT 17: COST OPTIMIZATION - CACHÉ GLOBAL DE ANÁLISIS
     // =========================================================================
-    // Si el artículo ya fue analizado (analyzedAt !== null), devolvemos el
+    // Si el artículo ya fue analizado por CUALQUIER usuario, devolvemos el
     // análisis cacheado en PostgreSQL SIN llamar a Gemini.
-    // Esto evita pagar dos veces por el mismo análisis.
+    //
+    // BENEFICIO: Si 100 usuarios piden análisis del mismo artículo:
+    // - Primera petición: 1 llamada a Gemini ✅
+    // - Siguientes 99: 0 llamadas a Gemini → 99% ahorro 💰
+    //
+    // El caché es GLOBAL (no por usuario) porque el análisis es objetivo
+    // sobre el contenido de la noticia, no subjetivo al perfil del usuario.
     // =========================================================================
     if (article.isAnalyzed) {
       const existingAnalysis = article.getParsedAnalysis();
       if (existingAnalysis) {
-        console.log(`   ⏭️ CACHE HIT: Análisis ya existe en BD. Gemini NO llamado.`);
+        console.log(`   [CACHE GLOBAL] Analisis ya existe en BD (analizado: ${article.analyzedAt?.toLocaleString('es-ES')})`);
+        console.log(`   Serving cached analysis -> Gemini NO llamado -> Ahorro de ~1500 tokens`);
+        console.log(`   Score: ${article.biasScore} | Summary: ${article.summary?.substring(0, 50)}...`);
+
+        // Sprint 18.2: Auto-favorite WITH unlocked analysis (user requested it)
+        if (user?.id) {
+          try {
+            await this.articleRepository.addFavoriteForUser(user.id, article.id, true);
+          } catch (favError) {
+            // Non-blocking
+            console.warn(`   [Auto-favorito cache] Fallo (no critico): ${favError instanceof Error ? favError.message : 'Error'}`);
+          }
+        }
+
         return {
           articleId: article.id,
           summary: article.summary!,
@@ -209,7 +228,7 @@ export class AnalyzeArticleUseCase {
     }
 
     // 4. Analyze with Gemini
-    console.log(`   🧠 Enviando a Gemini para análisis de sesgo...`);
+    console.log(`   🤖 [NUEVA ANÁLISIS] Generando análisis con IA (este resultado se cacheará globalmente)...`);
     
     // Si usamos fallback, ajustar el prompt
     let adjustedContent = contentToAnalyze || '';
@@ -233,19 +252,20 @@ export class AnalyzeArticleUseCase {
       throw mappedError;
     }
 
-    // 5. Update article with analysis + auto-favorite (user invested credits in analysis)
-    let analyzedArticle = article.withAnalysis(analysis);
-
-    // Auto-mark as favorite when user analyzes an article
-    if (!analyzedArticle.isFavorite) {
-      analyzedArticle = NewsArticle.reconstitute({
-        ...analyzedArticle.toJSON(),
-        isFavorite: true,
-      });
-      console.log(`   ⭐ Auto-favorito activado.`);
-    }
-
+    // 5. Update article with analysis (global cache)
+    const analyzedArticle = article.withAnalysis(analysis);
     await this.articleRepository.save(analyzedArticle);
+
+    // 5.1. Sprint 18.2: Auto-favorite WITH unlocked analysis (user triggered analysis)
+    if (user?.id) {
+      try {
+        await this.articleRepository.addFavoriteForUser(user.id, article.id, true);
+        console.log(`   [Auto-favorito] Usuario ${user.id.substring(0, 8)}... -> articulo ${article.id.substring(0, 8)}...`);
+      } catch (favError) {
+        // Non-blocking: don't fail the analysis if favorite fails
+        console.warn(`   [Auto-favorito] Fallo (no critico): ${favError instanceof Error ? favError.message : 'Error'}`);
+      }
+    }
 
     // 6. Index in ChromaDB for semantic search
     try {

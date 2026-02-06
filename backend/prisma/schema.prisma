@@ -91,6 +91,11 @@ model Favorite {
   articleId   String
   createdAt   DateTime  @default(now())
 
+  // PRIVACY FIX (Sprint 18.2): Distinguish "Like" from "Analysis Unlocked"
+  // - false: User only liked (❤️) the article (no analysis access)
+  // - true: User requested analysis (✨) and can see AI data
+  unlockedAnalysis Boolean @default(false)
+
   // Relations
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   article     Article   @relation(fields: [articleId], references: [id], onDelete: Cascade)

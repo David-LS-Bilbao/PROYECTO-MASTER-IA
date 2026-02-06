@@ -43,6 +43,14 @@ export interface NewsArticle {
   analysis: ArticleAnalysis | null;
   analyzedAt: string | null;
   isFavorite: boolean;
+  /**
+   * PRIVACY: Indicates if analysis exists globally in DB (for instant retrieval).
+   * If hasAnalysis=true but analysis/summary/biasScore are null, it means:
+   * - Another user analyzed this article (cached in DB)
+   * - Current user hasn't favorited it yet (analysis masked for privacy)
+   * - Clicking "Analyze" will serve the cached analysis instantly and auto-favorite
+   */
+  hasAnalysis?: boolean;
 }
 
 export interface NewsResponse {
@@ -90,13 +98,20 @@ export interface AnalyzeResponse {
 }
 
 /**
- * Fetch all news articles from the backend
+ * Fetch all news articles from the backend.
+ * If token is provided, articles are enriched with per-user favorite status.
  */
-export async function fetchNews(limit = 50, offset = 0): Promise<NewsResponse> {
+export async function fetchNews(limit = 50, offset = 0, token?: string): Promise<NewsResponse> {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const res = await fetch(
     `${API_BASE_URL}/api/news?limit=${limit}&offset=${offset}`,
     {
-      cache: 'no-store', // Disable cache for development
+      cache: 'no-store',
+      headers,
     }
   );
 
@@ -108,11 +123,18 @@ export async function fetchNews(limit = 50, offset = 0): Promise<NewsResponse> {
 }
 
 /**
- * Fetch a single news article by ID
+ * Fetch a single news article by ID.
+ * If token is provided, enriches with per-user favorite status.
  */
-export async function fetchNewsById(id: string): Promise<{ success: boolean; data: NewsArticle }> {
+export async function fetchNewsById(id: string, token?: string): Promise<{ success: boolean; data: NewsArticle }> {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const res = await fetch(`${API_BASE_URL}/api/news/${id}`, {
     cache: 'no-store',
+    headers,
   });
 
   if (!res.ok) {
@@ -275,29 +297,38 @@ export interface ToggleFavoriteResponse {
 }
 
 /**
- * Toggle favorite status of an article
+ * Toggle favorite status of an article (requires auth token for per-user isolation)
  */
-export async function toggleFavorite(articleId: string): Promise<ToggleFavoriteResponse> {
+export async function toggleFavorite(articleId: string, token: string): Promise<ToggleFavoriteResponse> {
   const res = await fetch(`${API_BASE_URL}/api/news/${articleId}/favorite`, {
     method: 'PATCH',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
   });
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.message || `Toggle favorite failed: ${res.status}`);
+    throw new Error(errorData.message || errorData.error || `Toggle favorite failed: ${res.status}`);
   }
 
   return res.json();
 }
 
 /**
- * Fetch favorite articles
+ * Fetch favorite articles for the authenticated user
  */
-export async function fetchFavorites(limit = 50, offset = 0): Promise<NewsResponse> {
+export async function fetchFavorites(limit = 50, offset = 0, token?: string): Promise<NewsResponse> {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const res = await fetch(
     `${API_BASE_URL}/api/news?favorite=true&limit=${limit}&offset=${offset}`,
     {
       cache: 'no-store',
+      headers,
     }
   );
 
@@ -343,17 +374,25 @@ export async function ingestByCategory(category: string, pageSize = 20): Promise
 }
 
 /**
- * Fetch news by category
+ * Fetch news by category.
+ * If token is provided, articles are enriched with per-user favorite status.
  */
 export async function fetchNewsByCategory(
   category: string,
   limit = 50,
-  offset = 0
+  offset = 0,
+  token?: string
 ): Promise<NewsResponse> {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const res = await fetch(
     `${API_BASE_URL}/api/news?category=${encodeURIComponent(category)}&limit=${limit}&offset=${offset}`,
     {
       cache: 'no-store',
+      headers,
     }
   );
 

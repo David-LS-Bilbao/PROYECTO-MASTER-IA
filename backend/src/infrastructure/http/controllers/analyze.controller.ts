@@ -31,9 +31,14 @@ export class AnalyzeController {
    * - Unknown errors → 500 Internal Server Error
    */
   async analyzeArticle(req: Request, res: Response): Promise<void> {
+    console.log(`\n[AnalyzeController] 🟣 POST /api/analyze/article received`);
+    console.log(`[AnalyzeController]    Body:`, req.body);
+    console.log(`[AnalyzeController]    User: ${req.user?.email || 'anonymous'} (uid: ${req.user?.uid?.substring(0, 8) || 'N/A'}...)`);
+
     // Validate request body with Zod (Shift Left Security)
     // Si hay error, Zod lanza ZodError que captura asyncHandler → errorHandler
     const validatedInput = analyzeArticleSchema.parse(req.body);
+    console.log(`[AnalyzeController]    ✅ Validation passed`);
 
     // Sprint 14: Pass user to use case for quota enforcement
     const input = {
@@ -53,9 +58,16 @@ export class AnalyzeController {
         : undefined,
     };
 
+    console.log(`[AnalyzeController]    📞 Calling use case for article: ${input.articleId.substring(0, 8)}...`);
+
     // Execute use case
     // Cualquier error (EntityNotFoundError, ExternalAPIError, QuotaExceededError, etc.) se propaga
     const result = await this.analyzeArticleUseCase.execute(input);
+    console.log(`[AnalyzeController]    ✅ Use case returned result:`, {
+      articleId: result.articleId.substring(0, 8),
+      summary: result.summary?.substring(0, 40),
+      biasScore: result.biasScore,
+    });
 
     // Track user stats (if authenticated, non-blocking)
     if (req.user?.uid) {
@@ -66,6 +78,8 @@ export class AnalyzeController {
 
     // Exclude internal_reasoning from analysis object (AI_RULES.md: XAI auditing only)
     const { internal_reasoning, ...publicAnalysis } = result.analysis;
+
+    console.log(`[AnalyzeController]    📤 Sending response (200 OK)`);
 
     res.status(200).json({
       success: true,

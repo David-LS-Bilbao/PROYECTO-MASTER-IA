@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Heart } from 'lucide-react';
 import {
   Card,
@@ -14,7 +15,7 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { analyzeArticle, toggleFavorite } from '@/lib/api';
+import { toggleFavorite } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import type { NewsArticle } from '@/lib/api';
 
@@ -56,51 +57,49 @@ function formatDate(dateString: string): string {
 
 export function NewsCard({ article, onFavoriteToggle }: NewsCardProps) {
   const { getToken } = useAuth();
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const router = useRouter();
   const [isFavorite, setIsFavorite] = useState(article.isFavorite);
   const [isTogglingFavorite, setIsTogglingFavorite] = useState(false);
 
   const isAnalyzed = article.analyzedAt !== null;
+  // Per-user: user has this in favorites = already analyzed/viewed by them
+  const userHasAnalyzed = article.isFavorite && isAnalyzed;
   const biasInfo = article.biasScore !== null ? getBiasInfo(article.biasScore) : null;
 
-  const handleAnalyze = async () => {
-    setIsAnalyzing(true);
-    setAnalysisError(null);
+  // PRIVACY: Check if analysis exists globally (cached) but user hasn't favorited yet
+  const hasGlobalCache = article.hasAnalysis === true && !article.isFavorite;
 
-    try {
-      // Get authentication token
-      const token = await getToken();
-      if (!token) {
-        setAnalysisError('No se pudo obtener el token de autenticación');
-        return;
-      }
-
-      const analysisResult = await analyzeArticle(article.id, token);
-      
-      // Reload the page to show updated analysis
-      window.location.reload();
-    } catch (error) {
-      console.error('Error analyzing article:', error);
-      setAnalysisError(error instanceof Error ? error.message : 'Error al analizar');
-    } finally {
-      setIsAnalyzing(false);
-    }
+  /**
+   * Navigate to article detail page with auto-analyze flag.
+   * The detail page will auto-trigger analysis when ?analyze=true is present.
+   */
+  const handleAnalyze = () => {
+    console.log(`[news-card] 🔵 handleAnalyze clicked for article: ${article.id.substring(0, 8)}...`);
+    console.log(`[news-card]    isAnalyzed: ${isAnalyzed}, isFavorite: ${article.isFavorite}`);
+    console.log(`[news-card]    Navigating to: /news/${article.id}?analyze=true`);
+    router.push(`/news/${article.id}?analyze=true`);
   };
 
   const handleToggleFavorite = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     setIsTogglingFavorite(true);
     const previousState = isFavorite;
 
     try {
+      // Get auth token for per-user favorite
+      const token = await getToken();
+      if (!token) {
+        console.error('No auth token available for favorite toggle');
+        return;
+      }
+
       // Optimistic UI update
       setIsFavorite(!isFavorite);
-      
-      const response = await toggleFavorite(article.id);
-      
+
+      const response = await toggleFavorite(article.id, token);
+
       // Notify parent component
       if (onFavoriteToggle) {
         onFavoriteToggle(article.id, response.data.isFavorite);
@@ -171,7 +170,7 @@ export function NewsCard({ article, onFavoriteToggle }: NewsCardProps) {
         {isAnalyzed && biasInfo && (
           <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Análisis IA</span>
+              <span className="text-sm font-medium">Analisis IA</span>
               <Badge variant={biasInfo.variant}>
                 {biasInfo.label} ({(article.biasScore! * 100).toFixed(0)}%)
               </Badge>
@@ -187,60 +186,34 @@ export function NewsCard({ article, onFavoriteToggle }: NewsCardProps) {
             )}
           </div>
         )}
-
-        {/* Error message */}
-        {analysisError && (
-          <div className="p-3 rounded-lg text-sm bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
-            {analysisError}
-          </div>
-        )}
       </CardContent>
 
       <CardFooter className="flex justify-between gap-2">
         <Button variant="ghost" size="sm" asChild>
           <a href={article.url} target="_blank" rel="noopener noreferrer">
-            Fuente ↗
+            Fuente
           </a>
         </Button>
 
         <div className="flex gap-2">
-          {isAnalyzed ? (
+          {userHasAnalyzed ? (
+            /* User already analyzed/viewed this article -> "Mostrar analisis" */
             <Button size="sm" variant="outline" asChild>
-              <Link href={`/news/${article.id}`}>Ver análisis</Link>
+              <Link href={`/news/${article.id}`}>Mostrar analisis</Link>
+            </Button>
+          ) : hasGlobalCache ? (
+            /* Analysis cached globally but user hasn't favorited -> "Ver analisis" (instant, free) */
+            <Button size="sm" variant="secondary" onClick={handleAnalyze}>
+              Ver analisis
+              <span className="ml-1 text-xs opacity-80">(Instantáneo)</span>
             </Button>
           ) : (
+            /* Not analyzed at all -> "Analizar con IA" navigates to detail page */
             <Button
               size="sm"
               onClick={handleAnalyze}
-              disabled={isAnalyzing}
             >
-              {isAnalyzing ? (
-                <>
-                  <svg
-                    className="animate-spin -ml-1 mr-2 h-4 w-4"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    />
-                  </svg>
-                  Analizando...
-                </>
-              ) : (
-                'Analizar con IA'
-              )}
+              Analizar con IA
             </Button>
           )}
         </div>
