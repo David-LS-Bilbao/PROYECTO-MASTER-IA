@@ -180,7 +180,7 @@ export function Sidebar({ onOpenDashboard, onOpenSources }: SidebarProps) {
         {/* Search */}
         <div className="px-3 py-4 border-b border-zinc-200 dark:border-zinc-800">
           <SearchBar
-            placeholder="Buscar con IA..."
+            placeholder="Buscar noticias..."
             className="w-full"
           />
         </div>
