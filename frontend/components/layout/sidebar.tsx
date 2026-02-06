@@ -16,7 +16,6 @@ import {
   User,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { SearchBar } from '@/components/search-bar';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 
@@ -175,14 +174,6 @@ export function Sidebar({ onOpenDashboard, onOpenSources }: SidebarProps) {
               Verity
             </span>
           </Link>
-        </div>
-
-        {/* Search */}
-        <div className="px-3 py-4 border-b border-zinc-200 dark:border-zinc-800">
-          <SearchBar
-            placeholder="Buscar noticias..."
-            className="w-full"
-          />
         </div>
 
         {/* Navigation */}

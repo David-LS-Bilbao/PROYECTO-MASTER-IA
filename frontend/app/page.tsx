@@ -7,6 +7,7 @@ import { type NewsArticle, type BiasDistribution } from '@/lib/api';
 import { NewsCard } from '@/components/news-card';
 import { Sidebar, DashboardDrawer } from '@/components/layout';
 import { SourcesDrawer } from '@/components/sources-drawer';
+import { SearchBar } from '@/components/search-bar';
 import { Badge } from '@/components/ui/badge';
 import { CategoryPills, type CategoryId, CATEGORIES } from '@/components/category-pills';
 import { useNews, useInvalidateNews } from '@/hooks/useNews';
@@ -364,26 +365,35 @@ export default function Home() {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden lg:ml-0">
-        {/* Header */}
-        <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/80 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-900/80">
-          <div className="px-4 sm:px-6 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-bold text-zinc-900 dark:text-white">
+        {/* Header - Google News Style */}
+        <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/95 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-900/95">
+          <div className="px-4 sm:px-6 py-3">
+            <div className="flex items-center gap-4">
+              {/* Logo/Brand */}
+              <div className="flex items-center gap-3 shrink-0">
+                <h1 className="text-xl font-bold text-zinc-900 dark:text-white">
                   Verity News
                 </h1>
-                <Badge variant="secondary">Beta</Badge>
+                <Badge variant="secondary" className="hidden sm:inline-flex">Beta</Badge>
               </div>
+
+              {/* Search Bar - Center/Flexible */}
+              <div className="flex-1 max-w-2xl">
+                <SearchBar
+                  placeholder="Buscar temas, noticias..."
+                  className="w-full"
+                />
+              </div>
+
+              {/* Stats - Right (optional, hidden on small screens) */}
               {stats && (
-                <div className="hidden sm:flex items-center gap-4 text-sm text-muted-foreground">
+                <div className="hidden lg:flex items-center gap-3 text-xs text-muted-foreground shrink-0">
                   <span>
                     <strong className="text-foreground">{stats.totalArticles}</strong> noticias
                   </span>
+                  <span className="text-zinc-300 dark:text-zinc-700">•</span>
                   <span>
                     <strong className="text-foreground">{stats.analyzedCount}</strong> analizadas
-                  </span>
-                  <span>
-                    <strong className="text-foreground">{stats.coverage}%</strong> cobertura
                   </span>
                 </div>
               )}
