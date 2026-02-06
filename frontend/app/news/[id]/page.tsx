@@ -84,6 +84,20 @@ export default function NewsDetailPage() {
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [lastAnalyzeTime, setLastAnalyzeTime] = useState<number>(0);
 
+  // =========================================================================
+  // SPRINT 18.3: ARTIFICIAL REVEAL STATE - UX Enhancement
+  // =========================================================================
+  // PROBLEMA: When analysis is already available (cached + unlocked), it appears
+  // instantly, eliminating the perception of AI value and processing effort.
+  //
+  // SOLUCIÓN: Apply a fake delay (1.8s) to simulate AI processing even when
+  // data is already available. Show skeleton during reveal.
+  //
+  // BENEFICIO: Maintains consistent UX, creates anticipation, and preserves
+  // perceived value of AI analysis regardless of cache status.
+  // =========================================================================
+  const [isRevealing, setIsRevealing] = useState(false);
+
   // Redirect to not-found if 404 error
   useEffect(() => {
     if (isError && queryError?.message.includes('404')) {
@@ -185,6 +199,40 @@ export default function NewsDetailPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shouldAutoAnalyze, autoAnalyzeTriggered, article]);
 
+  // =========================================================================
+  // SPRINT 18.3: Artificial Reveal Delay for Pre-loaded Analysis
+  // =========================================================================
+  // When user comes with ?analyze=true but analysis is already available
+  // (user has it unlocked from before), apply fake delay to maintain UX value
+  // =========================================================================
+  useEffect(() => {
+    console.log(`[page.tsx] 🎭 Reveal useEffect fired`);
+
+    // Only apply reveal delay if:
+    // 1. User came with ?analyze=true intent
+    // 2. Article is already analyzed (data available)
+    // 3. Not currently analyzing (no API call in progress)
+    // 4. Not already revealing
+    const shouldReveal = shouldAutoAnalyze && article?.analyzedAt && !isAnalyzing && !isRevealing;
+
+    console.log(`[page.tsx]    shouldReveal: ${shouldReveal}`);
+
+    if (!shouldReveal) {
+      return;
+    }
+
+    console.log(`[page.tsx]    ✨ Starting artificial reveal (1.8s delay)...`);
+    setIsRevealing(true);
+
+    const REVEAL_DELAY = 1800; // 1.8 seconds
+    const timer = setTimeout(() => {
+      console.log(`[page.tsx]    ✅ Reveal completed - showing analysis`);
+      setIsRevealing(false);
+    }, REVEAL_DELAY);
+
+    return () => clearTimeout(timer);
+  }, [shouldAutoAnalyze, article?.analyzedAt, isAnalyzing, isRevealing]);
+
   if (isLoading) {
     return <ArticleSkeleton />;
   }
@@ -213,6 +261,11 @@ export default function NewsDetailPage() {
   const isAnalyzed = article.analyzedAt !== null;
   const biasInfo = article.biasScore !== null ? getBiasInfo(article.biasScore) : null;
   const sentimentInfo = article.analysis?.sentiment ? getSentimentInfo(article.analysis.sentiment) : null;
+
+  // Determine if we should show analysis content or skeleton
+  // Show skeleton if: analyzing OR revealing (artificial delay)
+  const showAnalysisSkeleton = isAnalyzing || isRevealing;
+  const showAnalysisContent = isAnalyzed && !showAnalysisSkeleton;
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
@@ -284,8 +337,20 @@ export default function NewsDetailPage() {
 
             <Separator className="my-6" />
 
-            {/* AI Summary - Only show if analyzed */}
-            {isAnalyzed && article.summary && (
+            {/* AI Summary - Show skeleton while revealing, then show content */}
+            {showAnalysisSkeleton ? (
+              <div className="mb-6 p-4 bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-lg animate-pulse">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="h-4 w-4 bg-purple-300 dark:bg-purple-700 rounded"></div>
+                  <div className="h-4 w-32 bg-purple-300 dark:bg-purple-700 rounded"></div>
+                </div>
+                <div className="space-y-2">
+                  <div className="h-4 bg-purple-200 dark:bg-purple-800 rounded w-full"></div>
+                  <div className="h-4 bg-purple-200 dark:bg-purple-800 rounded w-11/12"></div>
+                  <div className="h-4 bg-purple-200 dark:bg-purple-800 rounded w-10/12"></div>
+                </div>
+              </div>
+            ) : showAnalysisContent && article.summary ? (
               <div className="mb-6 p-4 bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-lg">
                 <div className="flex items-center gap-2 mb-3">
                   <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400" />
@@ -297,7 +362,7 @@ export default function NewsDetailPage() {
                   {article.summary}
                 </p>
               </div>
-            )}
+            ) : null}
 
             {/* Content - Sanitized to prevent XSS */}
             {sanitizedContent ? (
@@ -339,7 +404,46 @@ export default function NewsDetailPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
-                {isAnalyzed && biasInfo ? (
+                {showAnalysisSkeleton ? (
+                  // ========== SKELETON DURING ANALYSIS/REVEAL ==========
+                  <div className="space-y-6 animate-pulse">
+                    {/* Bias Score Skeleton */}
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <div className="h-4 w-24 bg-zinc-300 dark:bg-zinc-700 rounded"></div>
+                        <div className="h-6 w-20 bg-zinc-300 dark:bg-zinc-700 rounded"></div>
+                      </div>
+                      <div className="h-3 bg-zinc-200 dark:bg-zinc-700 rounded-full"></div>
+                      <div className="h-3 w-32 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                    </div>
+
+                    {/* Reliability Skeleton */}
+                    <div className="p-4 border rounded-lg bg-white dark:bg-zinc-800 space-y-2">
+                      <div className="h-5 w-40 bg-zinc-300 dark:bg-zinc-700 rounded"></div>
+                      <div className="h-4 w-full bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                      <div className="h-4 w-3/4 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                    </div>
+
+                    {/* Sentiment Skeleton */}
+                    <div className="flex items-center justify-between p-3 bg-white dark:bg-zinc-800 rounded-lg">
+                      <div className="h-4 w-24 bg-zinc-300 dark:bg-zinc-700 rounded"></div>
+                      <div className="h-6 w-16 bg-zinc-300 dark:bg-zinc-700 rounded"></div>
+                    </div>
+
+                    {/* Topics Skeleton */}
+                    <div className="space-y-2">
+                      <div className="h-4 w-32 bg-zinc-300 dark:bg-zinc-700 rounded"></div>
+                      <div className="flex flex-wrap gap-2">
+                        <div className="h-6 w-20 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                        <div className="h-6 w-24 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                        <div className="h-6 w-16 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                      </div>
+                    </div>
+
+                    <div className="h-10 w-full bg-zinc-300 dark:bg-zinc-700 rounded"></div>
+                  </div>
+                ) : showAnalysisContent && biasInfo ? (
+                  // ========== ACTUAL ANALYSIS CONTENT ==========
                   <>
                     {/* Bias Score */}
                     <div className="space-y-3">
@@ -415,12 +519,12 @@ export default function NewsDetailPage() {
                       variant="outline"
                       className="w-full gap-2"
                       onClick={handleAnalyze}
-                      disabled={isAnalyzing}
+                      disabled={isAnalyzing || isRevealing}
                     >
-                      {isAnalyzing ? (
+                      {isAnalyzing || isRevealing ? (
                         <>
                           <span className="animate-spin">⏳</span>
-                          Re-analizando...
+                          {isRevealing ? 'Procesando...' : 'Re-analizando...'}
                         </>
                       ) : (
                         <>
@@ -443,9 +547,9 @@ export default function NewsDetailPage() {
                         size="lg"
                         className="w-full gap-2"
                         onClick={handleAnalyze}
-                        disabled={isAnalyzing}
+                        disabled={isAnalyzing || isRevealing}
                       >
-                        {isAnalyzing ? (
+                        {isAnalyzing || isRevealing ? (
                           <>
                             <span className="animate-spin">⏳</span>
                             Analizando...

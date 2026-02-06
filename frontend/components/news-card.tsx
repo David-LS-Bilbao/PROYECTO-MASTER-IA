@@ -165,27 +165,20 @@ export function NewsCard({ article, onFavoriteToggle }: NewsCardProps) {
         )}
       </CardHeader>
 
+      {/* =========================================================================
+          SPRINT 18.3: UX IMPROVEMENT - Hide Analysis Preview in Card
+          =========================================================================
+          PROBLEMA: Showing analysis directly in cards eliminates perceived AI value
+          and creates "instant gratification" that reduces engagement with detail page.
+
+          SOLUCIÓN: Hide analysis in card view. Show only action buttons.
+          Users must click to reveal analysis, triggering artificial delay in detail page.
+
+          BENEFICIO: Maintains perception of AI processing value, creates anticipation,
+          and ensures consistent UX whether analysis is cached or fresh.
+          ========================================================================= */}
       <CardContent className="space-y-4">
-        {/* Analysis Section - Solo badge de sesgo, sin resumen */}
-        {isAnalyzed && biasInfo && (
-          <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Analisis IA</span>
-              <Badge variant={biasInfo.variant}>
-                {biasInfo.label} ({(article.biasScore! * 100).toFixed(0)}%)
-              </Badge>
-            </div>
-            {article.analysis?.mainTopics && article.analysis.mainTopics.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {article.analysis.mainTopics.slice(0, 3).map((topic, i) => (
-                  <Badge key={i} variant="outline" className="text-xs">
-                    {topic}
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+        {/* Analysis preview removed - users must click action buttons to see analysis */}
       </CardContent>
 
       <CardFooter className="flex justify-between gap-2">
