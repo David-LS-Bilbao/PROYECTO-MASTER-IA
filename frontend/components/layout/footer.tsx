@@ -20,14 +20,6 @@ export default function Footer() {
           <Link href="/politica-privacidad" className="text-gray-600 hover:text-gray-900">Política de Privacidad</Link>
           <Link href="/politica-cookies" className="text-gray-600 hover:text-gray-900">Política de Cookies</Link>
         </nav>
-        <div className="flex gap-4">
-          {socialLinks.map((link, idx) => (
-            <a key={idx} href={link.href} className="text-gray-400 hover:text-gray-700" aria-label="Red social">
-              {/* Icono placeholder */}
-              <span className="w-6 h-6 bg-gray-300 rounded-full flex items-center justify-center">?</span>
-            </a>
-          ))}
-        </div>
       </div>
     </footer>
   );

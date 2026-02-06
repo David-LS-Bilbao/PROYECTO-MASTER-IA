@@ -88,7 +88,7 @@ export function NewsChatDrawer({ articleId, articleTitle }: NewsChatDrawerProps)
       <SheetContent side="right" className="w-full sm:max-w-md flex flex-col">
         <SheetHeader className="border-b pb-4">
           <SheetTitle className="flex items-center gap-2">
-            <Bot className="size-5 text-primary" />
+            <img src="/boticon.png" alt="Bot" className="w-8 h-8 text-primary" />
             Chat con la Noticia
           </SheetTitle>
           <SheetDescription className="line-clamp-2 text-xs">
@@ -106,7 +106,7 @@ export function NewsChatDrawer({ articleId, articleTitle }: NewsChatDrawerProps)
             <div className="flex flex-col gap-4 py-4">
             {messages.length === 0 && (
               <div className="text-center text-muted-foreground text-sm py-8">
-                <Bot className="size-12 mx-auto mb-3 opacity-50" />
+                <img src="/boticon.png" alt="Bot" className="w-32 h-32 mx-auto mb-3 opacity-80" />
                 <p>Haz una pregunta sobre esta noticia.</p>
                 <p className="text-xs mt-2">
                   Ejemplos: &quot;Resume los puntos clave&quot;, &quot;Explica el sesgo detectado&quot;
@@ -131,7 +131,7 @@ export function NewsChatDrawer({ articleId, articleTitle }: NewsChatDrawerProps)
                   {message.role === 'user' ? (
                     <User className="size-4" />
                   ) : (
-                    <Bot className="size-4" />
+                    <img src="/boticon.png" alt="Bot" className="w-6 h-6" />
                   )}
                 </div>
                 <div

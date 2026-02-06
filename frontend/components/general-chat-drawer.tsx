@@ -100,7 +100,7 @@ export function GeneralChatDrawer({ isOpen, onOpenChange }: GeneralChatDrawerPro
         <SheetHeader className="border-b pb-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Bot className="size-5 text-primary" />
+              <img src="/boticon.png" alt="Bot" className="w-8 h-8 text-primary" />
               <SheetTitle>Chat General</SheetTitle>
             </div>
             <Button
@@ -132,7 +132,7 @@ export function GeneralChatDrawer({ isOpen, onOpenChange }: GeneralChatDrawerPro
             <div className="flex flex-col gap-4 py-4">
               {messages.length === 0 && (
                 <div className="text-center text-muted-foreground text-sm py-8">
-                  <Bot className="size-12 mx-auto mb-3 opacity-50" />
+                  <img src="/boticon.png" alt="Bot" className="w-32 h-32 mx-auto mb-3 opacity-80" />
                   <p className="font-medium">Haz una pregunta sobre las noticias</p>
                   <div className="text-xs mt-3 space-y-1">
                     <p className="font-semibold">Ejemplos:</p>
@@ -160,7 +160,7 @@ export function GeneralChatDrawer({ isOpen, onOpenChange }: GeneralChatDrawerPro
                     {message.role === 'user' ? (
                       <User className="size-4" />
                     ) : (
-                      <Bot className="size-4" />
+                      <img src="/boticon.png" alt="Bot" className="size-4" />
                     )}
                   </div>
                   <div

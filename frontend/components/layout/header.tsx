@@ -26,7 +26,7 @@ export function Header() {
           className="flex items-center gap-2 mr-6 shrink-0"
         >
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-            <Newspaper className="w-5 h-5 text-white" />
+            <img src="/favicon.ico" alt="Logo Verity News" className="w-6 h-6 object-contain" />
           </div>
           <span className="font-bold text-lg text-zinc-900 dark:text-white hidden sm:inline-block">
             Verity News

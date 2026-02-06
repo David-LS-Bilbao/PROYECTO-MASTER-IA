@@ -181,36 +181,7 @@ export function NewsCard({ article, onFavoriteToggle }: NewsCardProps) {
         {/* Analysis preview removed - users must click action buttons to see analysis */}
       </CardContent>
 
-      <CardFooter className="flex justify-between gap-2">
-        <Button variant="ghost" size="sm" asChild>
-          <a href={article.url} target="_blank" rel="noopener noreferrer">
-            Fuente
-          </a>
-        </Button>
-
-        <div className="flex gap-2">
-          {userHasAnalyzed ? (
-            /* User already analyzed/viewed this article -> "Mostrar analisis" */
-            <Button size="sm" variant="outline" asChild>
-              <Link href={`/news/${article.id}`}>Mostrar analisis</Link>
-            </Button>
-          ) : hasGlobalCache ? (
-            /* Analysis cached globally but user hasn't favorited -> "Ver analisis" (instant, free) */
-            <Button size="sm" variant="secondary" onClick={handleAnalyze}>
-              Ver analisis
-              <span className="ml-1 text-xs opacity-80">(Instantáneo)</span>
-            </Button>
-          ) : (
-            /* Not analyzed at all -> "Analizar con IA" navigates to detail page */
-            <Button
-              size="sm"
-              onClick={handleAnalyze}
-            >
-              Analizar con IA
-            </Button>
-          )}
-        </div>
-      </CardFooter>
+      {/* CardFooter eliminado para una tarjeta más limpia */}
     </Card>
   );
 }
