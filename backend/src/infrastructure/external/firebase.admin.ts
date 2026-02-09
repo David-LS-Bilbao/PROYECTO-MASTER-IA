@@ -1,18 +1,20 @@
 /**
  * Firebase Admin SDK - Singleton Initialization
- * 
+ *
  * Inicializa Firebase Admin SDK siguiendo el patrón Singleton.
- * 
+ *
  * Prioridad de credenciales:
- * 1. Variables de entorno (FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY, FIREBASE_CLIENT_EMAIL)
- * 2. Archivo local service-account.json (para desarrollo)
- * 
+ * 1. Mock (si NODE_ENV=test) - para tests de integración
+ * 2. Variables de entorno (FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY, FIREBASE_CLIENT_EMAIL)
+ * 3. Archivo local service-account.json (para desarrollo)
+ *
  * @module infrastructure/external/firebase.admin
  */
 
 import * as admin from 'firebase-admin';
 import * as path from 'path';
 import * as fs from 'fs';
+import { firebaseAuthMock } from './firebase.admin.mock';
 
 /**
  * Inicializa Firebase Admin SDK si no está ya inicializado
@@ -108,39 +110,47 @@ function getFirebaseApp(): admin.app.App {
 }
 
 /**
- * Instancia de Firebase Auth (lazy initialization)
- * 
+ * Detectar si estamos en modo test
+ */
+const isTestEnvironment = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true';
+
+/**
+ * Instancia de Firebase Auth (lazy initialization o mock en tests)
+ *
  * Uso:
  * ```typescript
  * import { firebaseAuth } from '@/infrastructure/external/firebase.admin';
- * 
+ *
  * const decodedToken = await firebaseAuth.verifyIdToken(token);
  * const user = await firebaseAuth.getUser(uid);
  * ```
- * 
- * NOTA: Firebase Admin se inicializará en el primer uso.
- * Si no hay credenciales configuradas, lanzará un error en ese momento.
+ *
+ * NOTA:
+ * - En NODE_ENV=test → usa firebaseAuthMock (no requiere credenciales)
+ * - En otros entornos → usa Firebase Admin real (lazy initialization)
  */
-export const firebaseAuth = {
-  verifyIdToken: async (token: string) => {
-    return getFirebaseApp().auth().verifyIdToken(token);
-  },
-  getUser: async (uid: string) => {
-    return getFirebaseApp().auth().getUser(uid);
-  },
-  getUserByEmail: async (email: string) => {
-    return getFirebaseApp().auth().getUserByEmail(email);
-  },
-  createUser: async (properties: admin.auth.CreateRequest) => {
-    return getFirebaseApp().auth().createUser(properties);
-  },
-  updateUser: async (uid: string, properties: admin.auth.UpdateRequest) => {
-    return getFirebaseApp().auth().updateUser(uid, properties);
-  },
-  deleteUser: async (uid: string) => {
-    return getFirebaseApp().auth().deleteUser(uid);
-  },
-};
+export const firebaseAuth = isTestEnvironment
+  ? firebaseAuthMock
+  : {
+      verifyIdToken: async (token: string) => {
+        return getFirebaseApp().auth().verifyIdToken(token);
+      },
+      getUser: async (uid: string) => {
+        return getFirebaseApp().auth().getUser(uid);
+      },
+      getUserByEmail: async (email: string) => {
+        return getFirebaseApp().auth().getUserByEmail(email);
+      },
+      createUser: async (properties: admin.auth.CreateRequest) => {
+        return getFirebaseApp().auth().createUser(properties);
+      },
+      updateUser: async (uid: string, properties: admin.auth.UpdateRequest) => {
+        return getFirebaseApp().auth().updateUser(uid, properties);
+      },
+      deleteUser: async (uid: string) => {
+        return getFirebaseApp().auth().deleteUser(uid);
+      },
+    };
 
 /**
  * Instancia completa de Firebase Admin (para casos avanzados)

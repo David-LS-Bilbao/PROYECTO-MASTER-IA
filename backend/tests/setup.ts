@@ -8,7 +8,8 @@
 // Configurar variables de entorno ANTES de importar cualquier módulo
 process.env.GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'test-api-key-for-integration-tests';
 process.env.JINA_API_KEY = process.env.JINA_API_KEY || 'test-jina-api-key-for-integration-tests';
-process.env.DATABASE_URL = process.env.DATABASE_URL || 'file:./test.db';
+// PostgreSQL en Docker (puerto 5433 para Verity News)
+process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgresql://admin:adminpassword@localhost:5433/verity_news?schema=public';
 process.env.CHROMA_URL = process.env.CHROMA_URL || 'http://localhost:8000';
 process.env.NODE_ENV = 'test';
 

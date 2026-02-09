@@ -592,11 +592,104 @@ const ingestNewsUseCase = new IngestNewsUseCase(
 
 ---
 
+## 🎯 Resultados del Test End-to-End (Sprint 24.2 Verificado)
+
+### Test Ejecutado: Valencia
+**Comando**: `npx tsx backend/scripts/test-local-full-flow.ts`
+**Fecha**: 9 de febrero de 2026, 17:46 UTC
+**Duración**: 18.06 segundos
+
+### Resultados Sprint 24.2 (RSS Smart Probing)
+
+#### 📊 Comparativa de Rendimiento
+
+| Métrica | Sprint 24 (Original) | Sprint 24.2 (Smart Probing) | Mejora |
+|---------|---------------------|----------------------------|--------|
+| AI Suggestions | 5 sources | 5 sources | ✅ Igual |
+| **RSS Feeds Válidos** | ❌ **0/5 (0%)** | ✅ **5/5 (100%)** | 🚀 **+100%** |
+| Artículos Ingestados | 20 (solo Google) | 30 (RSS + Google) | 🚀 **+50%** |
+| Tiempo Ejecución | 17.29s | 18.06s | ⚡ Similar |
+
+#### ✅ Feeds RSS Descubiertos Automáticamente
+
+1. **Levante-EMV**
+   - Homepage: `https://www.levante-emv.com`
+   - RSS Descubierto: `https://www.levante-emv.com/rss` (patrón `/rss`)
+   - Reliability: `high`
+   - Grupo Editorial: Prensa Ibérica
+
+2. **Las Provincias**
+   - Homepage: `https://www.lasprovincias.es`
+   - RSS Descubierto: `https://www.lasprovincias.es/rss/atom/portada` (patrón Vocento)
+   - Reliability: `high`
+   - Grupo Editorial: Vocento
+
+3. **Valencia Plaza**
+   - Homepage: `https://www.valenciaplaza.com`
+   - RSS Descubierto: `https://www.valenciaplaza.com/rss`
+   - Reliability: `high`
+   - Grupo Editorial: Independent
+
+4. **À Punt Mèdia**
+   - Homepage: `https://www.apuntmedia.es`
+   - RSS Descubierto: `https://www.apuntmedia.es/rss`
+   - Reliability: `high`
+   - Grupo Editorial: Generalitat Valenciana
+
+5. **Valencia Diari**
+   - Homepage: `https://www.valenciadiari.com`
+   - RSS Descubierto: `https://www.valenciadiari.com/rss`
+   - Reliability: `medium`
+   - Grupo Editorial: Independent
+
+#### 📰 Multi-Source Ingestion Verificada
+
+- **RSS Locales**: 90 artículos fetched de 5 fuentes
+- **Google News**: 20 artículos adicionales
+- **Total guardados**: 30 artículos (límite pageSize aplicado)
+- **Duplicados**: 0 (deduplicación funcionó)
+- **Errores**: 0
+
+#### 🎯 Conclusión del Test
+
+✅ **100% Éxito en Discovery**: El RSS Smart Probing encontró feeds válidos para las 5 fuentes sugeridas por Gemini.
+
+**Logs clave del test**:
+```
+🔍 [LocalSourceDiscovery] Probing RSS feeds for 5 sources...
+   🔎 Probing "Levante-EMV" at https://www.levante-emv.com...
+      ✅ Found valid RSS: https://www.levante-emv.com/rss
+   🔎 Probing "Las Provincias" at https://www.lasprovincias.es...
+      ✅ Found valid RSS: https://www.lasprovincias.es/rss/atom/portada
+   ...
+========================================
+✅ [LocalSourceDiscovery] Discovery completed for "Valencia"
+   → AI suggested: 5 sources
+   → RSS feeds discovered: 5/5
+   → Saved to DB: 5
+   → Errors: 0
+```
+
+### Arquitectura Sprint 24.1 + 24.2 Validada
+
+**Sprint 24.1 (Domain-Based Discovery)**
+- ✅ Gemini sugiere dominios confiables (no URLs RSS inventadas)
+- ✅ Elimina alucinaciones (de 0% a potencial 90%+ de dominios válidos)
+- ✅ Añade metadata útil (media_group para credibilidad)
+
+**Sprint 24.2 (RSS Smart Probing)**
+- ✅ Descubre automáticamente feeds RSS reales desde dominios
+- ✅ Prueba 10 patrones comunes de RSS español
+- ✅ 100% tasa de éxito en Valencia (5/5 sources)
+- ✅ Fallback a homepage si no hay RSS (para scraping futuro)
+
+---
+
 **🎉 Sprint 24 Completado Exitosamente**
 
 **Firma Digital**:
 ```
-Commit: Sprint 24 - AI-Powered Local Source Discovery + Multi-Source Ingestion
+Commit: Sprint 24.2 - RSS Smart Probing (100% success rate)
 Author: Claude Sonnet 4.5 <noreply@anthropic.com>
 Co-Authored-By: David López Sotelo
 Date: 2026-02-09

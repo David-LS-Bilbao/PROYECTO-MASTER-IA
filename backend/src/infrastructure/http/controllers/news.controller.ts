@@ -37,6 +37,24 @@ const CATEGORY_TO_TOPIC_SLUG: Record<string, string> = {
 };
 
 /**
+ * Sprint 24: TTL cache for local ingestion
+ * Prevents re-fetching Google News RSS for the same city within 1 hour
+ * Key: city name (lowercase), Value: timestamp of last ingestion
+ */
+const LOCAL_INGEST_TTL = 60 * 60 * 1000; // 1 hour
+const localIngestCache = new Map<string, number>();
+
+function shouldIngestLocal(city: string): boolean {
+  const key = city.toLowerCase().trim();
+  const lastIngest = localIngestCache.get(key);
+  return !lastIngest || Date.now() - lastIngest >= LOCAL_INGEST_TTL;
+}
+
+function markLocalIngested(city: string): void {
+  localIngestCache.set(city.toLowerCase().trim(), Date.now());
+}
+
+/**
  * Transform domain article to HTTP response format
  * Parses the analysis JSON string into an object for frontend consumption
  *
@@ -137,8 +155,29 @@ export class NewsController {
           return;
         }
 
-        // Use location-based search (delegate to searchArticles with location as query)
+        // Sprint 24: Active Local Ingestion - fetch fresh news about the city via Google News RSS
         console.log(`[NewsController.getNews] 📍 Local news requested for location: ${user.location}`);
+
+        if (shouldIngestLocal(user.location)) {
+          console.log(`[NewsController.getNews] 🌐 Triggering local ingestion for "${user.location}" (TTL expired or first request)`);
+          try {
+            const ingestionResult = await this.ingestNewsUseCase.execute({
+              category: 'local',
+              topicSlug: 'local',
+              query: user.location,
+              pageSize: 20,
+              language: 'es',
+            });
+            markLocalIngested(user.location);
+            console.log(`[NewsController.getNews] 📍 Local ingestion: ${ingestionResult.newArticles} new articles for "${user.location}"`);
+          } catch (ingestionError) {
+            console.error(`[NewsController.getNews] ❌ Local ingestion failed for "${user.location}":`, ingestionError);
+          }
+        } else {
+          console.log(`[NewsController.getNews] 💰 Local ingestion skipped for "${user.location}" (TTL active)`);
+        }
+
+        // Search DB for articles mentioning the location
         const localNews = await this.repository.searchArticles(user.location, limit, userId);
 
         // If no results, suggest fallback
@@ -171,7 +210,7 @@ export class NewsController {
             total: localNews.length,
             limit,
             offset,
-            hasMore: false,
+            hasMore: localNews.length >= limit, // Si devolvió el límite completo, puede haber más
           },
           meta: {
             location: user.location,

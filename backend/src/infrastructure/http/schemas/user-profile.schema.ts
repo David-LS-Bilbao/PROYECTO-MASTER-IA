@@ -43,6 +43,11 @@ export const UserPreferencesSchema = z.object({
  * Campos deben ser números válidos (no NaN, no Infinity).
  */
 export const UserUsageStatsSchema = z.object({
+  // Sprint 10: Contadores de uso por tipo de operación
+  articlesAnalyzed: z.number().int().nonnegative().default(0).optional(),
+  chatMessages: z.number().int().nonnegative().default(0).optional(),
+  searchesPerformed: z.number().int().nonnegative().default(0).optional(),
+
   // Número de llamadas a la API de IA
   apiCalls: z.number().int().nonnegative().default(0).optional(),
 
@@ -98,8 +103,11 @@ export function safeParseUserUsageStats(data: unknown): z.infer<typeof UserUsage
   // Log del error de validación
   console.warn('[Auth] Invalid user usage stats, using defaults:', result.error.format());
 
-  // Retornar defaults seguros
+  // Retornar defaults seguros (incluye contadores de Sprint 10)
   return {
+    articlesAnalyzed: 0,
+    chatMessages: 0,
+    searchesPerformed: 0,
     apiCalls: 0,
     tokensUsed: 0,
     cost: 0,

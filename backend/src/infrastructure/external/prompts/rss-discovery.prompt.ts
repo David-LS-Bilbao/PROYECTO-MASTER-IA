@@ -22,16 +22,19 @@ REGLA CONFIANZA DE FORMATO:
 }
 
 /**
- * Sprint 24: Genera prompt para identificar fuentes locales de noticias de una ciudad
+ * Sprint 24.1: Genera prompt para identificar fuentes locales de noticias de una ciudad
  *
- * Instrucciones para Gemini:
+ * REFACTORIZACIÓN: En lugar de predecir URLs RSS (alta tasa de error), ahora pedimos:
  * 1. Identificar los 5 medios digitales más importantes de la ciudad/región
- * 2. Predecir sus URLs de feeds RSS (formato válido: .xml, .rss, /feed/)
- * 3. Asignar nivel de confiabilidad basado en:
- *    - "high": Medios consolidados con presencia digital verificada (>10 años)
- *    - "medium": Medios regionales conocidos con presencia digital
- *    - "low": Medios locales pequeños o blogs
- * 4. Devolver SOLO JSON válido, sin markdown, sin explicaciones
+ * 2. Proporcionar el dominio principal (homepage URL limpia)
+ * 3. Identificar el grupo editorial si es conocido (Vocento, Prensa Ibérica, etc.)
+ * 4. Asignar nivel de confiabilidad
+ * 5. Devolver SOLO JSON válido, sin markdown, sin explicaciones
+ *
+ * VENTAJAS:
+ * - Reduce alucinaciones (dominios son más conocidos que URLs RSS específicas)
+ * - Permite web scraping posterior para descubrir RSS feeds reales
+ * - Información de grupo editorial útil para credibilidad
  *
  * @param city - Nombre de la ciudad/región española (ej: "Bilbao", "Comunidad Valenciana")
  * @returns Prompt estructurado para extracción de fuentes locales
@@ -49,27 +52,37 @@ FORMATO DE SALIDA (JSON estricto):
 [
   {
     "name": "Nombre del medio",
-    "url": "https://dominio.com/rss/portada.xml",
-    "reliability": "high|medium|low"
+    "domain": "https://www.levante-emv.com",
+    "media_group": "Prensa Ibérica",
+    "reliability": "high"
   }
 ]
 
-REGLAS DE URL:
-- URLs deben terminar en .xml, .rss O contener /feed/ o /rss/
-- Si no conoces la URL exacta del RSS, PREDICE basándote en patrones comunes:
-  - https://[dominio]/rss/
-  - https://[dominio]/feed/
-  - https://[dominio]/rss/portada.xml
-- Si un medio no tiene RSS conocido, OMÍTELO (no devuelvas URLs inventadas sin base)
+INSTRUCCIONES PARA CADA CAMPO:
+- "name": Nombre oficial del medio (ej: "Levante-EMV", "Las Provincias")
+- "domain": URL de la página principal (homepage limpia, sin rutas adicionales)
+  - Formato: https://www.[dominio].com
+  - NO inventes subdominios (solo el principal)
+  - Ejemplos válidos: "https://www.levante-emv.com", "https://www.eldiario.es"
+- "media_group": Grupo editorial al que pertenece (si lo conoces)
+  - Ejemplos: "Vocento", "Prensa Ibérica", "Prisa", "Godó", "Henneo", "Independent"
+  - Si no pertenece a un grupo conocido: "Independent"
+  - Si no estás seguro: "Unknown"
+- "reliability": Nivel de confiabilidad del medio
+  - "high": Periódicos consolidados (>10 años), grupo editorial reconocido
+  - "medium": Medios regionales con presencia digital (5-10 años)
+  - "low": Portales locales pequeños, blogs comunitarios
 
-CRITERIOS DE RELIABILITY:
-- "high": Periódicos digitales consolidados (>10 años), grupo editorial conocido
-- "medium": Medios regionales con presencia digital verificada (5-10 años)
-- "low": Portales locales pequeños, blogs de noticias comunitarios
+REGLAS ESTRICTAS:
+1. NO predecir URLs RSS - SOLO proporcionar el dominio principal
+2. NO inventar dominios - si no conoces el dominio exacto, OMITE ese medio
+3. Los dominios deben ser reales y verificables
+4. Priorizar medios con grupo editorial conocido (mayor credibilidad)
 
 IMPORTANTE:
 - Devolver SOLO el array JSON, SIN markdown (\`\`\`json), SIN explicaciones
 - Máximo 5 fuentes
-- Si no existen 5 medios fiables para ${city}, devuelve menos (mínimo 2)`;
+- Si no existen 5 medios fiables para ${city}, devuelve menos (mínimo 2)
+- Si no conoces ningún medio local fiable, devuelve array vacío: []`;
 }
 

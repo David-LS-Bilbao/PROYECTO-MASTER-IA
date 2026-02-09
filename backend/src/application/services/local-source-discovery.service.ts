@@ -12,38 +12,44 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import Parser from 'rss-parser';
 import { GeminiClient } from '../../infrastructure/external/gemini.client';
 
 /**
- * Source suggestion from AI
+ * Source suggestion from AI (Sprint 24.1 refactored)
+ * Now returns domain + media_group instead of RSS URL to reduce hallucinations
  */
 interface AISourceSuggestion {
   name: string;
-  url: string;
+  domain: string; // Homepage URL (e.g., "https://www.levante-emv.com")
+  media_group: string; // Editorial group (e.g., "Prensa Ibérica", "Independent")
   reliability: 'high' | 'medium' | 'low';
 }
 
 /**
- * Validation result for an RSS feed
+ * Sprint 24.2: Common RSS feed path patterns used by Spanish news sites
+ * Ordered by frequency (most common first)
  */
-interface ValidationResult {
-  url: string;
-  isValid: boolean;
-  error?: string;
-}
+const COMMON_RSS_PATHS = [
+  '/rss',
+  '/feed',
+  '/rss.xml',
+  '/feed.xml',
+  '/rss/portada',           // Common in custom CMS
+  '/rss/atom/portada',      // Vocento pattern
+  '/rss/section/portada',   // Prensa Ibérica pattern
+  '/feeds/rss',
+  '/rss/noticias',
+  '/atom.xml',
+];
 
 export class LocalSourceDiscoveryService {
-  private readonly rssParser: Parser;
-  private readonly VALIDATION_TIMEOUT = 5000; // 5 seconds
+  private readonly PROBE_TIMEOUT = 3000; // 3 seconds per probe
 
   constructor(
     private readonly prisma: PrismaClient,
     private readonly geminiClient: GeminiClient
   ) {
-    this.rssParser = new Parser({
-      timeout: this.VALIDATION_TIMEOUT,
-    });
+    // Sprint 24.2: RSS Smart Probing - discovers real RSS feeds from homepage domains
   }
 
   /**
@@ -102,13 +108,14 @@ export class LocalSourceDiscoveryService {
       suggestions = JSON.parse(cleanedResponse) as AISourceSuggestion[];
       console.log(`📋 [LocalSourceDiscovery] Parsed ${suggestions.length} source suggestions`);
 
-      // Validate structure
+      // Validate structure (Sprint 24.1: now checks domain + media_group)
       if (!Array.isArray(suggestions) || suggestions.length === 0) {
-        throw new Error('AI returned empty or invalid array');
+        console.warn(`⚠️ [LocalSourceDiscovery] AI returned empty array for "${city}"`);
+        return; // No sources found, exit gracefully
       }
 
       for (const suggestion of suggestions) {
-        if (!suggestion.name || !suggestion.url || !suggestion.reliability) {
+        if (!suggestion.name || !suggestion.domain || !suggestion.reliability) {
           throw new Error(`Invalid suggestion structure: ${JSON.stringify(suggestion)}`);
         }
       }
@@ -119,48 +126,35 @@ export class LocalSourceDiscoveryService {
     }
 
     // =====================================================================
-    // STEP 4: VALIDATION LOOP - Test each RSS feed URL
+    // STEP 4: RSS Smart Probing + Save to database
     // =====================================================================
-    console.log(`\n🔬 [LocalSourceDiscovery] Validating ${suggestions.length} suggested sources...`);
-
-    const validationResults: ValidationResult[] = [];
-
-    for (const suggestion of suggestions) {
-      const result = await this.validateRssFeed(suggestion.url, suggestion.name);
-      validationResults.push(result);
-
-      if (result.isValid) {
-        console.log(`   ✅ "${suggestion.name}": Valid (${suggestion.url.substring(0, 60)}...)`);
-      } else {
-        console.log(`   ❌ "${suggestion.name}": Dead Link (${result.error})`);
-      }
-    }
-
-    const validSources = suggestions.filter((_, index) => validationResults[index].isValid);
-    const deadLinks = suggestions.length - validSources.length;
-
-    console.log(`\n📊 [LocalSourceDiscovery] Validation results:`);
-    console.log(`   → AI suggested: ${suggestions.length} sources`);
-    console.log(`   → Valid RSS feeds: ${validSources.length}`);
-    console.log(`   → Dead links (skipped): ${deadLinks}`);
-
-    if (validSources.length === 0) {
-      console.warn(`⚠️ [LocalSourceDiscovery] No valid sources found for "${city}"`);
-      return;
-    }
-
-    // =====================================================================
-    // STEP 5: Save valid sources to database (UPSERT to avoid duplicates)
-    // =====================================================================
-    console.log(`\n💾 [LocalSourceDiscovery] Saving ${validSources.length} valid sources to database...`);
+    // Sprint 24.2: For each domain, try to discover the real RSS feed URL
+    // by testing common RSS path patterns. If found, store the RSS URL;
+    // otherwise, store the homepage domain as fallback.
+    console.log(`\n🔍 [LocalSourceDiscovery] Probing RSS feeds for ${suggestions.length} sources...`);
 
     let savedCount = 0;
     let skippedCount = 0;
+    let rssFoundCount = 0;
 
-    for (const source of validSources) {
+    for (const source of suggestions) {
       try {
+        // Probe for RSS feed
+        console.log(`   🔎 Probing "${source.name}" at ${source.domain}...`);
+        const rssUrl = await this.probeRssUrl(source.domain);
+
+        if (rssUrl) {
+          console.log(`      ✅ Found valid RSS: ${rssUrl}`);
+          rssFoundCount++;
+        } else {
+          console.log(`      ⚠️ No RSS found, using homepage as fallback`);
+        }
+
+        // Save to database (use RSS URL if found, otherwise homepage domain)
+        const urlToSave = rssUrl || source.domain;
+
         await this.prisma.source.upsert({
-          where: { url: source.url },
+          where: { url: urlToSave },
           update: {
             // If source exists, update metadata
             location: city,
@@ -169,7 +163,7 @@ export class LocalSourceDiscoveryService {
           },
           create: {
             name: source.name,
-            url: source.url,
+            url: urlToSave, // RSS URL if found, otherwise homepage domain
             category: 'local',
             location: city,
             reliability: source.reliability,
@@ -179,9 +173,8 @@ export class LocalSourceDiscoveryService {
           },
         });
         savedCount++;
-        console.log(`   ✅ Saved: "${source.name}"`);
       } catch (error) {
-        console.error(`   ❌ Failed to save "${source.name}":`, error);
+        console.error(`   ❌ Failed to process "${source.name}":`, error);
         skippedCount++;
       }
     }
@@ -189,61 +182,66 @@ export class LocalSourceDiscoveryService {
     console.log(`\n========================================`);
     console.log(`✅ [LocalSourceDiscovery] Discovery completed for "${city}"`);
     console.log(`   → AI suggested: ${suggestions.length} sources`);
-    console.log(`   → Valid feeds: ${validSources.length}`);
+    console.log(`   → RSS feeds discovered: ${rssFoundCount}/${suggestions.length}`);
     console.log(`   → Saved to DB: ${savedCount}`);
     console.log(`   → Errors: ${skippedCount}`);
+    if (savedCount > 0) {
+      console.log(`   📰 Sources: ${suggestions.slice(0, 3).map((s: AISourceSuggestion) => s.name).join(', ')}${suggestions.length > 3 ? '...' : ''}`);
+    }
     console.log(`========================================\n`);
   }
 
   /**
-   * Validate an RSS feed URL
+   * Sprint 24.2: RSS Smart Probing
    *
-   * Attempts to fetch and parse the RSS feed with a 5-second timeout.
-   * Returns validation result with error details if invalid.
+   * Discovers the real RSS feed URL from a homepage domain by testing
+   * common RSS path patterns used by Spanish news sites.
    *
-   * @param url - RSS feed URL to validate
-   * @param _name - Source name (for logging - unused but kept for clarity)
-   * @returns Validation result
+   * Strategy:
+   * 1. Try common RSS paths in order of frequency
+   * 2. Perform lightweight HEAD requests (3s timeout)
+   * 3. Check for 200 status + xml/rss content-type
+   * 4. Return first valid URL found, or null if all fail
+   *
+   * @param domain - Homepage URL (e.g., "https://www.levante-emv.com")
+   * @returns Valid RSS feed URL, or null if not found
    */
-  private async validateRssFeed(url: string, _name: string): Promise<ValidationResult> {
-    try {
-      // Create a timeout promise
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Validation timeout')), this.VALIDATION_TIMEOUT);
-      });
+  private async probeRssUrl(domain: string): Promise<string | null> {
+    // Normalize domain: remove trailing slash
+    const baseDomain = domain.endsWith('/') ? domain.slice(0, -1) : domain;
 
-      // Race between fetch and timeout
-      await Promise.race([
-        this.rssParser.parseURL(url),
-        timeoutPromise,
-      ]);
+    for (const path of COMMON_RSS_PATHS) {
+      const candidateUrl = `${baseDomain}${path}`;
 
-      return {
-        url,
-        isValid: true,
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      try {
+        // Create abort controller for timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), this.PROBE_TIMEOUT);
 
-      // Categorize error types
-      let friendlyError = errorMessage;
-      if (errorMessage.includes('404') || errorMessage.includes('Not Found')) {
-        friendlyError = '404 Not Found';
-      } else if (errorMessage.includes('timeout') || errorMessage.includes('ETIMEDOUT')) {
-        friendlyError = 'Timeout (5s)';
-      } else if (errorMessage.includes('ENOTFOUND') || errorMessage.includes('getaddrinfo')) {
-        friendlyError = 'Domain not found';
-      } else if (errorMessage.includes('403') || errorMessage.includes('Forbidden')) {
-        friendlyError = '403 Forbidden';
-      } else if (errorMessage.includes('500') || errorMessage.includes('Internal Server Error')) {
-        friendlyError = '500 Server Error';
+        // Perform HEAD request (lightweight, no body download)
+        const response = await fetch(candidateUrl, {
+          method: 'HEAD',
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; VerityNewsBot/1.0)',
+          },
+        });
+
+        clearTimeout(timeoutId);
+
+        // Check if response is valid RSS feed
+        const contentType = response.headers.get('content-type') || '';
+        const isRss = contentType.includes('xml') || contentType.includes('rss') || contentType.includes('atom');
+
+        if (response.ok && isRss) {
+          return candidateUrl; // Winner!
+        }
+      } catch (error) {
+        // Timeout or network error - continue to next pattern
+        continue;
       }
-
-      return {
-        url,
-        isValid: false,
-        error: friendlyError,
-      };
     }
+
+    return null; // No valid RSS feed found
   }
 }

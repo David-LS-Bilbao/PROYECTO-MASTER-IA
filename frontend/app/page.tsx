@@ -296,6 +296,12 @@ function HomeContent() {
         console.log('📥 [AUTO-RELOAD] Primera ingesta para topic:', topic);
       }
 
+      // Skip ingestion for special topics that don't have RSS feeds
+      if (topic === 'local' || topic === 'favorites') {
+        console.log(`⏭️ [AUTO-RELOAD] Skipping ingestion for special topic: ${topic}`);
+        return; // Exit early, these topics use search/favorites, not RSS
+      }
+
       try {
         const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
