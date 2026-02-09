@@ -58,6 +58,7 @@ export class UserController {
           name: user.name,
           picture: user.picture,
           plan: user.plan,
+          location: user.location || null, // Sprint 20: Geolocalización
           preferences: user.preferences || {},
           usageStats: user.usageStats || {
             articlesAnalyzed: 0,
@@ -84,27 +85,28 @@ export class UserController {
 
   /**
    * PATCH /api/user/me
-   * Update user profile (name and preferences)
+   * Update user profile (name, location, and preferences)
+   * Sprint 20: Added location support for geolocation features
    */
   async updateProfile(req: Request, res: Response): Promise<void> {
     try {
       const userId = req.user?.uid;
 
       if (!userId) {
-        res.status(401).json({ 
-          success: false, 
-          error: 'Usuario no autenticado' 
+        res.status(401).json({
+          success: false,
+          error: 'Usuario no autenticado'
         });
         return;
       }
 
-      const { name, preferences } = req.body;
+      const { name, location, preferences } = req.body;
 
       // Validar que al menos uno de los campos esté presente
-      if (name === undefined && preferences === undefined) {
-        res.status(400).json({ 
-          success: false, 
-          error: 'Debes proporcionar al menos un campo para actualizar (name o preferences)' 
+      if (name === undefined && location === undefined && preferences === undefined) {
+        res.status(400).json({
+          success: false,
+          error: 'Debes proporcionar al menos un campo para actualizar (name, location o preferences)'
         });
         return;
       }
@@ -115,6 +117,9 @@ export class UserController {
       const updateData: any = {};
       if (name !== undefined) {
         updateData.name = name;
+      }
+      if (location !== undefined) {
+        updateData.location = location; // Sprint 20: Geolocalización
       }
       if (preferences !== undefined) {
         updateData.preferences = preferences;
@@ -144,6 +149,7 @@ export class UserController {
           name: updatedUser.name,
           picture: updatedUser.picture,
           plan: updatedUser.plan,
+          location: updatedUser.location || null, // Sprint 20: Geolocalización
           preferences: updatedUser.preferences || {},
           usageStats: updatedUser.usageStats || {
             articlesAnalyzed: 0,

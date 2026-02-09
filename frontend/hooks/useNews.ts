@@ -4,6 +4,8 @@
  * PRIVACY FIX: Ahora pasa token de autenticacion para:
  * - Favoritos: Filtrado per-user (junction table)
  * - Noticias: Enriquecimiento con estado de favorito per-user
+ *
+ * SPRINT 22: Actualizado para aceptar cualquier topic (string) en lugar de string
  */
 
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
@@ -15,10 +17,9 @@ import {
   type NewsResponse,
 } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import type { CategoryId } from '@/components/category-pills';
 
 export interface UseNewsParams {
-  category?: CategoryId;
+  category?: string; // Sprint 22: Cambiado de string a string para soportar topics dinámicos
   limit?: number;
   offset?: number;
   refetchInterval?: number;
@@ -39,7 +40,7 @@ export function useNews(params: UseNewsParams = {}) {
     }
   }, [user, getToken]);
 
-  const staleTime = category === 'favorites' ? 2 * 60 * 1000 : undefined;
+  const staleTime = (category as string) === 'favorites' ? 2 * 60 * 1000 : undefined;
 
   return useQuery<NewsResponse>({
     queryKey: ['news', category, limit, offset],
@@ -51,7 +52,7 @@ export function useNews(params: UseNewsParams = {}) {
       const token = await getToken() || tokenRef.current || undefined;
 
       let result;
-      if (category === 'favorites') {
+      if ((category as string) === 'favorites') {
         console.log('[useNews] Fetching FAVORITES...');
         result = await fetchFavorites(limit, offset, token);
       } else if (category === 'general') {
@@ -85,7 +86,7 @@ export function usePrefetchNews() {
     queryClient.prefetchQuery({
       queryKey: ['news', category, limit, offset],
       queryFn: async () => {
-        if (category === 'favorites') {
+        if ((category as string) === 'favorites') {
           return fetchFavorites(limit, offset);
         } else if (category === 'general') {
           return fetchNews(limit, offset);
@@ -101,7 +102,7 @@ export function useInvalidateNews() {
   const queryClient = useQueryClient();
 
   return useCallback(
-    (category?: CategoryId, invalidateAll: boolean = false) => {
+    (category?: string, invalidateAll: boolean = false) => {
       if (invalidateAll) {
         console.log('[Cache] Invalidando TODAS las categorias');
         queryClient.invalidateQueries({ queryKey: ['news'] });
@@ -121,7 +122,7 @@ export function useNewsRefresh() {
   const queryClient = useQueryClient();
 
   return {
-    refresh: async (category?: CategoryId) => {
+    refresh: async (category?: string) => {
       if (category) {
         await queryClient.refetchQueries({
           queryKey: ['news', category],

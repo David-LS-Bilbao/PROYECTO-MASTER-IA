@@ -485,6 +485,7 @@ export interface UserProfile {
   name: string | null;
   picture: string | null;
   plan: 'FREE' | 'QUOTA' | 'PAY_AS_YOU_GO';
+  location: string | null; // Sprint 20: Geolocalización (ej: "Madrid, España")
   preferences: {
     categories?: string[];
     theme?: string;

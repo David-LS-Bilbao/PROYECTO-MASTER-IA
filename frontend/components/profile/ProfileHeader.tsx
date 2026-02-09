@@ -13,21 +13,25 @@ import { Badge } from '@/components/ui/badge';
 export interface ProfileHeaderProps {
   name: string;
   email: string;
+  location: string; // Sprint 20: Geolocalización
   photoURL?: string | null;
   displayName?: string | null;
   emailVerified: boolean;
   plan: 'FREE' | 'QUOTA' | 'PAY_AS_YOU_GO';
   onNameChange: (name: string) => void;
+  onLocationChange: (location: string) => void; // Sprint 20: Handler para location
 }
 
 export function ProfileHeader({
   name,
   email,
+  location,
   photoURL,
   displayName,
   emailVerified,
   plan,
   onNameChange,
+  onLocationChange,
 }: ProfileHeaderProps) {
   return (
     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
@@ -84,6 +88,20 @@ export function ProfileHeader({
               </Badge>
             )}
           </div>
+        </div>
+
+        {/* Sprint 20: Ubicación (Geolocalización) */}
+        <div>
+          <Label htmlFor="location" className="text-sm font-medium">
+            Ubicación (Ciudad, País)
+          </Label>
+          <Input
+            id="location"
+            value={location}
+            onChange={(e) => onLocationChange(e.target.value)}
+            placeholder="Ej: Madrid, España"
+            className="mt-1"
+          />
         </div>
       </div>
 

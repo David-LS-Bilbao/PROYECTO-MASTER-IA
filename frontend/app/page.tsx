@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useInView } from 'react-intersection-observer';
 import { useAuth } from '@/context/AuthContext';
@@ -11,7 +11,6 @@ import { SourcesDrawer } from '@/components/sources-drawer';
 import { GeneralChatDrawer } from '@/components/general-chat-drawer';
 import { SearchBar } from '@/components/search-bar';
 import { Badge } from '@/components/ui/badge';
-import { CategoryPills, type CategoryId, CATEGORIES } from '@/components/category-pills';
 import { DateSeparator } from '@/components/date-separator';
 import { ScrollToTop } from '@/components/ui/scroll-to-top';
 import { useNewsInfinite } from '@/hooks/useNewsInfinite';
@@ -80,11 +79,38 @@ function InfiniteScrollSentinel({ hasNextPage, isFetchingNextPage, fetchNextPage
   return <div ref={ref} className="h-20" />;
 }
 
-export default function Home() {
+/**
+ * Sprint 22: Map topic slugs to readable titles
+ * Returns a human-readable title for each topic
+ */
+function getTopicTitle(topic: string | null): string {
+  const titleMap: Record<string, string> = {
+    'general': 'Últimas Noticias',
+    'espana': 'Noticias de España',
+    'internacional': 'Noticias Internacionales',
+    'local': 'Actualidad Local',
+    'economia': 'Economía',
+    'ciencia-tecnologia': 'Ciencia y Tecnología',
+    'ciencia': 'Ciencia',
+    'tecnologia': 'Tecnología',
+    'entretenimiento': 'Entretenimiento',
+    'deportes': 'Deportes',
+    'salud': 'Salud',
+    'politica': 'Política',
+    'cultura': 'Cultura',
+    'favorites': 'Tus Favoritos',
+  };
+
+  return titleMap[topic || 'general'] || 'Últimas Noticias';
+}
+
+function HomeContent() {
   const { user, loading: authLoading } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const urlCategory = searchParams.get('category') as CategoryId | null;
+
+  // Sprint 22: Leer 'topic' en lugar de 'category' (conectado con Sidebar)
+  const urlTopic = searchParams.get('topic');
 
   // =========================================================================
   // UI STATE: Drawers (no server state)
@@ -93,15 +119,15 @@ export default function Home() {
   const [isSourcesOpen, setIsSourcesOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
 
-  // Category state (UI state, synced with URL)
-  const [category, setCategory] = useState<CategoryId>(() => {
-    const validCategories = CATEGORIES.map(c => c.id);
-    return urlCategory && validCategories.includes(urlCategory) ? urlCategory : 'general';
+  // Topic state (UI state, synced with URL)
+  // Si no hay topic en URL, mostrar 'general' (portada)
+  const [topic, setTopic] = useState<string>(() => {
+    return urlTopic || 'general';
   });
 
-  // Track if we're actively changing categories (for smooth UX without flashing old data)
-  const [isChangingCategory, setIsChangingCategory] = useState(false);
-  const previousCategoryRef = useRef<CategoryId>(category);
+  // Track if we're actively changing topics (for smooth UX without flashing old data)
+  const [isChangingTopic, setIsChangingTopic] = useState(false);
+  const previousTopicRef = useRef<string>(topic);
 
   // Sprint 16: Track si es la primera carga para evitar ingesta innecesaria
   const isFirstMount = useRef(true);
@@ -112,6 +138,7 @@ export default function Home() {
   // =========================================================================
   // REACT QUERY: Infinite Scroll con useInfiniteQuery
   // Sprint 20: Eliminamos paginación estática y usamos carga bajo demanda
+  // Sprint 22: Ahora usa 'topic' en lugar de 'category'
   // =========================================================================
   const {
     data,
@@ -123,7 +150,7 @@ export default function Home() {
     fetchNextPage,
     hasNextPage,
   } = useNewsInfinite({
-    category,
+    category: topic, // El hook todavía espera 'category', pero le pasamos 'topic'
     limit: 20, // Páginas de 20 artículos
   });
 
@@ -180,19 +207,18 @@ export default function Home() {
   }, [authLoading, user, router]);
 
   // =========================================================================
-  // SYNC: Categoría con URL (cuando cambia el search param externo)
-  // FIX: Manejar caso de 'general' donde urlCategory es null
+  // SYNC: Topic con URL (cuando cambia el search param externo desde Sidebar)
+  // Sprint 22: Ahora sincroniza con 'topic' en lugar de 'category'
   // =========================================================================
   useEffect(() => {
-    const validCategories = CATEGORIES.map(c => c.id);
-    const targetCategory = urlCategory && validCategories.includes(urlCategory) ? urlCategory : 'general';
-    
-    // Solo actualizar si la categoría cambió (evitar loops infinitos)
-    if (targetCategory !== category) {
-      console.log(`🔗 [URL SYNC] URL cambió: Actualizando category de "${category}" a "${targetCategory}"`);
-      setCategory(targetCategory);
+    const targetTopic = urlTopic || 'general';
+
+    // Solo actualizar si el topic cambió (evitar loops infinitos)
+    if (targetTopic !== topic) {
+      console.log(`🔗 [URL SYNC] URL cambió: Actualizando topic de "${topic}" a "${targetTopic}"`);
+      setTopic(targetTopic);
     }
-  }, [urlCategory, category]);
+  }, [urlTopic, topic]);
 
   // =========================================================================
   // SPRINT 16: Health Check del Backend (una sola vez al montar)
@@ -230,14 +256,15 @@ export default function Home() {
   // =========================================================================
   // FIX: Auto-Ingesta al RECARGAR página (F5) con TTL de 1 hora
   // Solo se ejecuta una vez al montar, usa localStorage para TTL
+  // Sprint 22: Actualizado para usar 'topic' en lugar de 'category'
   // =========================================================================
   useEffect(() => {
     // Solo ejecutar en primera carga (cuando isFirstMount es true)
     if (!isFirstMount.current) return;
 
     // Skip favoritos - no necesitan ingesta RSS
-    if (category === 'favorites') {
-      console.log('⭐ [AUTO-RELOAD] Categoría FAVORITOS: sin ingesta RSS');
+    if (topic === 'favorites') {
+      console.log('⭐ [AUTO-RELOAD] Topic FAVORITOS: sin ingesta RSS');
       return;
     }
 
@@ -249,7 +276,7 @@ export default function Home() {
 
     // Verificar TTL con localStorage
     const autoIngestWithTTL = async () => {
-      const storageKey = `last-ingest-${category}`;
+      const storageKey = `last-ingest-${topic}`;
       const lastIngestStr = localStorage.getItem(storageKey);
       const now = Date.now();
       const oneHour = 60 * 60 * 1000;
@@ -266,7 +293,7 @@ export default function Home() {
         }
         console.log(`🔄 [AUTO-RELOAD] Última ingesta hace ${minutesSince}min - Actualizando...`);
       } else {
-        console.log('📥 [AUTO-RELOAD] Primera ingesta para categoría:', category);
+        console.log('📥 [AUTO-RELOAD] Primera ingesta para topic:', topic);
       }
 
       try {
@@ -274,10 +301,10 @@ export default function Home() {
 
         const requestBody = {
           pageSize: 50,
-          category: category,
+          category: topic, // Backend espera 'category', pero le pasamos el topic
         };
 
-        console.log(`📡 [AUTO-RELOAD] POST /api/ingest/news (category: ${category})`);
+        console.log(`📡 [AUTO-RELOAD] POST /api/ingest/news (topic: ${topic})`);
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -299,7 +326,7 @@ export default function Home() {
           localStorage.setItem(storageKey, now.toString());
 
           // Invalidar cache para mostrar datos actualizados
-          invalidateNews(category);
+          invalidateNews(topic as any);
         } else {
           console.warn('⚠️ [AUTO-RELOAD] Error en ingesta:', response.status);
         }
@@ -314,36 +341,37 @@ export default function Home() {
     }, 500);
 
     return () => clearTimeout(timeoutId);
-  }, [category, isBackendAvailable, invalidateNews]); // Ejecutar cuando cambie la categoría inicial
+  }, [topic, isBackendAvailable, invalidateNews]); // Ejecutar cuando cambie el topic inicial
 
   // =========================================================================
-  // SPRINT 16: Auto-Ingesta al cambiar de categoría
+  // SPRINT 16: Auto-Ingesta al cambiar de topic
   // Dispara ingesta RSS + invalidación + refetch (como botón "Últimas noticias")
-  // Solo se ejecuta en cambios de categoría, NO en primera carga
+  // Solo se ejecuta en cambios de topic, NO en primera carga
+  // Sprint 22: Actualizado para usar 'topic' en lugar de 'category'
   // =========================================================================
   useEffect(() => {
-    // Skip primera carga - solo queremos ingesta en cambios de categoría
+    // Skip primera carga - solo queremos ingesta en cambios de topic
     if (isFirstMount.current) {
       isFirstMount.current = false;
-      console.log(`🚀 [AUTO-INGESTA] Primera carga de categoría: ${category} (sin ingesta)`);
+      console.log(`🚀 [AUTO-INGESTA] Primera carga de topic: ${topic} (sin ingesta)`);
       return;
     }
 
     // Skip favoritos - no necesitan ingesta RSS, solo invalidar para refetch
-    if (category === 'favorites') {
-      console.log('⭐ [AUTO-INGESTA] Categoría FAVORITOS: invalidando para refetch (sin ingesta RSS)');
-      invalidateNews(category);
+    if (topic === 'favorites') {
+      console.log('⭐ [AUTO-INGESTA] Topic FAVORITOS: invalidando para refetch (sin ingesta RSS)');
+      invalidateNews(topic as any);
       return;
     }
 
     // Skip si backend no está disponible - solo hacer refetch de BD
     if (!isBackendAvailable) {
       console.log('🔌 [AUTO-INGESTA] Backend no disponible - Solo refetch de BD');
-      invalidateNews(category);
+      invalidateNews(topic as any);
       return;
     }
 
-    // Debounce: Esperar 300ms para evitar múltiples ingestas rápidas al cambiar categorías
+    // Debounce: Esperar 300ms para evitar múltiples ingestas rápidas al cambiar topics
     const timeoutId = setTimeout(async () => {
       // =========================================================================
       // SMART INGESTION: Verificar TTL de 1 hora antes de disparar ingesta
@@ -364,7 +392,7 @@ export default function Home() {
         console.log(`   → Ahorro: ~50 artículos × análisis IA no procesados innecesariamente`);
         console.log(`   → Última noticia: "${latestArticle?.title?.substring(0, 60)}..."`);
         // Solo invalidar caché para refetch de BD, sin ingesta RSS
-        invalidateNews(category);
+        invalidateNews(topic as any);
         return;
       }
 
@@ -376,10 +404,10 @@ export default function Home() {
 
         const requestBody: any = {
           pageSize: 50, // Aumentado de 20 a 50 para mejor cobertura y más artículos frescos
-          category: category, // ✅ SIEMPRE enviar category, incluso si es 'general'
+          category: topic, // Backend espera 'category', pero le pasamos el topic
         };
 
-        // ✅ CAMBIO: 'general' ahora es una categoría INDEPENDIENTE (no un agregador)
+        // ✅ CAMBIO: 'general' ahora es un topic INDEPENDIENTE (no un agregador)
         // Se envía explícitamente para que backend filtre solo noticias de fuentes de portada
 
         // Fetch con timeout de 5 segundos para evitar hangs
@@ -407,14 +435,14 @@ export default function Home() {
             console.log('🔄 [SMART INGESTION] Artículos frescos ingresados - BD actualizada');
           }
 
-          // CRÍTICO: Invalidar TODAS las categorías, no solo la actual
+          // CRÍTICO: Invalidar TODOS los topics, no solo el actual
           // Razón: Una noticia puede aparecer en múltiples feeds RSS y actualizarse
-          // Ejemplo: Noticia de inflación aparece en "general" y "economía"
-          invalidateNews(category, true); // true = invalidateAll
+          // Ejemplo: Noticia de inflación aparece en "general" y "economia"
+          invalidateNews(topic as any, true); // true = invalidateAll
         } else {
           console.warn(`⚠️ [AUTO-INGESTA] Error HTTP ${response.status}:`, response.statusText);
-          // Aún así, invalidar todas las categorías por si hay cambios previos
-          invalidateNews(category, true);
+          // Aún así, invalidar todos los topics por si hay cambios previos
+          invalidateNews(topic as any, true);
         }
       } catch (error) {
         // Manejo de errores más específico
@@ -430,44 +458,27 @@ export default function Home() {
           console.warn('❌ [AUTO-INGESTA] Error desconocido:', error);
         }
 
-        // Siempre invalidar TODAS las categorías, incluso si falla ingesta
+        // Siempre invalidar TODOS los topics, incluso si falla ingesta
         // Esto asegura refetch de BD con los últimos datos disponibles
-        invalidateNews(category, true);
+        invalidateNews(topic as any, true);
       }
     }, 300); // Debounce de 300ms
 
     return () => clearTimeout(timeoutId);
-  }, [category, invalidateNews, isBackendAvailable]); // Ejecutar cada vez que cambia la categoría o disponibilidad del backend
+  }, [topic, invalidateNews, isBackendAvailable]); // Ejecutar cada vez que cambia el topic o disponibilidad del backend
 
   // =========================================================================
-  // HANDLER: Cambio de categoría (UI state + URL navigation)
-  // FIX: Smooth transition sin mostrar datos de categoría anterior
+  // Sprint 22: Ya no necesitamos handleCategoryChange - el Sidebar usa Links directos
+  // Detectar cuando termine el fetch del nuevo topic (para suavizar transiciones)
   // =========================================================================
-  const handleCategoryChange = (newCategory: CategoryId) => {
-    if (newCategory === category) return;
-
-    console.log(`🔄 [CATEGORY CHANGE] ${category} → ${newCategory}`);
-
-    // Marcar que estamos cambiando categoría (muestra loading, oculta datos viejos)
-    setIsChangingCategory(true);
-
-    // 1. PRIMERO actualizar URL (shallow replace, sin re-render completo)
-    const url = newCategory === 'general' ? '/' : `/?category=${newCategory}`;
-    router.replace(url, { scroll: false });
-
-    // 2. LUEGO actualizar estado local (esto dispara useNews y auto-ingesta)
-    setCategory(newCategory);
-  };
-
-  // Detectar cuando termine el fetch de la nueva categoría
   useEffect(() => {
-    if (isChangingCategory && !isLoading && !isFetching) {
+    if (isChangingTopic && !isLoading && !isFetching) {
       // Datos nuevos cargados, desactivar loading state
-      console.log('✅ [CATEGORY CHANGE] Datos nuevos cargados, ocultando loading');
-      setIsChangingCategory(false);
-      previousCategoryRef.current = category;
+      console.log('✅ [TOPIC CHANGE] Datos nuevos cargados, ocultando loading');
+      setIsChangingTopic(false);
+      previousTopicRef.current = topic;
     }
-  }, [isChangingCategory, isLoading, isFetching, category]);
+  }, [isChangingTopic, isLoading, isFetching, topic]);
 
   // =========================================================================
   // COMPUTED: Bias distribution (calculado desde newsData si existe)
@@ -628,38 +639,31 @@ export default function Home() {
             {!error && newsData && newsData.data.length === 0 && !isFetching && (
               <div className="max-w-2xl mx-auto text-center py-16">
                 <div className="text-6xl mb-4">
-                  {category === 'favorites' ? '❤️' : '📰'}
+                  {topic === 'favorites' ? '❤️' : '📰'}
                 </div>
                 <h2 className="text-2xl font-bold text-zinc-900 dark:text-white mb-2">
-                  {category === 'favorites'
+                  {topic === 'favorites'
                     ? 'No tienes favoritos todavía'
-                    : `No hay noticias en ${category}`}
+                    : `No hay noticias de ${getTopicTitle(topic)}`}
                 </h2>
                 <p className="text-muted-foreground mb-6">
-                  {category === 'favorites'
+                  {topic === 'favorites'
                     ? 'Marca noticias como favoritas para verlas aquí'
-                    : 'Prueba con otra categoría o espera a que se ingesten noticias'}
+                    : 'Prueba con otro tema o espera a que se ingesten noticias'}
                 </p>
               </div>
             )}
 
-            {/* Category Pills */}
-            <div className="max-w-7xl mx-auto mb-6">
-              <CategoryPills
-                selectedCategory={category}
-                onSelect={handleCategoryChange}
-                disabled={isFetching}
-              />
-            </div>
+            {/* Sprint 22: CategoryPills ELIMINADO - Navegación ahora en Sidebar */}
 
-            {/* Loading State - Carga inicial O cambio de categoría */}
-            {(isLoading || isChangingCategory) && (
+            {/* Loading State - Carga inicial O cambio de topic */}
+            {(isLoading || isChangingTopic) && (
               <div className="max-w-7xl mx-auto">
                 {/* Loading message */}
                 <div className="flex items-center justify-center gap-3 mb-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-3 border-blue-600 border-t-transparent"></div>
                   <p className="text-lg font-medium text-zinc-900 dark:text-white">
-                    {isChangingCategory ? 'Cargando noticias frescas...' : 'Cargando noticias...'}
+                    {isChangingTopic ? 'Cargando noticias frescas...' : 'Cargando noticias...'}
                   </p>
                 </div>
 
@@ -679,13 +683,13 @@ export default function Home() {
               </div>
             )}
 
-            {/* News Grid - Solo mostrar cuando NO estamos cambiando categoría */}
-            {!error && !isChangingCategory && newsData && newsData.data.length > 0 && (
+            {/* News Grid - Solo mostrar cuando NO estamos cambiando topic */}
+            {!error && !isChangingTopic && newsData && newsData.data.length > 0 && (
               <>
                 <div className="flex items-center justify-between mb-6 max-w-7xl mx-auto">
                   <div className="flex items-center gap-3">
                     <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">
-                      {category === 'favorites' ? 'Tus favoritos' : 'Últimas noticias'}
+                      {getTopicTitle(topic)}
                     </h2>
                     {/* Indicador discreto de refetch en background */}
                     {isFetching && (
@@ -743,5 +747,24 @@ export default function Home() {
         <ScrollToTop />
       </main>
     </div>
+  );
+}
+
+/**
+ * Page wrapper with Suspense boundary for useSearchParams()
+ * Next.js 13+ requires this to avoid SSR bailout warnings
+ */
+export default function Home() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-zinc-950">
+        <div className="flex flex-col items-center gap-3">
+          <div className="animate-spin rounded-full h-12 w-12 border-2 border-blue-600 border-t-transparent"></div>
+          <p className="text-sm text-muted-foreground">Cargando Verity News...</p>
+        </div>
+      </div>
+    }>
+      <HomeContent />
+    </Suspense>
   );
 }

@@ -22,7 +22,7 @@ import { PrismaClient } from '@prisma/client';
 // Increased from 5 to 30 to allow better coverage for dynamic categories like sports
 const MAX_ITEMS_PER_SOURCE = 30;
 
-// Valid categories (Spanish)
+// Valid categories (Spanish) - Sprint 22: Extended with new topics
 const VALID_CATEGORIES = [
   'general',
   'internacional',
@@ -32,6 +32,10 @@ const VALID_CATEGORIES = [
   'ciencia',
   'tecnologia',
   'cultura',
+  'salud',
+  'entretenimiento',
+  'espana',
+  'ciencia-tecnologia',
 ] as const;
 
 // English to Spanish category mapping for backwards compatibility
@@ -45,8 +49,30 @@ const CATEGORY_MAPPING: Record<string, string> = {
   general: 'general',
 };
 
+/**
+ * SPRINT 22 FIX: Topic-to-Query Mapping
+ * Maps topic slugs to specific search queries for better results from external API
+ * These queries are used when category-based search doesn't yield results
+ */
+const TOPIC_QUERIES: Record<string, string> = {
+  'ciencia-tecnologia': 'ciencia OR tecnología OR inteligencia artificial OR innovación',
+  'ciencia': 'ciencia OR investigación OR descubrimiento OR experimento',
+  'tecnologia': 'tecnología OR software OR hardware OR innovación OR digital',
+  'economia': 'economía OR finanzas OR mercado OR bolsa OR empresas',
+  'deportes': 'fútbol OR baloncesto OR deporte OR liga OR competición',
+  'salud': 'salud OR medicina OR bienestar OR hospital OR tratamiento',
+  'entretenimiento': 'cine OR música OR series OR cultura OR espectáculo',
+  'cultura': 'cultura OR arte OR literatura OR teatro OR música',
+  'internacional': 'internacional OR mundo OR guerra OR política exterior',
+  'espana': 'España OR gobierno OR elecciones OR nacional',
+  'politica': 'política OR gobierno OR partido OR elecciones',
+  'general': 'noticias OR actualidad OR España',
+  // 'local' se construye dinámicamente con la ubicación del usuario
+};
+
 export interface IngestNewsRequest {
   category?: string;
+  topicSlug?: string; // Sprint 23: Topic slug for categorization
   language?: string;
   query?: string;
   pageSize?: number;
@@ -80,14 +106,35 @@ export class IngestNewsUseCase {
       // Validate input
       this.validateRequest(request);
 
+      // SPRINT 23: Lookup Topic by slug if provided
+      let topicId: string | null = null;
+      if (request.topicSlug) {
+        const topic = await this.prisma.topic.findUnique({
+          where: { slug: request.topicSlug },
+          select: { id: true, name: true },
+        });
+
+        if (topic) {
+          topicId = topic.id;
+          console.log(`[IngestNewsUseCase] 📌 Topic found: "${topic.name}" (ID: ${topicId})`);
+        } else {
+          console.warn(`[IngestNewsUseCase] ⚠️ Topic slug "${request.topicSlug}" not found in database`);
+        }
+      }
+
       // Normalize category (map English to Spanish if needed)
       const normalizedCategory = this.normalizeCategory(request.category || request.query);
+
+      // SPRINT 22 FIX: Get smart query for topic if available
+      const searchQuery = this.getSmartQuery(request.category, request.query);
+
+      console.log(`[IngestNewsUseCase] 🔍 Fetching news for category="${request.category}" with query="${searchQuery}" topicId="${topicId || 'null'}"`);
 
       // Fetch from NewsAPI
       const result = await this.newsAPIClient.fetchTopHeadlines({
         category: request.category,
         language: request.language || 'es',
-        query: request.query,
+        query: searchQuery, // Use smart query instead of raw query
         pageSize: request.pageSize || 20,
         page: 1,
       });
@@ -144,6 +191,7 @@ export class IngestNewsUseCase {
             author: apiArticle.author,
             publishedAt: new Date(apiArticle.publishedAt),
             category: normalizedCategory, // Se actualizará si la noticia existe con otra categoría
+            topicId: topicId, // Sprint 23: Assign topic if topicSlug was provided
             language: request.language || 'es',
             embedding: null,
             summary: null,
@@ -223,6 +271,37 @@ export class IngestNewsUseCase {
     });
 
     return new Set(existingArticles.map(a => a.url));
+  }
+
+  /**
+   * SPRINT 22: Get smart search query for a topic
+   * Uses keyword mapping to improve search results from external API
+   *
+   * @param category - The category/topic slug
+   * @param fallbackQuery - Optional fallback query if topic not in dictionary
+   * @returns Smart query string with keywords, or fallback/undefined
+   */
+  private getSmartQuery(category: string | undefined, fallbackQuery: string | undefined): string | undefined {
+    if (!category) {
+      return fallbackQuery;
+    }
+
+    const lower = category.toLowerCase();
+
+    // Check if we have a smart query for this topic
+    if (TOPIC_QUERIES[lower]) {
+      console.log(`[IngestNewsUseCase] 💡 Using smart query for topic "${lower}": "${TOPIC_QUERIES[lower]}"`);
+      return TOPIC_QUERIES[lower];
+    }
+
+    // Fallback to provided query or undefined (will use category filter only)
+    if (fallbackQuery) {
+      console.log(`[IngestNewsUseCase] 📝 Using fallback query: "${fallbackQuery}"`);
+      return fallbackQuery;
+    }
+
+    console.log(`[IngestNewsUseCase] 🏷️ No smart query for "${lower}", using category filter only`);
+    return undefined;
   }
 
   /**

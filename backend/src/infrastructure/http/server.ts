@@ -11,6 +11,7 @@ import { createChatRoutes } from './routes/chat.routes';
 import { createSearchRoutes } from './routes/search.routes';
 import { createSourcesRoutes } from './routes/sources.routes';
 import { createUserRoutes } from './routes/user.routes';
+import { createTopicRoutes } from './routes/topic.routes';
 import { createHealthRoutes } from './routes/health.routes';
 import { errorHandler } from './middleware/error.handler';
 import { requestLogger } from './middleware/request.logger';
@@ -66,6 +67,7 @@ export function createServer(): Application {
   app.use('/api/search', createSearchRoutes(container.searchController));
   app.use('/api/sources', createSourcesRoutes(container.sourcesController));
   app.use('/api/user', createUserRoutes(container.userController));
+  app.use('/api/topics', createTopicRoutes(container.topicController));
 
   // 404 handler - Lanza error en lugar de enviar respuesta directa
   app.use((req: Request, _res: Response, next: NextFunction) => {

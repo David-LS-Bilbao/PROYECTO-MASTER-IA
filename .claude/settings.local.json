@@ -30,7 +30,11 @@
       "Bash(powershell -Command:*)",
       "Bash(taskkill:*)",
       "Bash(python -m json.tool:*)",
-      "Bash(npm start)"
+      "Bash(npm start)",
+      "Bash(npx prisma format:*)",
+      "Bash(npx prisma db seed:*)",
+      "Bash(npx prisma studio:*)",
+      "Bash(del:*)"
     ]
   }
 }

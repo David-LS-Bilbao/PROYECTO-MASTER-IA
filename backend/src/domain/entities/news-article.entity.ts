@@ -13,7 +13,8 @@ export interface NewsArticleProps {
   source: string;
   author: string | null;
   publishedAt: Date;
-  category: string | null;
+  category: string | null; // DEPRECATED: Use topicId (Sprint 23)
+  topicId: string | null; // Sprint 23: Foreign key to Topic table
   language: string;
   embedding: string | null;
   // AI Analysis fields
@@ -140,6 +141,10 @@ export class NewsArticle {
 
   get category(): string | null {
     return this.props.category;
+  }
+
+  get topicId(): string | null {
+    return this.props.topicId;
   }
 
   get language(): string {

@@ -35,9 +35,11 @@ export default function ProfilePage() {
   // Zustand Store - Gestión global de estado del formulario
   const {
     name,
+    location, // Sprint 20: Geolocalización
     selectedCategories,
     showTokenUsage,
     setName,
+    setLocation, // Sprint 20: Setter para location
     toggleCategory,
     toggleTokenUsage,
     setInitialState,
@@ -49,6 +51,7 @@ export default function ProfilePage() {
     if (profile) {
       setInitialState({
         name: profile.name,
+        location: profile.location, // Sprint 20: Sincronizar location
         preferences: profile.preferences,
       });
     }
@@ -136,11 +139,13 @@ export default function ProfilePage() {
                 <ProfileHeader
                   name={name}
                   email={profile.email}
+                  location={location} // Sprint 20: Geolocalización
                   photoURL={user.photoURL}
                   displayName={user.displayName}
                   emailVerified={user.emailVerified}
                   plan={profile.plan}
                   onNameChange={setName}
+                  onLocationChange={setLocation} // Sprint 20: Handler para location
                 />
               </CardContent>
             </Card>

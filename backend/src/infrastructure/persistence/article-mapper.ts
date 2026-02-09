@@ -24,6 +24,7 @@ export class ArticleMapper {
       author: prismaArticle.author,
       publishedAt: prismaArticle.publishedAt,
       category: prismaArticle.category,
+      topicId: prismaArticle.topicId, // Sprint 23: Topic relation
       language: prismaArticle.language,
       embedding: prismaArticle.embedding,
       summary: prismaArticle.summary,
@@ -64,6 +65,9 @@ export class ArticleMapper {
         author: article.author,
         category: article.category, // ✅ CRÍTICO: Actualizar categoría si la noticia aparece en otro feed
 
+        // Sprint 23: Update topic relation if provided
+        ...(article.topicId ? { topic: { connect: { id: article.topicId } } } : {}),
+
         // ✅ FIX Sprint 18: Actualizar análisis IA si el dominio entity lo tiene
         // El domain entity solo tiene análisis cuando se ejecuta analyze-article.usecase
         // Si viene de RSS ingestion, estos campos serán null
@@ -99,6 +103,9 @@ export class ArticleMapper {
         isFavorite: article.isFavorite,
         fetchedAt: article.fetchedAt,
         updatedAt: new Date(),
+
+        // Sprint 23: Connect to topic if provided
+        ...(article.topicId ? { topic: { connect: { id: article.topicId } } } : {}),
       },
     };
   }

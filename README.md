@@ -15,7 +15,9 @@ Verity News es una plataforma de análisis de credibilidad de noticias que combi
 - 💬 **Chat conversacional con RAG** y Google Search Grounding
 - 🔍 **Búsqueda semántica** con ChromaDB (embeddings vectoriales)
 - 📊 **Dashboard interactivo** con analytics y gestión de favoritos
-- 👤 **Perfiles de usuario** con preferencias personalizadas (Firebase Auth)
+- 👤 **Perfiles de usuario** con preferencias personalizadas y geolocalización (Firebase Auth)
+- 🌍 **8 categorías unificadas** con navegación inteligente y auto-fill automático
+- 🎯 **Smart Search** con keywords optimizados para mejores resultados
 - 💰 **Monitoreo de costes** con Token Taximeter en tiempo real
 - ✅ **328 tests** (100% cobertura crítica) con TDD y Mikado Method
 
@@ -228,12 +230,14 @@ curl http://localhost:3001/api/health/readiness
 
 ## 📖 Documentación
 
-- [� Estado del Proyecto](./ESTADO_PROYECTO.md) - Sprint 13.4 completado
+- [📋 Estado del Proyecto](./ESTADO_PROYECTO.md) - Sprint 22 completado
 - [🗺️ Estructura del Proyecto](./docs/ESTRUCTURA_PROYECTO.md) - Mapa completo
 - [🔬 Deuda Técnica Sprint 13](./docs/DEUDA_TECNICA_SPRINT_13.md) - Análisis + Plan Mikado
 - [✅ Estándares de Calidad](./docs/CALIDAD.md) - Coverage 100/80/0
 - [📝 Memoria TFM](./docs/MemoriaTFM.md) - Documentación académica
 - [🏗️ Diagramas](./docs/diagrams/) - Arquitectura, ER, secuencias
+- [🌍 Sprint 20: Geolocalización](./docs/sprints/Sprint-20-Geolocalizacion-Topics.md) - Topics + Location
+- [🎨 Sprint 22: UI Cleanup](./docs/sprints/Sprint-22-UI-Cleanup-Smart-Search.md) - Navegación + Keywords
 
 ---
 
@@ -380,18 +384,18 @@ Este proyecto demuestra la aplicación práctica de:
 
 ---
 
-**🚀 Proyecto activo - Sprint 13.4 completado - 85% de progreso**
+**🚀 Proyecto activo - Sprint 22 completado - 92% de progreso**
 
 ## 📊 Estado del Proyecto
 
-![Status](https://img.shields.io/badge/status-sprint%2013.4%20completado-success)
-![Progress](https://img.shields.io/badge/progress-85%25-green)
+![Status](https://img.shields.io/badge/status-sprint%2022%20completado-success)
+![Progress](https://img.shields.io/badge/progress-92%25-green)
 ![Tests](https://img.shields.io/badge/tests-328%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen)
 
-**Inicio:** Enero 2026  
-**Último Sprint:** 13.4 - Refactorización Frontend (Plan Mikado + TDD)  
-**Fecha:** 4 de febrero de 2026
+**Inicio:** Enero 2026
+**Último Sprint:** 22 - UI Cleanup + Smart Search con Keywords
+**Fecha:** 9 de febrero de 2026
 
 ### Métricas Actuales
 
@@ -440,10 +444,31 @@ Este proyecto demuestra la aplicación práctica de:
 - [x] **Sprint 13.3:** Refactorización Backend (TDD + SOLID)
 - [x] **Sprint 13.4:** Refactorización Frontend (Plan Mikado)
 
+### ✅ Fase 4: Optimización (Sprints 14-19)
+- [x] **Sprint 14:** Billing & Usage Limits (FREE, QUOTA, PAY-AS-YOU-GO)
+- [x] **Sprint 15:** Monitoring con Sentry + Distributed Tracing
+- [x] **Sprint 16:** UX Polish + Auto-refresh + Duplicados Fix
+- [x] **Sprint 17:** Cost Optimization (Global Cache + Smart TTL)
+- [x] **Sprint 18:** Privacy & Multi-user (Per-user favorites)
+- [x] **Sprint 18.2:** Analysis Privacy (Unlocked Analysis per user)
+- [x] **Sprint 18.3:** UX Enhancements (Artificial Reveal + Round Robin)
+- [x] **Sprint 19:** Legal Pages + A11y (WCAG 2.1 AA)
+
+### ✅ Fase 5: Geolocalización y UI Moderna (Sprints 20-22)
+- [x] **Sprint 20:** Geolocalización + Topics Unificados
+  - [x] Fase 1: Base de datos (User.location + Topic model)
+  - [x] Fase 2: Backend API (TopicRepository + Smart routing)
+  - [x] Fase 3: Frontend (Sidebar 8 categorías + Location field)
+- [x] **Sprint 22:** UI Cleanup + Smart Search
+  - [x] Eliminación de CategoryPills (navegación unificada)
+  - [x] Títulos dinámicos por categoría
+  - [x] Auto-fill de categorías vacías
+  - [x] TOPIC_QUERIES con keywords optimizados
+
 ### 🚀 Próximos Pasos
-- [ ] **Sprint 14:** Deploy en producción (Vercel + Railway)
-- [ ] **Sprint 15:** Optimización de rendimiento (Lighthouse 90+)
-- [ ] **Sprint 16:** Documentación final del TFM
+- [ ] **Sprint 23:** Optimización de caché y performance monitoring
+- [ ] **Sprint 24:** Deploy final en producción (Vercel + Railway)
+- [ ] **Sprint 25:** Documentación final del TFM + Presentación
 
 ---
 

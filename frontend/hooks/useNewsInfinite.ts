@@ -5,6 +5,8 @@
  * - Usa useInfiniteQuery para cargar páginas bajo demanda
  * - Compatible con autenticación per-user (favoritos)
  * - Integración con react-intersection-observer
+ *
+ * SPRINT 22: Actualizado para aceptar cualquier topic (string) en lugar de CategoryId
  */
 
 import { useInfiniteQuery } from '@tanstack/react-query';
@@ -16,10 +18,9 @@ import {
   type NewsResponse,
 } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import type { CategoryId } from '@/components/category-pills';
 
 export interface UseNewsInfiniteParams {
-  category?: CategoryId;
+  category?: string; // Sprint 22: Cambiado de CategoryId a string para soportar topics dinámicos
   limit?: number;
 }
 
@@ -38,7 +39,7 @@ export function useNewsInfinite(params: UseNewsInfiniteParams = {}) {
     }
   }, [user, getToken]);
 
-  const staleTime = category === 'favorites' ? 2 * 60 * 1000 : undefined;
+  const staleTime = (category as string) === 'favorites' ? 2 * 60 * 1000 : undefined;
 
   return useInfiniteQuery<NewsResponse>({
     queryKey: ['news-infinite', category, limit],
@@ -52,7 +53,7 @@ export function useNewsInfinite(params: UseNewsInfiniteParams = {}) {
       const token = await getToken() || tokenRef.current || undefined;
 
       let result;
-      if (category === 'favorites') {
+      if ((category as string) === 'favorites') {
         result = await fetchFavorites(limit, offset, token);
       } else if (category === 'general') {
         result = await fetchNews(limit, offset, token);

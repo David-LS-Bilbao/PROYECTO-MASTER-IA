@@ -22,6 +22,15 @@ export const ingestNewsSchema = z.object({
     .optional()
     .describe('News category to fetch'),
 
+  // Sprint 23: Topic slug for categorization
+  topicSlug: z
+    .string()
+    .min(1)
+    .max(100)
+    .regex(/^[a-z0-9-]+$/, 'Topic slug must be lowercase alphanumeric with hyphens')
+    .optional()
+    .describe('Topic slug (e.g., "ciencia-tecnologia") - assigns articles to this topic'),
+
   language: z
     .string()
     .length(2)

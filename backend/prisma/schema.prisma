@@ -2,7 +2,7 @@
 // Database: PostgreSQL
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
   previewFeatures = ["fullTextSearchPostgres"]
 }
 
@@ -21,15 +21,16 @@ enum UserPlan {
 }
 
 model User {
-  id            String    @id  // Firebase UID como ID primario
-  email         String    @unique
-  name          String?
-  picture       String?
-  plan          UserPlan  @default(FREE)
-  preferences   Json?     // User preferences (theme, notifications, etc.)
-  usageStats    Json?     // Usage tracking (queries, chats, analyses)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id          String   @id // Firebase UID como ID primario
+  email       String   @unique
+  name        String?
+  picture     String?
+  plan        UserPlan @default(FREE)
+  location    String? // Sprint 20: Geolocalización (ej: "Madrid, España")
+  preferences Json? // User preferences (theme, notifications, etc.)
+  usageStats  Json? // Usage tracking (queries, chats, analyses)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   // Relations
   favorites     Favorite[]
@@ -44,41 +45,46 @@ model User {
 // ==========================================
 
 model Article {
-  id            String    @id @default(uuid())
-  title         String
-  description   String?
-  content       String?   @db.Text
-  url           String    @unique
-  urlToImage    String?
-  source        String
-  author        String?
-  publishedAt   DateTime
-  category      String?
-  language      String    @default("es")
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  content     String?  @db.Text
+  url         String   @unique
+  urlToImage  String?
+  source      String
+  author      String?
+  publishedAt DateTime
+  category    String? // DEPRECATED: Usar topicId en su lugar (Sprint 23)
+  language    String   @default("es")
+
+  // Sprint 23: Topic Relation (replaces category string)
+  topicId String? // Foreign key to Topic
+  topic   Topic?  @relation(fields: [topicId], references: [id], onDelete: SetNull)
 
   // RAG fields
-  embedding     String?   @db.Text  // JSON string of vector embedding
+  embedding String? @db.Text // JSON string of vector embedding
 
   // AI Analysis fields
-  summary       String?   @db.Text  // AI-generated summary
-  biasScore     Float?              // Bias score from 0 (neutral) to 1 (highly biased)
-  analysis      String?   @db.Text  // JSON string with detailed analysis
-  analyzedAt    DateTime?           // When the article was analyzed
-  internalReasoning String? @db.Text // Chain-of-Thought for XAI auditing (NOT sent to client)
+  summary           String?   @db.Text // AI-generated summary
+  biasScore         Float? // Bias score from 0 (neutral) to 1 (highly biased)
+  analysis          String?   @db.Text // JSON string with detailed analysis
+  analyzedAt        DateTime? // When the article was analyzed
+  internalReasoning String?   @db.Text // Chain-of-Thought for XAI auditing (NOT sent to client)
 
   // User features
-  isFavorite    Boolean   @default(false)  // Quick favorite toggle (no auth for MVP)
+  isFavorite Boolean @default(false) // Quick favorite toggle (no auth for MVP)
 
   // Metadata
-  fetchedAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  fetchedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  favorites     Favorite[]
+  favorites Favorite[]
 
   @@index([publishedAt])
   @@index([source])
   @@index([category])
+  @@index([topicId]) // Sprint 23: Index for topic filtering
   @@index([analyzedAt])
   @@map("articles")
 }
@@ -88,9 +94,9 @@ model Article {
 // ==========================================
 
 model Favorite {
-  userId      String
-  articleId   String
-  createdAt   DateTime  @default(now())
+  userId    String
+  articleId String
+  createdAt DateTime @default(now())
 
   // PRIVACY FIX (Sprint 18.2): Distinguish "Like" from "Analysis Unlocked"
   // - false: User only liked (❤️) the article (no analysis access)
@@ -98,10 +104,10 @@ model Favorite {
   unlockedAnalysis Boolean @default(false)
 
   // Relations
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  article     Article   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
 
-  @@id([userId, articleId])  // Clave primaria compuesta
+  @@id([userId, articleId]) // Clave primaria compuesta
   @@map("favorites")
 }
 
@@ -110,15 +116,15 @@ model Favorite {
 // ==========================================
 
 model SearchHistory {
-  id          String    @id @default(uuid())
-  userId      String
-  query       String
-  filters     String?   @db.Text  // JSON string with filters applied
+  id           String   @id @default(uuid())
+  userId       String
+  query        String
+  filters      String?  @db.Text // JSON string with filters applied
   resultsCount Int      @default(0)
-  createdAt   DateTime  @default(now())
+  createdAt    DateTime @default(now())
 
   // Relations
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([createdAt])
@@ -130,29 +136,29 @@ model SearchHistory {
 // ==========================================
 
 model Chat {
-  id          String    @id @default(uuid())
-  userId      String
-  title       String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id        String   @id @default(uuid())
+  userId    String
+  title     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages    Message[]
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages Message[]
 
   @@map("chats")
 }
 
 model Message {
-  id          String    @id @default(uuid())
-  chatId      String
-  role        String    // 'user' | 'assistant' | 'system'
-  content     String    @db.Text
-  sources     String?   @db.Text  // JSON array with source articles
-  createdAt   DateTime  @default(now())
+  id        String   @id @default(uuid())
+  chatId    String
+  role      String // 'user' | 'assistant' | 'system'
+  content   String   @db.Text
+  sources   String?  @db.Text // JSON array with source articles
+  createdAt DateTime @default(now())
 
   // Relations
-  chat        Chat      @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
 
   @@index([chatId])
   @@map("messages")
@@ -163,12 +169,26 @@ model Message {
 // ==========================================
 
 model IngestMetadata {
-  id          String    @id @default(uuid())
-  source      String    // 'newsapi' | 'google-news'
-  lastFetch   DateTime
-  articlesCount Int     @default(0)
-  status      String    // 'success' | 'error'
-  errorMessage String?  @db.Text
+  id            String   @id @default(uuid())
+  source        String // 'newsapi' | 'google-news'
+  lastFetch     DateTime
+  articlesCount Int      @default(0)
+  status        String // 'success' | 'error'
+  errorMessage  String?  @db.Text
 
   @@map("ingest_metadata")
+}
+
+model Topic {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  description String?
+  order       Int?
+  createdAt   DateTime @default(now())
+
+  // Relations
+  articles Article[] // Sprint 23: Articles belong to topics
+
+  @@map("topics")
 }

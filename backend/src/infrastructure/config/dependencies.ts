@@ -14,6 +14,7 @@ import { MetadataExtractor } from '../external/metadata-extractor';
 import { ChromaClient } from '../external/chroma.client';
 import { TokenTaximeter } from '../monitoring/token-taximeter';
 import { PrismaNewsArticleRepository } from '../persistence/prisma-news-article.repository';
+import { PrismaTopicRepository } from '../persistence/prisma-topic.repository';
 import { IngestNewsUseCase } from '../../application/use-cases/ingest-news.usecase';
 import { AnalyzeArticleUseCase } from '../../application/use-cases/analyze-article.usecase';
 import { ChatArticleUseCase } from '../../application/use-cases/chat-article.usecase';
@@ -28,6 +29,7 @@ import { ChatController } from '../http/controllers/chat.controller';
 import { SearchController } from '../http/controllers/search.controller';
 import { SourcesController } from '../http/controllers/sources.controller';
 import { UserController } from '../http/controllers/user.controller';
+import { TopicController } from '../http/controllers/topic.controller';
 import { HealthController } from '../http/controllers/health.controller';
 import { QuotaResetJob } from '../jobs/quota-reset.job';
 import { CleanupNewsJob } from '../jobs/cleanup-news.job';
@@ -39,6 +41,7 @@ export class DependencyContainer {
   public readonly chromaClient: ChromaClient;
   public readonly geminiClient: GeminiClient;
   public readonly newsRepository: PrismaNewsArticleRepository;
+  public readonly topicRepository: PrismaTopicRepository;
   public readonly ingestController: IngestController;
   public readonly analyzeController: AnalyzeController;
   public readonly newsController: NewsController;
@@ -46,6 +49,7 @@ export class DependencyContainer {
   public readonly searchController: SearchController;
   public readonly sourcesController: SourcesController;
   public readonly userController: UserController;
+  public readonly topicController: TopicController;
   public readonly healthController: HealthController;
   public readonly quotaResetJob: QuotaResetJob;
   public readonly cleanupNewsJob: CleanupNewsJob;
@@ -71,6 +75,7 @@ export class DependencyContainer {
     const metadataExtractor = new MetadataExtractor();
     this.chromaClient = new ChromaClient();
     this.newsRepository = new PrismaNewsArticleRepository(this.prisma);
+    this.topicRepository = new PrismaTopicRepository(this.prisma);
 
     // Domain Services
     const quotaService = new QuotaService();
@@ -122,6 +127,7 @@ export class DependencyContainer {
     this.chatController = new ChatController(chatArticleUseCase, chatGeneralUseCase);
     this.searchController = new SearchController(searchNewsUseCase);
     this.userController = new UserController(this.geminiClient);
+    this.topicController = new TopicController(this.topicRepository);
     this.sourcesController = new SourcesController(this.geminiClient);
     this.healthController = new HealthController(this.prisma);
 

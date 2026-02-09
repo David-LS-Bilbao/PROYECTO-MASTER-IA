@@ -26,6 +26,7 @@ export class ProfileAPIError extends Error {
 
 export interface UpdateProfileDTO {
   name?: string;
+  location?: string; // Sprint 20: Geolocalización
   preferences?: {
     categories?: string[];
     theme?: string;
@@ -57,7 +58,8 @@ export async function getUserProfile(token: string): Promise<UserProfile> {
 }
 
 /**
- * Actualizar perfil del usuario (nombre y preferencias)
+ * Actualizar perfil del usuario (nombre, ubicación y preferencias)
+ * Sprint 20: Añadido soporte para location
  * @throws ProfileAPIError en fallos HTTP
  */
 export async function updateUserProfile(

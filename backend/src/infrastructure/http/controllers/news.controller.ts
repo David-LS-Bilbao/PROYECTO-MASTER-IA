@@ -11,6 +11,7 @@ import { INewsArticleRepository } from '../../../domain/repositories/news-articl
 import { ToggleFavoriteUseCase } from '../../../application/use-cases/toggle-favorite.usecase';
 import { IngestNewsUseCase } from '../../../application/use-cases/ingest-news.usecase';
 import { NewsArticle } from '../../../domain/entities/news-article.entity';
+import { getPrismaClient } from '../../persistence/prisma.client';
 
 /**
  * Transform domain article to HTTP response format
@@ -62,12 +63,14 @@ export class NewsController {
    * GET /api/news
    * Get all news with pagination and optional filters.
    * Uses optionalAuthenticate: if user is authenticated, enriches with per-user favorites.
+   *
+   * Sprint 20: Smart topic handling for geolocation and unified categories
    */
   async getNews(req: Request, res: Response): Promise<void> {
     try {
       const limit = Number(req.query.limit) || 20;
       const offset = Number(req.query.offset) || 0;
-      const category = req.query.category as string | undefined;
+      let category = req.query.category as string | undefined;
       const onlyFavorites = req.query.favorite === 'true';
 
       // Per-user favorites require authentication
@@ -81,14 +84,224 @@ export class NewsController {
         return;
       }
 
+      // =========================================================================
+      // SPRINT 20: SMART TOPIC HANDLING - GEOLOCATION & UNIFIED CATEGORIES
+      // =========================================================================
+
+      // SPECIAL CASE 1: 'local' topic requires user location
+      if (category === 'local') {
+        if (!userId) {
+          res.status(401).json({
+            success: false,
+            error: 'Debes iniciar sesión para ver noticias locales',
+          });
+          return;
+        }
+
+        // Get user's location from database
+        const prisma = getPrismaClient();
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { location: true },
+        });
+
+        if (!user || !user.location) {
+          res.status(400).json({
+            success: false,
+            error: 'Debes configurar tu ubicación en el perfil para ver noticias locales',
+            hint: 'Actualiza tu perfil en /api/user/me con el campo "location"',
+          });
+          return;
+        }
+
+        // Use location-based search (delegate to searchArticles with location as query)
+        console.log(`[NewsController.getNews] 📍 Local news requested for location: ${user.location}`);
+        const localNews = await this.repository.searchArticles(user.location, limit, userId);
+
+        // If no results, suggest fallback
+        if (localNews.length === 0) {
+          res.json({
+            success: true,
+            data: [],
+            pagination: { total: 0, limit, offset, hasMore: false },
+            meta: {
+              message: `No hay noticias recientes sobre ${user.location}. Intenta con una búsqueda manual.`,
+            },
+          });
+          return;
+        }
+
+        // Mask analysis for articles user hasn't unlocked
+        let unlockedIds = new Set<string>();
+        const articleIds = localNews.map(a => a.id);
+        unlockedIds = await this.repository.getUserUnlockedArticleIds(userId, articleIds);
+
+        const data = localNews.map(article => {
+          const shouldMask = !unlockedIds.has(article.id);
+          return toHttpResponse(article, shouldMask);
+        });
+
+        res.json({
+          success: true,
+          data,
+          pagination: {
+            total: localNews.length,
+            limit,
+            offset,
+            hasMore: false,
+          },
+          meta: {
+            location: user.location,
+            message: `Noticias locales para ${user.location}`,
+          },
+        });
+        return;
+      }
+
+      // SPECIAL CASE 2: 'ciencia-tecnologia' topic (unified category)
+      // Search for both 'ciencia' AND 'tecnologia' articles
+      if (category === 'ciencia-tecnologia') {
+        // Normalize to search both categories (will be handled by repository if supported)
+        // For now, we'll search for 'ciencia' and 'tecnologia' separately and merge
+        let cienciaNews = await this.repository.findAll({
+          limit: Math.ceil(limit / 2),
+          offset: Math.floor(offset / 2),
+          category: 'ciencia',
+          onlyFavorites,
+          userId,
+        });
+
+        let tecnologiaNews = await this.repository.findAll({
+          limit: Math.ceil(limit / 2),
+          offset: Math.floor(offset / 2),
+          category: 'tecnologia',
+          onlyFavorites,
+          userId,
+        });
+
+        // Sprint 22 FIX: Auto-fill if both categories are empty
+        if (cienciaNews.length === 0 && tecnologiaNews.length === 0 && !onlyFavorites && offset === 0) {
+          console.log(`[NewsController.getNews] 📭 Ciencia-Tecnologia categories empty - triggering auto-ingestion`);
+
+          try {
+            // Ingest both categories in parallel
+            await Promise.all([
+              this.ingestNewsUseCase.execute({ category: 'ciencia', pageSize: 15, language: 'es' }),
+              this.ingestNewsUseCase.execute({ category: 'tecnologia', pageSize: 15, language: 'es' }),
+            ]);
+
+            console.log(`[NewsController.getNews] ✅ Auto-ingestion completed for ciencia-tecnologia`);
+
+            // Re-query both categories
+            cienciaNews = await this.repository.findAll({
+              limit: Math.ceil(limit / 2),
+              offset: Math.floor(offset / 2),
+              category: 'ciencia',
+              onlyFavorites,
+              userId,
+            });
+
+            tecnologiaNews = await this.repository.findAll({
+              limit: Math.ceil(limit / 2),
+              offset: Math.floor(offset / 2),
+              category: 'tecnologia',
+              onlyFavorites,
+              userId,
+            });
+
+            console.log(`[NewsController.getNews] 📰 Re-queried: ${cienciaNews.length} ciencia + ${tecnologiaNews.length} tecnologia`);
+          } catch (ingestionError) {
+            console.error(`[NewsController.getNews] ❌ Auto-ingestion failed for ciencia-tecnologia:`, ingestionError);
+          }
+        }
+
+        // Merge and interleave results
+        const mergedNews: NewsArticle[] = [];
+        const maxLength = Math.max(cienciaNews.length, tecnologiaNews.length);
+        for (let i = 0; i < maxLength; i++) {
+          if (i < cienciaNews.length) mergedNews.push(cienciaNews[i]);
+          if (i < tecnologiaNews.length) mergedNews.push(tecnologiaNews[i]);
+          if (mergedNews.length >= limit) break;
+        }
+
+        const news = mergedNews.slice(0, limit);
+
+        // Get total count (sum of both categories)
+        const cienciaCount = await this.repository.countFiltered({ category: 'ciencia', onlyFavorites, userId });
+        const tecnologiaCount = await this.repository.countFiltered({ category: 'tecnologia', onlyFavorites, userId });
+        const total = cienciaCount + tecnologiaCount;
+
+        // Mask analysis for articles user hasn't unlocked
+        let unlockedIds = new Set<string>();
+        if (userId) {
+          const articleIds = news.map(a => a.id);
+          unlockedIds = await this.repository.getUserUnlockedArticleIds(userId, articleIds);
+        }
+
+        const data = news.map(article => {
+          const shouldMask = !unlockedIds.has(article.id);
+          return toHttpResponse(article, shouldMask);
+        });
+
+        res.json({
+          success: true,
+          data,
+          pagination: {
+            total,
+            limit,
+            offset,
+            hasMore: offset + news.length < total,
+          },
+          meta: {
+            message: 'Noticias de Ciencia y Tecnología',
+          },
+        });
+        return;
+      }
+
+      // NORMAL CASE: Standard category or no category
       // Fetch articles with per-user favorite enrichment
-      const news = await this.repository.findAll({
+      let news = await this.repository.findAll({
         limit,
         offset,
         category,
         onlyFavorites,
         userId,
       });
+
+      // =========================================================================
+      // SPRINT 22 FIX: AUTO-FILL EMPTY CATEGORIES
+      // If category is specified but DB is empty, trigger automatic ingestion
+      // =========================================================================
+      if (news.length === 0 && category && !onlyFavorites && offset === 0) {
+        console.log(`[NewsController.getNews] 📭 Category "${category}" is empty - triggering auto-ingestion`);
+
+        try {
+          // Trigger ingestion for this category
+          const ingestionResult = await this.ingestNewsUseCase.execute({
+            category,
+            pageSize: 30, // Fetch 30 articles to populate category
+            language: 'es',
+          });
+
+          console.log(`[NewsController.getNews] ✅ Auto-ingestion completed: ${ingestionResult.newArticles} new articles`);
+
+          // Re-query the database after ingestion
+          if (ingestionResult.newArticles > 0) {
+            news = await this.repository.findAll({
+              limit,
+              offset,
+              category,
+              onlyFavorites,
+              userId,
+            });
+            console.log(`[NewsController.getNews] 📰 Re-queried DB: Found ${news.length} articles`);
+          }
+        } catch (ingestionError) {
+          // Log error but don't break the request - return empty array with helpful message
+          console.error(`[NewsController.getNews] ❌ Auto-ingestion failed:`, ingestionError);
+        }
+      }
 
       // Get count for pagination
       const total = category || onlyFavorites
