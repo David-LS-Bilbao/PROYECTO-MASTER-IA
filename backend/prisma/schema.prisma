@@ -179,6 +179,23 @@ model IngestMetadata {
   @@map("ingest_metadata")
 }
 
+// Sprint 24: RSS Source Discovery for Local News
+model Source {
+  id          String   @id @default(uuid())
+  name        String // Name of the news outlet (e.g., "El Diario Vasco")
+  url         String   @unique // RSS feed URL
+  category    String // 'local' | 'general' | 'deportes' | etc.
+  location    String? // City/region for local sources (e.g., "Bilbao")
+  reliability String // 'high' | 'medium' | 'low' (AI-assessed reliability)
+  isActive    Boolean  @default(true) // Can be disabled if feed fails repeatedly
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([location])
+  @@index([category])
+  @@map("sources")
+}
+
 model Topic {
   id          String   @id @default(uuid())
   name        String

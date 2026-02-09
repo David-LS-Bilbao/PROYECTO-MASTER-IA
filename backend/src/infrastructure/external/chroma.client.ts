@@ -27,20 +27,32 @@ interface ChromaMetadata {
 export class ChromaClient implements IChromaClient {
   private readonly client: ChromaSDK;
   private collection: Collection | null = null;
-  private readonly url: string;
+  private readonly parsedUrl: URL;
 
   constructor(url?: string) {
-    this.url = url || process.env.CHROMA_DB_URL || 'http://localhost:8000';
+    const rawUrl = url || process.env.CHROMA_DB_URL || 'http://localhost:8000';
 
-    if (!this.url) {
+    if (!rawUrl) {
       throw new ConfigurationError('CHROMA_DB_URL is required');
     }
 
+    // Parse URL robustly using native URL class (RFC 3986 compliant)
+    try {
+      this.parsedUrl = new URL(rawUrl);
+    } catch (error) {
+      throw new ConfigurationError(
+        `Invalid ChromaDB URL: "${rawUrl}". Expected format: http(s)://host:port`
+      );
+    }
+
+    // Initialize ChromaSDK with validated URL
+    // ChromaDB SDK v3.2.2 uses 'path' parameter (full URL as string)
+    // Future versions may require separate 'host' and 'port' parameters
     this.client = new ChromaSDK({
-      path: this.url,
+      path: this.parsedUrl.origin, // Use origin (protocol + hostname + port)
     });
 
-    console.log(`[ChromaClient] Configurado para conectar a: ${this.url}`);
+    console.log(`[ChromaClient] Configurado para conectar a: ${this.parsedUrl.origin}`);
   }
 
   /**

@@ -708,6 +708,57 @@ export class GeminiClient implements IGeminiClient {
   }
 
   /**
+   * Sprint 24: Descubre fuentes de noticias locales para una ciudad usando Gemini
+   *
+   * @param city Nombre de la ciudad (e.g., "Bilbao", "Valencia")
+   * @returns JSON string con array de fuentes sugeridas
+   */
+  async discoverLocalSources(city: string): Promise<string> {
+    logger.info(
+      { cityLength: city.length },
+      'Starting local sources discovery'
+    );
+
+    // Usar el prompt de discovery de fuentes locales
+    const { buildLocationSourcesPrompt } = await import('./prompts/rss-discovery.prompt');
+    const prompt = buildLocationSourcesPrompt(city);
+
+    try {
+      // RESILIENCIA: executeWithRetry maneja reintentos automáticos
+      const result = await this.executeWithRetry(async () => {
+        // 🔍 Sprint 24: Custom Span for Local Source Discovery
+        return await Sentry.startSpan(
+          {
+            name: 'gemini.discover_local_sources',
+            op: 'ai.generation',
+            attributes: {
+              'ai.model': 'gemini-2.5-flash',
+              'ai.operation': 'local_source_discovery',
+              'location': city,
+            },
+          },
+          async () => {
+            const response = await this.model.generateContent(prompt);
+            return response.response.text().trim();
+          }
+        );
+      }, 2, 500); // 2 reintentos, 500ms delay
+
+      logger.info(
+        { responseLength: result.length },
+        'Local sources discovery completed'
+      );
+      return result;
+    } catch (error) {
+      logger.error(
+        { errorCode: (error as any)?.code },
+        'Error during local sources discovery'
+      );
+      throw error;
+    }
+  }
+
+  /**
    * Obtiene el reporte de costes acumulados de la sesión
    */
   getSessionCostReport() {

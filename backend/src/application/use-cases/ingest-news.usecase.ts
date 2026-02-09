@@ -12,6 +12,7 @@
  */
 
 import { randomUUID } from 'crypto';
+import Parser from 'rss-parser';
 import { INewsAPIClient } from '../../domain/services/news-api-client.interface';
 import { INewsArticleRepository } from '../../domain/repositories/news-article.repository';
 import { NewsArticle } from '../../domain/entities/news-article.entity';
@@ -36,6 +37,7 @@ const VALID_CATEGORIES = [
   'entretenimiento',
   'espana',
   'ciencia-tecnologia',
+  'local',
 ] as const;
 
 // English to Spanish category mapping for backwards compatibility
@@ -89,11 +91,18 @@ export interface IngestNewsResponse {
 }
 
 export class IngestNewsUseCase {
+  private readonly rssParser: Parser;
+
   constructor(
     private readonly newsAPIClient: INewsAPIClient,
     private readonly articleRepository: INewsArticleRepository,
-    private readonly prisma: PrismaClient
-  ) {}
+    private readonly prisma: PrismaClient,
+    private readonly localNewsClient?: INewsAPIClient, // Google News RSS for local city-based ingestion
+    private readonly localSourceDiscoveryService?: any // Sprint 24: AI-powered local source discovery
+  ) {
+    // Sprint 24: RSS parser for direct local source ingestion
+    this.rssParser = new Parser({ timeout: 10000 });
+  }
 
   async execute(request: IngestNewsRequest): Promise<IngestNewsResponse> {
     const startTime = new Date();
@@ -125,25 +134,92 @@ export class IngestNewsUseCase {
       // Normalize category (map English to Spanish if needed)
       const normalizedCategory = this.normalizeCategory(request.category || request.query);
 
-      // SPRINT 22 FIX: Get smart query for topic if available
-      const searchQuery = this.getSmartQuery(request.category, request.query);
+      // Sprint 24: AI-powered local source discovery & multi-source ingestion
+      const isLocalCategory = request.category?.toLowerCase() === 'local';
+      let allArticles: any[] = [];
 
-      console.log(`[IngestNewsUseCase] 🔍 Fetching news for category="${request.category}" with query="${searchQuery}" topicId="${topicId || 'null'}"`);
+      if (isLocalCategory && request.query) {
+        // STEP 1: Discover local sources (if not already in DB)
+        if (this.localSourceDiscoveryService) {
+          try {
+            console.log(`[IngestNewsUseCase] 🔍 Discovering local sources for "${request.query}"...`);
+            await this.localSourceDiscoveryService.discoverAndSave(request.query);
+          } catch (error) {
+            console.error(`[IngestNewsUseCase] ⚠️ Source discovery failed for "${request.query}":`, error);
+            // Continue with ingestion even if discovery fails
+          }
+        }
 
-      // Fetch from NewsAPI
-      const result = await this.newsAPIClient.fetchTopHeadlines({
-        category: request.category,
-        language: request.language || 'es',
-        query: searchQuery, // Use smart query instead of raw query
-        pageSize: request.pageSize || 20,
-        page: 1,
-      });
+        // STEP 2: Fetch discovered sources from DB
+        const localSources = await this.prisma.source.findMany({
+          where: {
+            location: request.query,
+            isActive: true,
+          },
+        });
+
+        console.log(`[IngestNewsUseCase] 📰 Found ${localSources.length} local sources for "${request.query}"`);
+
+        // STEP 3: Multi-source RSS ingestion (fetch from each discovered source)
+        if (localSources.length > 0) {
+          console.log(`[IngestNewsUseCase] 📡 Fetching from local RSS sources...`);
+
+          const fetchPromises = localSources.map((source) =>
+            this.fetchFromLocalSource(source.url, source.name)
+          );
+
+          const sourcesResults = await Promise.all(fetchPromises);
+          const localArticles = sourcesResults.flat();
+
+          console.log(`[IngestNewsUseCase] ✅ Fetched ${localArticles.length} articles from ${localSources.length} local sources`);
+
+          // Add local source articles to the pool
+          allArticles.push(...localArticles);
+        } else {
+          console.log(`[IngestNewsUseCase] ⚠️ No local sources found, falling back to Google News RSS`);
+        }
+
+        // STEP 4: Hybrid approach - also fetch from Google News RSS for broader coverage
+        if (this.localNewsClient) {
+          try {
+            console.log(`[IngestNewsUseCase] 🌐 Fetching additional articles from Google News RSS...`);
+            const googleResult = await this.localNewsClient.fetchTopHeadlines({
+              category: request.category,
+              language: request.language || 'es',
+              query: request.query,
+              pageSize: request.pageSize || 20,
+              page: 1,
+            });
+
+            console.log(`[IngestNewsUseCase] ✅ Fetched ${googleResult.articles.length} articles from Google News`);
+            allArticles.push(...googleResult.articles);
+          } catch (error) {
+            console.error(`[IngestNewsUseCase] ⚠️ Google News RSS fetch failed:`, error);
+          }
+        }
+      } else {
+        // Non-local categories: use standard flow
+        const activeClient = this.newsAPIClient;
+        const searchQuery = this.getSmartQuery(request.category, request.query);
+
+        console.log(`[IngestNewsUseCase] 🔍 Fetching news: category="${request.category}" query="${searchQuery}" client="Primary" topicId="${topicId || 'null'}"`);
+
+        const result = await activeClient.fetchTopHeadlines({
+          category: request.category,
+          language: request.language || 'es',
+          query: searchQuery,
+          pageSize: request.pageSize || 20,
+          page: 1,
+        });
+
+        allArticles = result.articles;
+      }
 
       // OPTIMIZATION: Limit to MAX_ITEMS_PER_SOURCE to reduce database load
-      const limitedArticles = result.articles.slice(0, MAX_ITEMS_PER_SOURCE);
+      const limitedArticles = allArticles.slice(0, MAX_ITEMS_PER_SOURCE);
       totalFetched = limitedArticles.length;
 
-      console.log(`📥 Ingesta: Recibidos ${result.articles.length} artículos, procesando ${totalFetched} (límite: ${MAX_ITEMS_PER_SOURCE})`);
+      console.log(`📥 Ingesta: Recibidos ${allArticles.length} artículos, procesando ${totalFetched} (límite: ${MAX_ITEMS_PER_SOURCE})`);
 
       if (totalFetched === 0) {
         return this.createResponse(
@@ -225,8 +301,9 @@ export class IngestNewsUseCase {
       }
 
       // Record ingestion metadata
+      const sourceName = isLocalCategory ? 'google-news-local' : 'newsapi';
       await this.recordIngestionMetadata(
-        'newsapi',
+        sourceName,
         newArticles,
         errors > 0 ? 'partial_success' : 'success',
         errors > 0 ? `${errors} articles failed to process` : null
@@ -238,7 +315,7 @@ export class IngestNewsUseCase {
         newArticles,
         duplicates,
         errors,
-        'newsapi',
+        sourceName,
         startTime
       );
     } catch (error) {
@@ -350,6 +427,36 @@ export class IngestNewsUseCase {
       throw new ValidationError(
         `category must be one of: ${VALID_CATEGORIES.join(', ')}`
       );
+    }
+  }
+
+  /**
+   * Sprint 24: Fetch and parse articles from a local RSS source
+   * Transforms RSS items to NewsAPIArticle format for uniform processing
+   */
+  private async fetchFromLocalSource(
+    sourceUrl: string,
+    sourceName: string
+  ): Promise<any[]> {
+    try {
+      const feed = await this.rssParser.parseURL(sourceUrl);
+
+      return (feed.items || []).map((item: any) => ({
+        title: item.title || 'Sin título',
+        description: item.contentSnippet || item.description || null,
+        content: item.content || item.contentSnippet || null,
+        url: item.link || sourceUrl,
+        urlToImage: item.enclosure?.url || null,
+        source: {
+          id: sourceName.toLowerCase().replace(/\s+/g, '-'),
+          name: sourceName,
+        },
+        author: item.creator || item.author || null,
+        publishedAt: item.isoDate || item.pubDate || new Date().toISOString(),
+      }));
+    } catch (error) {
+      console.error(`[IngestNewsUseCase] ⚠️ Failed to fetch from "${sourceName}" (${sourceUrl}):`, error);
+      return []; // Return empty array on failure, don't break entire ingestion
     }
   }
 

@@ -18,6 +18,7 @@ const validCategories = [
   'entretenimiento',
   'espana',
   'ciencia-tecnologia',
+  'local',
 ] as const;
 
 export const ingestNewsSchema = z.object({

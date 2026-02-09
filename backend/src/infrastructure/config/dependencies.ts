@@ -22,6 +22,7 @@ import { ChatGeneralUseCase } from '../../application/use-cases/chat-general.use
 import { SearchNewsUseCase } from '../../application/use-cases/search-news.usecase';
 import { ToggleFavoriteUseCase } from '../../application/use-cases/toggle-favorite.usecase';
 import { QuotaService } from '../../domain/services/quota.service';
+import { LocalSourceDiscoveryService } from '../../application/services/local-source-discovery.service';
 import { IngestController } from '../http/controllers/ingest.controller';
 import { AnalyzeController } from '../http/controllers/analyze.controller';
 import { NewsController } from '../http/controllers/news.controller';
@@ -68,6 +69,9 @@ export class DependencyContainer {
         ? new GoogleNewsRssClient()
         : new DirectSpanishRssClient(); // Default: Direct Spanish RSS
 
+    // Sprint 24: Dedicated Google News client for local city-based ingestion
+    const googleNewsClient = new GoogleNewsRssClient();
+
     // BLOQUEANTE #2: TokenTaximeter ahora se inyecta (DI Pattern)
     const tokenTaximeter = new TokenTaximeter();
     this.geminiClient = new GeminiClient(process.env.GEMINI_API_KEY || '', tokenTaximeter);
@@ -80,11 +84,19 @@ export class DependencyContainer {
     // Domain Services
     const quotaService = new QuotaService();
 
+    // Sprint 24: Local Source Discovery Service (AI-powered RSS discovery)
+    const localSourceDiscoveryService = new LocalSourceDiscoveryService(
+      this.prisma,
+      this.geminiClient
+    );
+
     // Application Layer
     const ingestNewsUseCase = new IngestNewsUseCase(
       newsAPIClient,
       this.newsRepository,
-      this.prisma
+      this.prisma,
+      googleNewsClient, // Sprint 24: Google News RSS for local city-based ingestion
+      localSourceDiscoveryService // Sprint 24: AI-powered local source discovery
     );
 
     const analyzeArticleUseCase = new AnalyzeArticleUseCase(
