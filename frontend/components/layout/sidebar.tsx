@@ -89,9 +89,20 @@ export function Sidebar({ onOpenDashboard, onOpenSources, onOpenChat }: SidebarP
     
     // 2. Invalidar Y refetch SOLO de la categoría actual
     console.log(`🗑️ [REFRESH] Invalidando queries de categoría: ${currentCategory}`);
-    await queryClient.invalidateQueries({ 
-      queryKey: ['news', currentCategory],
-      exact: false,
+
+    // FIX: Invalidar AMBOS tipos de queries (useNews y useNewsInfinite)
+    // - ['news-infinite', category, limit] → useNewsInfinite (página principal)
+    // - ['news', category, limit, offset] → useNews (legacy/otros componentes)
+    await queryClient.invalidateQueries({
+      predicate: (query) => {
+        const [base, cat] = query.queryKey;
+        const isNewsQuery = base === 'news' || base === 'news-infinite';
+        const matchesCategory = cat === currentCategory;
+
+        console.log(`🔍 [REFRESH] Evaluating query: ${JSON.stringify(query.queryKey)} → ${isNewsQuery && matchesCategory ? 'INVALIDATE' : 'SKIP'}`);
+
+        return isNewsQuery && matchesCategory;
+      },
       refetchType: 'active',
     });
     

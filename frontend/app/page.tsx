@@ -99,6 +99,10 @@ export default function Home() {
     return urlCategory && validCategories.includes(urlCategory) ? urlCategory : 'general';
   });
 
+  // Track if we're actively changing categories (for smooth UX without flashing old data)
+  const [isChangingCategory, setIsChangingCategory] = useState(false);
+  const previousCategoryRef = useRef<CategoryId>(category);
+
   // Sprint 16: Track si es la primera carga para evitar ingesta innecesaria
   const isFirstMount = useRef(true);
 
@@ -222,6 +226,95 @@ export default function Home() {
 
     checkBackendHealth();
   }, []); // Solo ejecutar una vez al montar
+
+  // =========================================================================
+  // FIX: Auto-Ingesta al RECARGAR página (F5) con TTL de 1 hora
+  // Solo se ejecuta una vez al montar, usa localStorage para TTL
+  // =========================================================================
+  useEffect(() => {
+    // Solo ejecutar en primera carga (cuando isFirstMount es true)
+    if (!isFirstMount.current) return;
+
+    // Skip favoritos - no necesitan ingesta RSS
+    if (category === 'favorites') {
+      console.log('⭐ [AUTO-RELOAD] Categoría FAVORITOS: sin ingesta RSS');
+      return;
+    }
+
+    // Skip si backend no disponible
+    if (!isBackendAvailable) {
+      console.log('🔌 [AUTO-RELOAD] Backend no disponible - Sin ingesta');
+      return;
+    }
+
+    // Verificar TTL con localStorage
+    const autoIngestWithTTL = async () => {
+      const storageKey = `last-ingest-${category}`;
+      const lastIngestStr = localStorage.getItem(storageKey);
+      const now = Date.now();
+      const oneHour = 60 * 60 * 1000;
+
+      // Si existe timestamp y no ha pasado 1 hora, saltar
+      if (lastIngestStr) {
+        const lastIngest = parseInt(lastIngestStr, 10);
+        const timeSinceIngest = now - lastIngest;
+        const minutesSince = Math.round(timeSinceIngest / (60 * 1000));
+
+        if (timeSinceIngest < oneHour) {
+          console.log(`💰 [AUTO-RELOAD] Última ingesta hace ${minutesSince}min - SALTANDO (TTL: 60min)`);
+          return;
+        }
+        console.log(`🔄 [AUTO-RELOAD] Última ingesta hace ${minutesSince}min - Actualizando...`);
+      } else {
+        console.log('📥 [AUTO-RELOAD] Primera ingesta para categoría:', category);
+      }
+
+      try {
+        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+
+        const requestBody = {
+          pageSize: 50,
+          category: category,
+        };
+
+        console.log(`📡 [AUTO-RELOAD] POST /api/ingest/news (category: ${category})`);
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+        const response = await fetch(`${API_BASE_URL}/api/ingest/news`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log('✅ [AUTO-RELOAD] Ingesta completada:', data.data?.newArticles || 0, 'nuevos artículos');
+
+          // Guardar timestamp de última ingesta
+          localStorage.setItem(storageKey, now.toString());
+
+          // Invalidar cache para mostrar datos actualizados
+          invalidateNews(category);
+        } else {
+          console.warn('⚠️ [AUTO-RELOAD] Error en ingesta:', response.status);
+        }
+      } catch (error) {
+        console.error('❌ [AUTO-RELOAD] Error:', error);
+      }
+    };
+
+    // Delay de 500ms para que el health check termine primero
+    const timeoutId = setTimeout(() => {
+      autoIngestWithTTL();
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [category, isBackendAvailable, invalidateNews]); // Ejecutar cuando cambie la categoría inicial
 
   // =========================================================================
   // SPRINT 16: Auto-Ingesta al cambiar de categoría
@@ -348,21 +441,33 @@ export default function Home() {
 
   // =========================================================================
   // HANDLER: Cambio de categoría (UI state + URL navigation)
-  // Sprint 16 FIX: Usar router.replace para evitar re-renders que causan doble fetch
+  // FIX: Smooth transition sin mostrar datos de categoría anterior
   // =========================================================================
   const handleCategoryChange = (newCategory: CategoryId) => {
     if (newCategory === category) return;
 
     console.log(`🔄 [CATEGORY CHANGE] ${category} → ${newCategory}`);
 
+    // Marcar que estamos cambiando categoría (muestra loading, oculta datos viejos)
+    setIsChangingCategory(true);
+
     // 1. PRIMERO actualizar URL (shallow replace, sin re-render completo)
     const url = newCategory === 'general' ? '/' : `/?category=${newCategory}`;
     router.replace(url, { scroll: false });
 
     // 2. LUEGO actualizar estado local (esto dispara useNews y auto-ingesta)
-    // El useEffect de sync se ejecutará DESPUÉS y verá que category ya está actualizado
     setCategory(newCategory);
   };
+
+  // Detectar cuando termine el fetch de la nueva categoría
+  useEffect(() => {
+    if (isChangingCategory && !isLoading && !isFetching) {
+      // Datos nuevos cargados, desactivar loading state
+      console.log('✅ [CATEGORY CHANGE] Datos nuevos cargados, ocultando loading');
+      setIsChangingCategory(false);
+      previousCategoryRef.current = category;
+    }
+  }, [isChangingCategory, isLoading, isFetching, category]);
 
   // =========================================================================
   // COMPUTED: Bias distribution (calculado desde newsData si existe)
@@ -547,9 +652,18 @@ export default function Home() {
               />
             </div>
 
-            {/* Loading State - Solo mostrar en carga inicial (sin datos en caché) */}
-            {isLoading && !newsData && (
+            {/* Loading State - Carga inicial O cambio de categoría */}
+            {(isLoading || isChangingCategory) && (
               <div className="max-w-7xl mx-auto">
+                {/* Loading message */}
+                <div className="flex items-center justify-center gap-3 mb-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-3 border-blue-600 border-t-transparent"></div>
+                  <p className="text-lg font-medium text-zinc-900 dark:text-white">
+                    {isChangingCategory ? 'Cargando noticias frescas...' : 'Cargando noticias...'}
+                  </p>
+                </div>
+
+                {/* Skeleton cards */}
                 <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                   {[...Array(6)].map((_, i) => (
                     <div key={i} className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden animate-pulse">
@@ -565,8 +679,8 @@ export default function Home() {
               </div>
             )}
 
-            {/* News Grid - Mostrar mientras haya datos (viejos o nuevos) */}
-            {!error && newsData && newsData.data.length > 0 && (
+            {/* News Grid - Solo mostrar cuando NO estamos cambiando categoría */}
+            {!error && !isChangingCategory && newsData && newsData.data.length > 0 && (
               <>
                 <div className="flex items-center justify-between mb-6 max-w-7xl mx-auto">
                   <div className="flex items-center gap-3">

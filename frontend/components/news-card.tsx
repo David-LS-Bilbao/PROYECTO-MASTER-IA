@@ -55,6 +55,25 @@ function formatDate(dateString: string): string {
   });
 }
 
+/**
+ * Check if URL is a video (not an image)
+ * Prevents Next.js Image Optimization warnings for video URLs
+ */
+function isVideoUrl(url: string): boolean {
+  const videoPatterns = [
+    'youtube.com/embed',
+    'youtu.be/',
+    '.mp4',
+    '.webm',
+    '.ogg',
+    '.mov',
+    'vimeo.com',
+    'dailymotion.com',
+  ];
+
+  return videoPatterns.some(pattern => url.includes(pattern));
+}
+
 export function NewsCard({ article, onFavoriteToggle }: NewsCardProps) {
   const { getToken } = useAuth();
   const router = useRouter();
@@ -133,8 +152,8 @@ export function NewsCard({ article, onFavoriteToggle }: NewsCardProps) {
         />
       </Button>
 
-      {/* Clickable Image */}
-      {article.urlToImage && (
+      {/* Clickable Image (skip videos to prevent Next.js optimization warnings) */}
+      {article.urlToImage && !isVideoUrl(article.urlToImage) && (
         <Link href={`/news/${article.id}`} className="block relative h-48 w-full overflow-hidden">
           <Image
             src={article.urlToImage}
