@@ -1,30 +1,63 @@
 /**
  * Ingest Routes
+ *
+ * SECURITY:
+ * - Global ingestion (/all) is heavily rate-limited (5 req/hour in prod)
+ * - Category ingestion (/news) has moderate rate limiting (30 req/15min in prod)
+ * - Status checks (/status) are leniently limited (60 req/min)
  */
 
 import { Router } from 'express';
 import { IngestController } from '../controllers/ingest.controller';
+import {
+  globalIngestRateLimiter,
+  categoryIngestRateLimiter,
+  statusCheckRateLimiter,
+} from '../middleware/rate-limit.middleware';
 
 export function createIngestRoutes(ingestController: IngestController): Router {
   const router = Router();
 
   /**
    * POST /api/ingest/news
-   * Trigger manual news ingestion
+   * Trigger manual news ingestion for a specific category
+   *
+   * Rate Limit: 30 requests per 15 minutes (production)
    */
-  router.post('/news', (req, res) => ingestController.ingestNews(req, res));
+  router.post(
+    '/news',
+    categoryIngestRateLimiter, // Apply moderate rate limiting
+    (req, res) => ingestController.ingestNews(req, res)
+  );
 
   /**
    * POST /api/ingest/all
    * Trigger global ingestion for ALL categories
+   *
+   * Rate Limit: 5 requests per hour (production) - STRICT
+   *
+   * WARNING: This endpoint is resource-intensive:
+   * - Processes 8+ categories in parallel
+   * - Makes 200+ HTTP requests to RSS feeds
+   * - Consumes 50K+ Gemini tokens (~€0.50 per request)
    */
-  router.post('/all', (req, res) => ingestController.ingestAllNews(req, res));
+  router.post(
+    '/all',
+    globalIngestRateLimiter, // Apply strict rate limiting (CRITICAL)
+    (req, res) => ingestController.ingestAllNews(req, res)
+  );
 
   /**
    * GET /api/ingest/status
    * Get last ingestion status
+   *
+   * Rate Limit: 60 requests per minute (lenient)
    */
-  router.get('/status', (req, res) => ingestController.getIngestionStatus(req, res));
+  router.get(
+    '/status',
+    statusCheckRateLimiter, // Apply lenient rate limiting
+    (req, res) => ingestController.getIngestionStatus(req, res)
+  );
 
   return router;
 }

@@ -13,6 +13,8 @@
 
 import { PrismaClient } from '@prisma/client';
 import { GeminiClient } from '../../infrastructure/external/gemini.client';
+import { UrlValidator } from '../../shared/utils/url-validator';
+import { SecurityError } from '../../domain/errors/domain.error';
 
 /**
  * Source suggestion from AI (Sprint 24.1 refactored)
@@ -192,31 +194,63 @@ export class LocalSourceDiscoveryService {
   }
 
   /**
-   * Sprint 24.2: RSS Smart Probing
+   * Sprint 24.2: RSS Smart Probing (SSRF Protected)
    *
    * Discovers the real RSS feed URL from a homepage domain by testing
    * common RSS path patterns used by Spanish news sites.
    *
    * Strategy:
-   * 1. Try common RSS paths in order of frequency
-   * 2. Perform lightweight HEAD requests (3s timeout)
-   * 3. Check for 200 status + xml/rss content-type
-   * 4. Return first valid URL found, or null if all fail
+   * 1. Validate base domain for SSRF protection (NEW)
+   * 2. Try common RSS paths in order of frequency
+   * 3. Validate each candidate URL before fetch (SSRF protection)
+   * 4. Perform lightweight HEAD requests (3s timeout)
+   * 5. Check for 200 status + xml/rss content-type
+   * 6. Return first valid URL found, or null if all fail
+   *
+   * Security:
+   * - SSRF Protection via UrlValidator (blocks private IPs, localhost, metadata services)
+   * - DNS lookup to resolve actual IP before fetch
+   * - Blocks access to 10.x.x.x, 192.168.x.x, 127.x.x.x, 169.254.x.x, and IPv6 loopback
    *
    * @param domain - Homepage URL (e.g., "https://www.levante-emv.com")
    * @returns Valid RSS feed URL, or null if not found
    */
   private async probeRssUrl(domain: string): Promise<string | null> {
+    // SSRF PROTECTION: Validate base domain before probing
+    try {
+      await UrlValidator.validate(domain);
+    } catch (error) {
+      if (error instanceof SecurityError) {
+        console.warn(`[SECURITY] 🛡️ Blocked unsafe domain in RSS probing: ${domain}`);
+        console.warn(`   Reason: ${error.message}`);
+        return null; // Skip this domain entirely
+      }
+      // Other errors (DNS failures, etc.) - log and skip
+      console.warn(`[RSS Probe] ⚠️ Failed to validate domain ${domain}:`, error);
+      return null;
+    }
+
     // Normalize domain: remove trailing slash
     const baseDomain = domain.endsWith('/') ? domain.slice(0, -1) : domain;
 
     for (const path of COMMON_RSS_PATHS) {
       const candidateUrl = `${baseDomain}${path}`;
+      let timeoutId: NodeJS.Timeout | null = null;
 
       try {
+        // SSRF PROTECTION: Validate candidate URL before fetch
+        // Quick check first (no DNS lookup, faster)
+        if (!UrlValidator.quickCheck(candidateUrl)) {
+          console.warn(`[SECURITY] 🛡️ Quick check blocked: ${candidateUrl}`);
+          continue;
+        }
+
+        // Full validation with DNS lookup (async, slower but more secure)
+        await UrlValidator.validate(candidateUrl);
+
         // Create abort controller for timeout
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.PROBE_TIMEOUT);
+        timeoutId = setTimeout(() => controller.abort(), this.PROBE_TIMEOUT);
 
         // Perform HEAD request (lightweight, no body download)
         const response = await fetch(candidateUrl, {
@@ -227,8 +261,6 @@ export class LocalSourceDiscoveryService {
           },
         });
 
-        clearTimeout(timeoutId);
-
         // Check if response is valid RSS feed
         const contentType = response.headers.get('content-type') || '';
         const isRss = contentType.includes('xml') || contentType.includes('rss') || contentType.includes('atom');
@@ -237,8 +269,20 @@ export class LocalSourceDiscoveryService {
           return candidateUrl; // Winner!
         }
       } catch (error) {
+        // Handle SSRF blocks gracefully
+        if (error instanceof SecurityError) {
+          console.warn(`[SECURITY] 🛡️ Blocked SSRF attempt: ${candidateUrl}`);
+          console.warn(`   Reason: ${error.message}`);
+          continue; // Skip to next pattern
+        }
+
         // Timeout or network error - continue to next pattern
         continue;
+      } finally {
+        // Always clear timeout (prevents memory leak)
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
       }
     }
 

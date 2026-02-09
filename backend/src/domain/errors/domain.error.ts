@@ -78,3 +78,10 @@ export class QuotaExceededError extends DomainError {
     this.name = 'QuotaExceededError';
   }
 }
+
+export class SecurityError extends DomainError {
+  constructor(message: string, errorCode?: string, details?: Record<string, unknown>) {
+    super(message, 403, errorCode || 'SECURITY_VIOLATION', details);
+    this.name = 'SecurityError';
+  }
+}
