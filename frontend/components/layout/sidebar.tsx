@@ -8,7 +8,6 @@ import {
   ChevronRight,
   ChevronLeft,
   BarChart3,
-  Newspaper,
   Settings,
   Rss,
   LogOut,
@@ -23,10 +22,13 @@ import {
   Trophy,
   HeartPulse,
   Heart,
+  RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
+import { useGlobalRefresh } from '@/hooks/useNews';
+import { toast } from 'sonner';
 
 interface SidebarProps {
   onOpenDashboard?: () => void;
@@ -36,98 +38,44 @@ interface SidebarProps {
 
 export function Sidebar({ onOpenDashboard, onOpenSources, onOpenChat }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false); // Sprint 23: Loading state
+  const [isRefreshing, setIsRefreshing] = useState(false); // Global refresh loading state
   const { user, logout } = useAuth();
   const router = useRouter();
-  const queryClient = useQueryClient();
+  const globalRefresh = useGlobalRefresh();
 
-  // Handler para refrescar las noticias
-  const handleRefreshNews = async () => {
+  // Handler para actualización global de TODAS las categorías
+  const handleGlobalRefresh = async () => {
     if (isRefreshing) return; // Prevenir múltiples clicks
 
     setIsRefreshing(true);
-    console.log('🔄 [REFRESH] ========== INICIO REFRESH ==========');
 
-    // Sprint 23: Detectar TOPIC actual desde la URL (no category)
-    const urlParams = new URLSearchParams(window.location.search);
-    const currentTopic = urlParams.get('topic') || 'general';
-
-    console.log('🔄 [REFRESH] URL actual:', window.location.href);
-    console.log('🔄 [REFRESH] Topic detectado:', currentTopic);
-    console.log('🔄 [REFRESH] Queries activas ANTES:',
-      queryClient.getQueryCache().getAll()
-        .filter(q => q.queryKey[0] === 'news')
-        .map(q => ({ key: q.queryKey, state: q.state.status }))
-    );
-
-    // Solo hacer ingesta RSS si NO es favoritos
-    if (currentTopic !== 'favorites') {
-      try {
-        // 1. Disparar ingesta de noticias con topicSlug (Sprint 23)
-        console.log(`📥 [REFRESH] Iniciando ingesta RSS para topic: ${currentTopic}...`);
-        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-
-        // Sprint 23: Preparar body con topicSlug
-        const requestBody: any = {
-          pageSize: 30, // Suficientes para llenar dashboard
-        };
-
-        // Sprint 23: Enviar topicSlug para asignar correctamente las noticias
-        if (currentTopic !== 'general') {
-          requestBody.topicSlug = currentTopic;
-          requestBody.category = currentTopic; // Mantener category para filtrado de API externa
-          console.log(`📌 [REFRESH] Asignando topicSlug: ${currentTopic}`);
-        } else {
-          console.log(`🌐 [REFRESH] Ingesta general (todas las categorías)`);
-        }
-
-        const response = await fetch(`${API_BASE_URL}/api/ingest/news`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestBody),
-        });
-
-        if (!response.ok) {
-          console.warn('⚠️ [REFRESH] Error al actualizar noticias:', response.status);
-        } else {
-          const data = await response.json();
-          console.log('✅ [REFRESH] Ingesta completada:', data.message);
-          console.log('📊 [REFRESH] Artículos nuevos:', data.data?.newArticles || 0);
-        }
-      } catch (error) {
-        console.error('❌ [REFRESH] Error al ingestar:', error);
-      }
-    } else {
-      console.log('⭐ [REFRESH] Topic FAVORITOS: solo refrescando cache (sin ingesta RSS)');
-    }
-
-    // 2. Invalidar Y refetch SOLO del topic actual
-    console.log(`🗑️ [REFRESH] Invalidando queries de topic: ${currentTopic}`);
-
-    // FIX: Invalidar AMBOS tipos de queries (useNews y useNewsInfinite)
-    // - ['news-infinite', topic, limit] → useNewsInfinite (página principal)
-    // - ['news', topic, limit, offset] → useNews (legacy/otros componentes)
-    await queryClient.invalidateQueries({
-      predicate: (query) => {
-        const [base, cat] = query.queryKey;
-        const isNewsQuery = base === 'news' || base === 'news-infinite';
-        const matchesTopic = cat === currentTopic;
-
-        console.log(`🔍 [REFRESH] Evaluating query: ${JSON.stringify(query.queryKey)} → ${isNewsQuery && matchesTopic ? 'INVALIDATE' : 'SKIP'}`);
-
-        return isNewsQuery && matchesTopic;
-      },
-      refetchType: 'active',
+    // Toast de inicio
+    toast.info('Iniciando actualización global de fuentes...', {
+      description: 'Esto puede tardar unos segundos',
+      duration: 3000,
     });
 
-    console.log('🔄 [REFRESH] Queries activas DESPUÉS:',
-      queryClient.getQueryCache().getAll()
-        .filter(q => q.queryKey[0] === 'news')
-        .map(q => ({ key: q.queryKey, state: q.state.status }))
-    );
+    try {
+      const result = await globalRefresh();
 
-    console.log('✅ [REFRESH] ========== FIN REFRESH ==========');
-    setIsRefreshing(false);
+      // Toast de éxito con estadísticas
+      toast.success('¡Todo actualizado!', {
+        description: `Noticias frescas en todas las categorías. ${result.data.totalNewArticles} artículos nuevos.`,
+        duration: 5000,
+      });
+
+      console.log('✅ [GlobalRefresh] Completado:', result.data);
+    } catch (error) {
+      // Toast de error
+      toast.error('Error al actualizar', {
+        description: 'No se pudo completar la actualización. Intenta de nuevo.',
+        duration: 5000,
+      });
+
+      console.error('❌ [GlobalRefresh] Error:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   // Sprint 20: Categorías unificadas con geolocalización
@@ -176,9 +124,9 @@ export function Sidebar({ onOpenDashboard, onOpenSources, onOpenChat }: SidebarP
 
   const navItems = [
     {
-      label: 'Noticias',
-      icon: Newspaper,
-      onClick: handleRefreshNews,
+      label: 'Actualizar Todo',
+      icon: RefreshCw,
+      onClick: handleGlobalRefresh,
     },
     {
       label: 'Favoritos',
@@ -288,8 +236,8 @@ export function Sidebar({ onOpenDashboard, onOpenSources, onOpenChat }: SidebarP
           <div className="space-y-1">
             {navItems.map((item, index) => {
               const Icon = item.icon;
-              const isNewsButton = item.label === 'Noticias';
-              const showSpinner = isNewsButton && isRefreshing;
+              const isRefreshButton = item.label === 'Actualizar Todo';
+              const showSpinner = isRefreshButton && isRefreshing;
 
               // Si el item tiene href, renderizar Link; si tiene onClick, renderizar button
               if ('href' in item && item.href) {
@@ -319,18 +267,11 @@ export function Sidebar({ onOpenDashboard, onOpenSources, onOpenChat }: SidebarP
                     'w-full h-10 rounded-lg transition-colors flex items-center gap-3 px-3',
                     'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100',
                     'dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-900',
-                    showSpinner && 'opacity-50 cursor-not-allowed'
+                    showSpinner && 'opacity-70 cursor-not-allowed'
                   )}
                   title={!isOpen ? item.label : undefined}
                 >
-                  {showSpinner ? (
-                    <svg className="animate-spin h-4 w-4 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                  ) : (
-                    <Icon className="h-4 w-4 shrink-0" />
-                  )}
+                  <Icon className={cn('h-4 w-4 shrink-0', showSpinner && 'animate-spin')} />
                   {isOpen && (
                     <span className="text-sm font-medium">
                       {showSpinner ? 'Actualizando...' : item.label}

@@ -139,3 +139,57 @@ export function useNewsRefresh() {
     isRefreshing: queryClient.isFetching({ queryKey: ['news'] }) > 0,
   };
 }
+
+/**
+ * Global Refresh Hook - Ingesta masiva de todas las categorías
+ *
+ * Llama al endpoint POST /api/ingest/all para actualizar
+ * todas las categorías de noticias de una sola vez.
+ */
+export function useGlobalRefresh() {
+  const queryClient = useQueryClient();
+
+  return useCallback(async () => {
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+
+    try {
+      console.log('🌍 [GlobalRefresh] Iniciando actualización global...');
+
+      // POST to /api/ingest/all
+      const response = await fetch(`${API_BASE_URL}/api/ingest/all`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      console.log('✅ [GlobalRefresh] Completado:', {
+        processed: result.data.processed,
+        newArticles: result.data.totalNewArticles,
+        duplicates: result.data.totalDuplicates,
+      });
+
+      // Invalidar TODAS las queries de news para forzar refetch
+      console.log('🗑️ [GlobalRefresh] Invalidando todas las queries de news...');
+      await queryClient.invalidateQueries({
+        predicate: (query) => {
+          const [base] = query.queryKey;
+          return base === 'news' || base === 'news-infinite';
+        },
+        refetchType: 'active',
+      });
+
+      return {
+        success: true,
+        data: result.data,
+      };
+    } catch (error) {
+      console.error('❌ [GlobalRefresh] Error:', error);
+      throw error;
+    }
+  }, [queryClient]);
+}
