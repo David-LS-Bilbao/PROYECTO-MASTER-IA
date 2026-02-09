@@ -10,7 +10,20 @@
  * Usage: npx tsx scripts/test-local-full-flow.ts
  */
 
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Explicitly load the .env file from the backend folder
+// This handles running the script from the project root
+dotenv.config({ path: path.join(__dirname, '../.env') });
+
+// Fail fast if key is missing
+if (!process.env.GEMINI_API_KEY) {
+  console.error('❌ Error: GEMINI_API_KEY is missing. Check backend/.env file.');
+  console.error('   Make sure GEMINI_API_KEY is set in: backend/.env');
+  process.exit(1);
+}
+
 import { DependencyContainer } from '../src/infrastructure/config/dependencies';
 
 const TEST_CITY = 'Valencia';
