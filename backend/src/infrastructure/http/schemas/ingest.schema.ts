@@ -14,6 +14,10 @@ const validCategories = [
   'ciencia',
   'tecnologia',
   'cultura',
+  'salud',
+  'entretenimiento',
+  'espana',
+  'ciencia-tecnologia',
 ] as const;
 
 export const ingestNewsSchema = z.object({

@@ -14,6 +14,29 @@ import { NewsArticle } from '../../../domain/entities/news-article.entity';
 import { getPrismaClient } from '../../persistence/prisma.client';
 
 /**
+ * Sprint 23: Map category names to Topic slugs
+ * Some categories don't have a 1:1 mapping to topics
+ */
+const CATEGORY_TO_TOPIC_SLUG: Record<string, string> = {
+  // Direct mappings
+  'espana': 'espana',
+  'internacional': 'internacional',
+  'local': 'local',
+  'economia': 'economia',
+  'deportes': 'deportes',
+  'salud': 'salud',
+  'entretenimiento': 'entretenimiento',
+  // Unified category
+  'ciencia-tecnologia': 'ciencia-tecnologia',
+  'ciencia': 'ciencia-tecnologia', // Map to unified category
+  'tecnologia': 'ciencia-tecnologia', // Map to unified category
+  // Fallbacks for legacy categories
+  'general': 'internacional', // General news → International
+  'politica': 'espana', // Politics → Spain
+  'cultura': 'entretenimiento', // Culture → Entertainment
+};
+
+/**
  * Transform domain article to HTTP response format
  * Parses the analysis JSON string into an object for frontend consumption
  *
@@ -185,9 +208,10 @@ export class NewsController {
 
           try {
             // Ingest both categories in parallel
+            // Sprint 23: Pass topicSlug to assign articles to correct Topic
             await Promise.all([
-              this.ingestNewsUseCase.execute({ category: 'ciencia', pageSize: 15, language: 'es' }),
-              this.ingestNewsUseCase.execute({ category: 'tecnologia', pageSize: 15, language: 'es' }),
+              this.ingestNewsUseCase.execute({ category: 'ciencia', topicSlug: 'ciencia-tecnologia', pageSize: 15, language: 'es' }),
+              this.ingestNewsUseCase.execute({ category: 'tecnologia', topicSlug: 'ciencia-tecnologia', pageSize: 15, language: 'es' }),
             ]);
 
             console.log(`[NewsController.getNews] ✅ Auto-ingestion completed for ciencia-tecnologia`);
@@ -278,8 +302,11 @@ export class NewsController {
 
         try {
           // Trigger ingestion for this category
+          // Sprint 23: Pass topicSlug to assign articles to correct Topic
+          const topicSlug = CATEGORY_TO_TOPIC_SLUG[category.toLowerCase()] || category;
           const ingestionResult = await this.ingestNewsUseCase.execute({
             category,
+            topicSlug, // Sprint 23: Map category to topic slug
             pageSize: 30, // Fetch 30 articles to populate category
             language: 'es',
           });
