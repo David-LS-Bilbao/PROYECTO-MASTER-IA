@@ -15,6 +15,12 @@ export function createIngestRoutes(ingestController: IngestController): Router {
   router.post('/news', (req, res) => ingestController.ingestNews(req, res));
 
   /**
+   * POST /api/ingest/all
+   * Trigger global ingestion for ALL categories
+   */
+  router.post('/all', (req, res) => ingestController.ingestAllNews(req, res));
+
+  /**
    * GET /api/ingest/status
    * Get last ingestion status
    */

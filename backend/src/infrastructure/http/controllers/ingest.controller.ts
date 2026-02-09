@@ -57,6 +57,43 @@ export class IngestController {
   }
 
   /**
+   * POST /api/ingest/all
+   * Trigger global ingestion for ALL categories
+   */
+  async ingestAllNews(_req: Request, res: Response): Promise<void> {
+    try {
+      console.log('🌍 [IngestController] Global ingestion triggered');
+
+      // Execute global ingestion
+      const result = await this.ingestNewsUseCase.ingestAll();
+
+      // Calculate totals
+      const totalNew = Object.values(result.results).reduce(
+        (sum, r) => sum + r.newArticles,
+        0
+      );
+      const totalDuplicates = Object.values(result.results).reduce(
+        (sum, r) => sum + r.duplicates,
+        0
+      );
+
+      res.status(200).json({
+        success: true,
+        data: {
+          processed: result.processed,
+          errors: result.errors,
+          totalNewArticles: totalNew,
+          totalDuplicates: totalDuplicates,
+          categoryResults: result.results,
+        },
+        message: `Global ingestion completed: ${result.processed} categories processed, ${totalNew} new articles`,
+      });
+    } catch (error) {
+      this.handleError(error, res);
+    }
+  }
+
+  /**
    * Centralized error handling
    */
   private handleError(error: unknown, res: Response): void {

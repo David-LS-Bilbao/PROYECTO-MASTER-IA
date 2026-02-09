@@ -482,6 +482,72 @@ export class IngestNewsUseCase {
     }
   }
 
+  /**
+   * Global Ingest: Ingest news for ALL valid categories
+   *
+   * Optimization: Runs in batches to avoid overloading RSS sources or DB.
+   * Batches of 3 categories run in parallel.
+   *
+   * @returns Summary with total processed and errors
+   */
+  async ingestAll(): Promise<{ processed: number; errors: number; results: Record<string, IngestNewsResponse> }> {
+    console.log('🌍 [IngestAll] Starting global ingestion for all categories...\n');
+
+    // Filter out 'local' (requires specific city query)
+    const categoriesToIngest = VALID_CATEGORIES.filter(cat => cat !== 'local');
+
+    const BATCH_SIZE = 3; // Concurrency limit to avoid rate limiting
+    const results: Record<string, IngestNewsResponse> = {};
+    let processed = 0;
+    let errors = 0;
+
+    // Process in batches
+    for (let i = 0; i < categoriesToIngest.length; i += BATCH_SIZE) {
+      const batch = categoriesToIngest.slice(i, i + BATCH_SIZE);
+
+      console.log(`📦 [IngestAll] Processing batch ${Math.floor(i / BATCH_SIZE) + 1}: ${batch.join(', ')}`);
+
+      // Run batch in parallel
+      const batchPromises = batch.map(async (category) => {
+        try {
+          console.log(`   🔄 Ingesting: ${category}`);
+
+          const result = await this.execute({
+            category,
+            topicSlug: category, // Use category as topicSlug
+            language: 'es',
+            pageSize: 20,
+          });
+
+          results[category] = result;
+          processed++;
+
+          console.log(`   ✅ ${category}: ${result.newArticles} new, ${result.duplicates} duplicates`);
+
+          return { category, success: true, result };
+        } catch (error) {
+          console.error(`   ❌ ${category}: Failed -`, (error as Error).message);
+          errors++;
+          return { category, success: false, error };
+        }
+      });
+
+      await Promise.all(batchPromises);
+
+      // Small delay between batches to be nice to RSS sources
+      if (i + BATCH_SIZE < categoriesToIngest.length) {
+        console.log(`   ⏳ Waiting 2s before next batch...\n`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+
+    console.log('\n🎉 [IngestAll] Global ingestion completed!');
+    console.log(`   ✅ Processed: ${processed}/${categoriesToIngest.length} categories`);
+    console.log(`   ❌ Errors: ${errors}`);
+
+    return { processed, errors, results };
+  }
+
   private createResponse(
     success: boolean,
     totalFetched: number,
