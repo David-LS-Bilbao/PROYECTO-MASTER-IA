@@ -41,7 +41,7 @@ vi.mock('../../../../src/infrastructure/persistence/prisma.client', () => ({
 }));
 
 // Import after mocks are defined
-import { authenticate } from '../../../../src/infrastructure/http/middleware/auth.middleware';
+import { authenticate, optionalAuthenticate, requirePlan } from '../../../../src/infrastructure/http/middleware/auth.middleware';
 
 // ============================================================================
 // TEST SUITE
@@ -100,7 +100,7 @@ describe('🔐 Auth Middleware - Security & Type Safety (BLOQUEANTE #3)', () => 
         email: 'attacker@example.com',
         name: 'Test Attacker',
         picture: null,
-        plan: 'FREE',
+        subscriptionPlan: 'FREE',
         // ❌ PAYLOAD MALICIOSO: XSS, SQL Injection, Type Confusion
         preferences: {
           '<script>alert(1)</script>': 'xss-attack',
@@ -170,7 +170,7 @@ describe('🔐 Auth Middleware - Security & Type Safety (BLOQUEANTE #3)', () => 
         email: 'user@example.com',
         name: 'Test User',
         picture: null,
-        plan: 'FREE',
+        subscriptionPlan: 'FREE',
         preferences: "not-an-object", // ❌ Debería ser objeto
         usageStats: null, // ❌ Debería ser objeto
         createdAt: new Date(),
@@ -216,7 +216,7 @@ describe('🔐 Auth Middleware - Security & Type Safety (BLOQUEANTE #3)', () => 
         email: 'valid@example.com',
         name: 'Valid User',
         picture: 'https://example.com/avatar.jpg',
-        plan: 'QUOTA',
+        subscriptionPlan: 'PREMIUM',
         preferences: {
           theme: 'dark',
           categories: ['technology', 'science'],
@@ -241,7 +241,7 @@ describe('🔐 Auth Middleware - Security & Type Safety (BLOQUEANTE #3)', () => 
       expect(mockNext).toHaveBeenCalledTimes(1);
       expect(mockReq.user).toBeDefined();
       expect(mockReq.user?.email).toBe('valid@example.com');
-      expect(mockReq.user?.plan).toBe('QUOTA');
+      expect(mockReq.user?.subscriptionPlan).toBe('PREMIUM');
 
       // Preferences válidas pasan validación Zod (con defaults opcionales)
       expect(mockReq.user?.preferences).toMatchObject({
@@ -268,6 +268,133 @@ describe('🔐 Auth Middleware - Security & Type Safety (BLOQUEANTE #3)', () => 
       // ASSERT
       expect(mockRes.status).toHaveBeenCalledWith(401);
       expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('Should reject request with empty token', async () => {
+      mockReq.headers = { authorization: 'Bearer ' };
+
+      await authenticate(
+        mockReq as Request,
+        mockRes as Response,
+        mockNext as NextFunction
+      );
+
+      expect(mockRes.status).toHaveBeenCalledWith(401);
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('Should reject when Firebase verification fails', async () => {
+      mockVerifyIdToken.mockRejectedValueOnce(new Error('Invalid token'));
+
+      await authenticate(
+        mockReq as Request,
+        mockRes as Response,
+        mockNext as NextFunction
+      );
+
+      expect(mockRes.status).toHaveBeenCalledWith(401);
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('Should reject when token lacks uid/email', async () => {
+      mockVerifyIdToken.mockResolvedValueOnce({ uid: 'u1', email: null });
+
+      await authenticate(
+        mockReq as Request,
+        mockRes as Response,
+        mockNext as NextFunction
+      );
+
+      expect(mockRes.status).toHaveBeenCalledWith(401);
+    });
+  });
+
+  describe('🔓 Optional Auth Middleware', () => {
+    it('Should continue without header', async () => {
+      mockReq.headers = {};
+      await optionalAuthenticate(
+        mockReq as Request,
+        mockRes as Response,
+        mockNext as NextFunction
+      );
+      expect(mockNext).toHaveBeenCalled();
+    });
+
+    it('Should continue when token is invalid', async () => {
+      mockVerifyIdToken.mockRejectedValueOnce(new Error('Invalid token'));
+
+      await optionalAuthenticate(
+        mockReq as Request,
+        mockRes as Response,
+        mockNext as NextFunction
+      );
+
+      expect(mockNext).toHaveBeenCalled();
+    });
+
+    it('Should attach user when token is valid', async () => {
+      mockVerifyIdToken.mockResolvedValueOnce({
+        uid: 'opt-user',
+        email: 'opt@example.com',
+        name: 'Opt User',
+        picture: null,
+      });
+
+      mockUserUpsert.mockResolvedValueOnce({
+        id: 'opt-user',
+        email: 'opt@example.com',
+        name: 'Opt User',
+        picture: null,
+        subscriptionPlan: 'FREE',
+        preferences: {},
+        usageStats: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      await optionalAuthenticate(
+        mockReq as Request,
+        mockRes as Response,
+        mockNext as NextFunction
+      );
+
+      expect(mockReq.user).toBeDefined();
+      expect(mockNext).toHaveBeenCalled();
+    });
+  });
+
+  describe('💎 requirePlan middleware', () => {
+    it('Should reject when user missing', () => {
+      const middleware = requirePlan(['PREMIUM']);
+      const req = {} as Request;
+      const res = mockRes as Response;
+      const next = mockNext as NextFunction;
+
+      middleware(req, res, next);
+
+      expect(mockRes.status).toHaveBeenCalledWith(401);
+    });
+
+    it('Should reject when plan is insufficient', () => {
+      const middleware = requirePlan(['PREMIUM']);
+      const req = { user: { subscriptionPlan: 'FREE' } } as Request;
+      const res = mockRes as Response;
+      const next = mockNext as NextFunction;
+
+      middleware(req, res, next);
+
+      expect(mockRes.status).toHaveBeenCalledWith(403);
+    });
+
+    it('Should allow when plan is allowed', () => {
+      const middleware = requirePlan(['PREMIUM', 'FREE']);
+      const req = { user: { subscriptionPlan: 'FREE' } } as Request;
+      const res = mockRes as Response;
+      const next = mockNext as NextFunction;
+
+      middleware(req, res, next);
+
+      expect(mockNext).toHaveBeenCalled();
     });
   });
 });

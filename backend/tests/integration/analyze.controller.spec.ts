@@ -1,4 +1,4 @@
-/**
+﻿/**
  * AnalyzeController Integration Tests - API Layer
  *
  * Estos tests verifican la capa HTTP del endpoint de análisis usando supertest.
@@ -464,11 +464,9 @@ describe('AnalyzeController Integration Tests (API Layer)', () => {
 
       // ASSERT
       expect(response.status).toBe(400);
-      expect(response.body).toHaveProperty('success', false);
       expect(response.body).toHaveProperty('error');
-      // Mensaje de error genérico de validación es aceptable
-      expect(typeof response.body.error).toBe('string');
-      expect(response.body.error.length).toBeGreaterThan(0);
+      expect(response.body.error).toHaveProperty('code', 'VALIDATION_ERROR');
+      expect(response.body.error).toHaveProperty('message');
     });
 
     it('400 BAD REQUEST: debe rechazar límite menor a 1', async () => {
@@ -479,7 +477,8 @@ describe('AnalyzeController Integration Tests (API Layer)', () => {
 
       // ASSERT
       expect(response.status).toBe(400);
-      expect(response.body).toHaveProperty('success', false);
+      expect(response.body).toHaveProperty('error');
+      expect(response.body.error).toHaveProperty('code', 'VALIDATION_ERROR');
     });
 
     it('400 BAD REQUEST: debe rechazar límite no numérico', async () => {
@@ -490,7 +489,8 @@ describe('AnalyzeController Integration Tests (API Layer)', () => {
 
       // ASSERT
       expect(response.status).toBe(400);
-      expect(response.body).toHaveProperty('success', false);
+      expect(response.body).toHaveProperty('error');
+      expect(response.body.error).toHaveProperty('code', 'VALIDATION_ERROR');
     });
   });
 

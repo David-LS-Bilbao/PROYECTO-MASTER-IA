@@ -8,6 +8,19 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+// Mock node-cron to control scheduling behavior
+const { mockSchedule } = vi.hoisted(() => ({
+  mockSchedule: vi.fn(() => ({
+    stop: vi.fn(),
+    destroy: vi.fn(),
+  })),
+}));
+
+vi.mock('node-cron', () => ({
+  default: { schedule: mockSchedule },
+  schedule: mockSchedule,
+}));
+
 import { QuotaResetJob } from '../../../src/infrastructure/jobs/quota-reset.job';
 
 describe('QuotaResetJob', () => {
@@ -15,6 +28,10 @@ describe('QuotaResetJob', () => {
   let mockPrisma: any;
 
   beforeEach(() => {
+    mockSchedule.mockImplementation(() => ({
+      stop: vi.fn(),
+      destroy: vi.fn(),
+    }));
     // Mock Prisma Client with complete interface
     mockPrisma = {
       user: {
@@ -226,6 +243,27 @@ describe('QuotaResetJob', () => {
       // ASSERT: Verify stop was called and logged
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Quota Reset Job stopped'));
 
+      consoleSpy.mockRestore();
+    });
+
+    it('should handle start errors and rethrow', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation();
+      mockSchedule.mockImplementationOnce(() => {
+        throw new Error('cron failed');
+      });
+
+      expect(() => quotaResetJob.start()).toThrow('cron failed');
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to start:'), expect.any(Error));
+
+      consoleSpy.mockRestore();
+    });
+
+    it('should stop safely when tasks are undefined', async () => {
+      const consoleSpy = vi.spyOn(console, 'log').mockImplementation();
+
+      quotaResetJob.stop();
+
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Quota Reset Job stopped'));
       consoleSpy.mockRestore();
     });
   });

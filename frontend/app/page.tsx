@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useInView } from 'react-intersection-observer';
 import { useAuth } from '@/context/AuthContext';
 import { type NewsArticle, type BiasDistribution } from '@/lib/api';
-import { NewsCard } from '@/components/news-card';
+import { NewsGrid } from '@/components/news/news-grid';
 import { Sidebar, DashboardDrawer } from '@/components/layout';
 import { SourcesDrawer } from '@/components/sources-drawer';
 import { GeneralChatDrawer } from '@/components/general-chat-drawer';
@@ -718,11 +718,7 @@ function HomeContent() {
                       <DateSeparator label={group.label} articleCount={group.articles.length} />
 
                       {/* Articles Grid for this date */}
-                      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                        {group.articles.map((article: NewsArticle) => (
-                          <NewsCard key={article.id} article={article} />
-                        ))}
-                      </div>
+                      <NewsGrid articles={group.articles} />
                     </div>
                   ))}
                 </div>
