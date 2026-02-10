@@ -39,15 +39,22 @@ export function calculatePercentage(value: number, total: number): number {
   return Math.round((value / total) * 100);
 }
 
+type TooltipValue = number | string | ReadonlyArray<number | string>;
+type TooltipName = number | string;
+type CustomTooltipProps = TooltipContentProps<TooltipValue, TooltipName>;
+
 function CustomTooltip({
   active,
   payload,
-}: TooltipContentProps<number, string>) {
+}: CustomTooltipProps) {
   if (!active || !payload || payload.length === 0) return null;
 
   const item = payload[0];
-  const label = item.name || '';
-  const value = item.value ?? 0;
+  const label = String(item.name ?? '');
+  const rawValue = item.value;
+  const value = typeof rawValue === 'number'
+    ? rawValue
+    : Number(Array.isArray(rawValue) ? rawValue[0] ?? 0 : rawValue ?? 0);
   
   // Obtener total del payload (pasado en chartData)
   const total = item.payload?.total ?? 0;
