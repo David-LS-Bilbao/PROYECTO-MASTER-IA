@@ -1,4 +1,4 @@
-# 🗞️ Verity News - Plataforma Inteligente de Noticias con IA
+﻿# 🗞️ Verity News - Plataforma Inteligente de Noticias con IA
 
 > Trabajo Final de Máster - Máster en Desarrollo con Inteligencia Artificial (BIG School)
 
@@ -230,7 +230,7 @@ curl http://localhost:3001/api/health/readiness
 
 ## 📖 Documentación
 
-- [📋 Estado del Proyecto](./ESTADO_PROYECTO.md) - Sprint 22 completado
+- [📋 Estado del Proyecto](./ESTADO_PROYECTO.md) - Sprint 27 completado
 - [🗺️ Estructura del Proyecto](./docs/ESTRUCTURA_PROYECTO.md) - Mapa completo
 - [🔬 Deuda Técnica Sprint 13](./docs/DEUDA_TECNICA_SPRINT_13.md) - Análisis + Plan Mikado
 - [✅ Estándares de Calidad](./docs/CALIDAD.md) - Coverage 100/80/0
@@ -238,6 +238,7 @@ curl http://localhost:3001/api/health/readiness
 - [🏗️ Diagramas](./docs/diagrams/) - Arquitectura, ER, secuencias
 - [🌍 Sprint 20: Geolocalización](./docs/sprints/Sprint-20-Geolocalizacion-Topics.md) - Topics + Location
 - [🎨 Sprint 22: UI Cleanup](./docs/sprints/Sprint-22-UI-Cleanup-Smart-Search.md) - Navegación + Keywords
+- [💎 Sprint 27: Freemium + Suscripciones](./Sprint-27-ENTREGABLES.md) - Modelo FREE/PREMIUM (MVP)
 
 ---
 
@@ -384,18 +385,18 @@ Este proyecto demuestra la aplicación práctica de:
 
 ---
 
-**🚀 Proyecto activo - Sprint 22 completado - 92% de progreso**
+**🚀 Proyecto activo - Sprint 27 completado - 97% de progreso**
 
 ## 📊 Estado del Proyecto
 
-![Status](https://img.shields.io/badge/status-sprint%2022%20completado-success)
-![Progress](https://img.shields.io/badge/progress-92%25-green)
+![Status](https://img.shields.io/badge/status-sprint%2027%20completado-success)
+![Progress](https://img.shields.io/badge/progress-97%25-green)
 ![Tests](https://img.shields.io/badge/tests-328%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen)
 
 **Inicio:** Enero 2026
-**Último Sprint:** 22 - UI Cleanup + Smart Search con Keywords
-**Fecha:** 9 de febrero de 2026
+**Último Sprint:** 27 - Modelo Freemium y Suscripciones (MVP)
+**Fecha:** 10 de febrero de 2026
 
 ### Métricas Actuales
 
@@ -465,10 +466,29 @@ Este proyecto demuestra la aplicación práctica de:
   - [x] Auto-fill de categorías vacías
   - [x] TOPIC_QUERIES con keywords optimizados
 
+### ✅ Fase 6: Optimización de IA (Sprint 25)
+- [x] **Sprint 25:** AI Prompt Improvements
+  - [x] Evidence-Based Scoring (Analysis Prompt v5)
+    - Restricción global: "ANALIZA SOLO EL TEXTO PROPORCIONADO"
+    - Internal reasoning con 3 preguntas obligatorias
+    - ReliabilityScore con reglas estrictas (< 40, 40-60, 60-80, > 80)
+    - Verificación: Opinion (20) vs Fact (95)
+  - [x] Zero Hallucination Strategy (RAG Chat v5)
+    - System persona: "Analista de Inteligencia riguroso"
+    - Incertidumbre radical: prohibición de conocimiento general
+    - Trazabilidad forzada: cada frase debe citarse [x]
+  - [x] Script de verificación: `verify-analysis-rules.ts`
+
+### ✅ Fase 7: Freemium y Suscripciones (Sprint 27)
+- [x] **Sprint 27:** Modelo Freemium + Suscripciones (MVP)
+  - [x] `SubscriptionPlan` (FREE/PREMIUM) + migraciones
+  - [x] Endpoints `/api/subscription/redeem` y `/api/subscription/cancel`
+  - [x] PricingModal + gestión en perfil
+
 ### 🚀 Próximos Pasos
-- [ ] **Sprint 23:** Optimización de caché y performance monitoring
-- [ ] **Sprint 24:** Deploy final en producción (Vercel + Railway)
-- [ ] **Sprint 25:** Documentación final del TFM + Presentación
+- [ ] **Sprint 26:** Optimización de caché y performance monitoring
+- [ ] **Sprint 28:** Deploy final en producción (Vercel + Railway)
+- [ ] **Sprint 29:** Documentación final del TFM + Presentación
 
 ---
 

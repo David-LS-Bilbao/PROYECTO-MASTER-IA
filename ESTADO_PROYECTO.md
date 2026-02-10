@@ -1,6 +1,6 @@
 # Estado del Proyecto - Verity News
 
-> **Última actualización**: Sprint 20 (2026-02-09) - Geolocalización + Topics 🌍
+> **Última actualización**: Sprint 27 (2026-02-10) - Modelo Freemium y Suscripciones (MVP)
 > **Stack**: Next.js + Express + PostgreSQL + Prisma + Gemini AI + ChromaDB
 > **Arquitectura**: Clean Architecture (Hexagonal) + DDD
 
@@ -27,6 +27,11 @@
 ## 🗂️ Índice de Sprints
 
 ### Producción (✅ Completados)
+- [Sprint 27](#sprint-27) - Modelo Freemium y Suscripciones (2026-02-10)
+- [Sprint 25](#sprint-25) - AI Prompt Improvements (2026-02-09)
+- [Sprint 24](#sprint-24) - AI-Powered Local Source Discovery (2026-02-09)
+- [Sprint 23.2](#sprint-232) - Refactor ChromaClient (2026-02-09)
+- [Sprint 22](#sprint-22) - UI Cleanup + Smart Search (2026-02-09)
 - [Sprint 20](#sprint-20) - Geolocalización + Reestructuración Categorías (2026-02-09)
 - [Sprint 19.8](#sprint-198) - Accesibilidad WCAG 2.1 AA (2026-02-09)
 - [Sprint 19.6](#sprint-196) - Refinamiento Navegación (2026-02-08)
@@ -53,6 +58,111 @@
 ---
 
 ## 📋 Sprints Detallados
+
+---
+
+### Sprint 27
+**Modelo Freemium y Gestion de Suscripciones (MVP)**
+**Fecha**: 2026-02-10 | **Estado**: ✅ Completado
+
+**Objetivo**: Establecer infraestructura para diferenciar usuarios FREE vs PREMIUM y habilitar upgrade mediante codigos promocionales (MVP).
+
+**Implementado**:
+- ✅ Prisma: reemplazo de `UserPlan` por `SubscriptionPlan` (FREE, PREMIUM) + migraciones `add_subscription_plan` y `fix_subscription_naming`.
+- ✅ Backend: `SubscriptionController` con endpoints `/api/subscription/redeem` y `/api/subscription/cancel`, validacion Zod y rutas registradas.
+- ✅ Sincronizacion de tipos `subscriptionPlan` en auth middleware, controllers, use cases y `QuotaService`.
+- ✅ Frontend: `PricingModal` con comparativa de planes, canje de codigo y boton "Gestionar Plan" en perfil.
+- ✅ Tests de perfil ajustados para el nuevo plan PREMIUM.
+
+**Impacto**:
+- 🔐 Upgrade a PREMIUM sin pasarela de pago (MVP con codigos).
+- 🧩 Consistencia de plan en frontend y backend, lista para integraciones futuras.
+
+**Docs**: [`Sprint-27-ENTREGABLES.md`](Sprint-27-ENTREGABLES.md)
+
+---
+### Sprint 25
+**AI Prompt Improvements** 🧠
+**Fecha**: 2026-02-09 | **Estado**: ✅ Completado
+
+**Objetivo**: Reducir alucinaciones y endurecer la trazabilidad de respuestas IA tanto en análisis de artículos como en el chat RAG y el modo grounding.
+
+**Implementado**:
+- ✅ Prompt `analysis.prompt.ts` (v5) con Evidence-Based Scoring: fiabilidad ligada a citas verificables, explicación obligatoria del sesgo y límite de razonamiento interno (300 chars).
+- ✅ Prompt `rag-chat.prompt.ts` (v5) con estrategia Zero Hallucination: persona de analista, límite de 150 palabras, frases obligatoriamente citadas `[x]` y mensaje estándar cuando falta contexto.
+- ✅ Prompt `grounding-chat.prompt.ts` (v2) con persona periodística que prioriza fuentes oficiales y expone versiones contradictorias.
+- ✅ Scripts `verify-analysis-rules.ts` y `verify-rag-rules.ts` para testear prompts (covers opinión vs. artículo factual y escenario “trap” sin contexto).
+
+**Impacto**:
+- 🔐 Scores de fiabilidad ya no superan 80 sin evidencia explícita; los artículos puramente opinativos caen <40.
+- 🛡️ El chat RAG admite incertidumbre cuando no hay datos y documenta cada afirmación con citas del contexto recuperado.
+- 📊 Nueva base para monitorear distribución de reliabilityScore y tasa de “No hay información suficiente”.
+
+**Docs**: [`docs/sprints/Sprint-25-AI-Prompt-Improvements.md`](docs/sprints/Sprint-25-AI-Prompt-Improvements.md)
+
+---
+
+### Sprint 24
+**AI-Powered Local Source Discovery + Multi-Source Ingestion** 🛰️
+**Fecha**: 2026-02-09 | **Estado**: ✅ Completado
+
+**Objetivo**: Automatizar la detección de fuentes locales y enriquecer la ingesta con múltiples RSS validados para temas “Local”.
+
+**Implementado**:
+- ✅ Nuevo modelo Prisma `Source` (UUID, location index, reliability) + migración `add_source_model`.
+- ✅ Servicio `LocalSourceDiscoveryService`: consulta previa en BD, prompt Gemini `buildLocationSourcesPrompt`, validación RSS con timeout y upsert automático.
+- ✅ Refactor `IngestNewsUseCase`: estrategia híbrida (fuentes locales + Google News), `fetchFromLocalSource`, `Promise.all` y fallback resiliente.
+- ✅ Método `discoverLocalSources` en `GeminiClient` con retries y trazas Sentry + script `scripts/test-local-full-flow.ts` para validar E2E.
+- ✅ Ajustes DI y schema HTTP para admitir categoría `local` + pruebas 24.2 con RSS Smart Probing (100% feeds válidos).
+
+**Impacto**:
+- 🌍 Descubrimiento autónomo de medios locales por ciudad, con cacheo para ahorrar tokens.
+- 📰 Ingesta local siempre retorna contenido: si los RSS fallan se activa Google News sin cortar la experiencia.
+- 📈 Preparado para panel de fuentes y health-checks futuros (reliability, isActive).
+
+**Docs**: [`Sprint-24-ENTREGABLES.md`](Sprint-24-ENTREGABLES.md)
+
+---
+
+### Sprint 23.2
+**Refactorización ChromaClient - URL Nativa** 🧱
+**Fecha**: 2026-02-09 | **Estado**: ✅ Completado
+
+**Objetivo**: Eliminar el parámetro deprecado `path` del SDK de Chroma y robustecer la configuración de conexión.
+
+**Implementado**:
+- ✅ Constructor de `ChromaClient` ahora usa `new URL()` (RFC 3986), valida formato y almacena `parsedUrl`.
+- ✅ Extracción segura de `host` y `port` con defaults (80/443) e impresión clara `host:port`.
+- ✅ Errores de configuración detallados cuando la URL es inválida.
+- ✅ Compatibilidad con IPv6 y despliegues HTTPS sin cambios manuales.
+
+**Impacto**:
+- ⚙️ Backend arranca sin warnings y queda alineado con el API moderno de ChromaDB.
+- 🛡️ Se evita spoofing/inyección al parsear URLs y se mejora la DX con IntelliSense (tipo `URL`).
+
+**Docs**: [`docs/sprints/Sprint-23.2-ChromaClient-Refactor.md`](docs/sprints/Sprint-23.2-ChromaClient-Refactor.md)
+
+---
+
+### Sprint 22
+**UI Cleanup + Smart Search con Keywords** 🎨🔍
+**Fecha**: 2026-02-09 | **Estado**: ✅ Completado
+
+**Objetivo**: Simplificar navegación, garantizar feeds con contenido y mejorar las consultas a fuentes externas con keywords inteligentes.
+
+**Implementado**:
+- ✅ Eliminación total de `CategoryPills`, sidebar como única navegación, parámetro `?topic=` y títulos dinámicos con Suspense boundary (`app/page.tsx`).
+- ✅ Auto-fill en `NewsController`: si una categoría está vacía, dispara ingesta on-demand (incluido caso especial `ciencia-tecnologia`).
+- ✅ Migración de tipos (`CategoryId` ➜ `string`) en hooks y stores para permitir nuevos topics.
+- ✅ Diccionario `TOPIC_QUERIES` + `getSmartQuery()` en `IngestNewsUseCase` para enviar consultas OR específicas por tema.
+- ✅ Fijado `theme-provider` + mejoras menores en perfil/localización.
+
+**Impacto**:
+- 📚 100% de categorías muestran contenido (auto-ingesta + fallback).
+- 🚀 Hasta 5× más artículos por topic gracias a keywords OR.
+- 🧭 Navegación coherente y sin duplicidades (solo sidebar).
+
+**Docs**: [`docs/sprints/Sprint-22-UI-Cleanup-Smart-Search.md`](docs/sprints/Sprint-22-UI-Cleanup-Smart-Search.md)
 
 ---
 
@@ -674,5 +784,8 @@ npm run dev
 
 ---
 
-**Última revisión**: 2026-02-09
-**Versión del documento**: 2.0 (Compactado y reorganizado)
+**Última revisión**: 2026-02-10
+**Versión del documento**: 2.1 (Actualizado Sprint 27)
+
+
+
