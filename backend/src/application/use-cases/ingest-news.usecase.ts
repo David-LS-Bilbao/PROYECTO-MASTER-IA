@@ -13,11 +13,12 @@
 
 import { randomUUID } from 'crypto';
 import Parser from 'rss-parser';
-import { INewsAPIClient } from '../../domain/services/news-api-client.interface';
+import { INewsAPIClient, NewsAPIArticle } from '../../domain/services/news-api-client.interface';
 import { INewsArticleRepository } from '../../domain/repositories/news-article.repository';
 import { NewsArticle } from '../../domain/entities/news-article.entity';
 import { ValidationError } from '../../domain/errors/domain.error';
 import { PrismaClient } from '@prisma/client';
+import { LocalSourceDiscoveryService } from '../services/local-source-discovery.service';
 
 // OPTIMIZATION: Limit items per ingestion to avoid flooding the database
 // Increased from 5 to 30 to allow better coverage for dynamic categories like sports
@@ -98,7 +99,7 @@ export class IngestNewsUseCase {
     private readonly articleRepository: INewsArticleRepository,
     private readonly prisma: PrismaClient,
     private readonly localNewsClient?: INewsAPIClient, // Google News RSS for local city-based ingestion
-    private readonly localSourceDiscoveryService?: any // Sprint 24: AI-powered local source discovery
+    private readonly localSourceDiscoveryService?: LocalSourceDiscoveryService // Sprint 24: AI-powered local source discovery
   ) {
     // Sprint 24: RSS parser for direct local source ingestion
     this.rssParser = new Parser({ timeout: 10000 });
@@ -136,7 +137,7 @@ export class IngestNewsUseCase {
 
       // Sprint 24: AI-powered local source discovery & multi-source ingestion
       const isLocalCategory = request.category?.toLowerCase() === 'local';
-      let allArticles: any[] = [];
+      let allArticles: NewsAPIArticle[] = [];
 
       if (isLocalCategory && request.query) {
         // STEP 1: Discover local sources (if not already in DB)
@@ -390,7 +391,7 @@ export class IngestNewsUseCase {
     const lower = category.toLowerCase();
 
     // If it's already a valid Spanish category, return it
-    if (VALID_CATEGORIES.includes(lower as any)) {
+    if (VALID_CATEGORIES.includes(lower as (typeof VALID_CATEGORIES)[number])) {
       return lower;
     }
 
@@ -423,7 +424,7 @@ export class IngestNewsUseCase {
       'technology',
     ];
 
-    if (request.category && !allValidCategories.includes(request.category.toLowerCase() as any)) {
+    if (request.category && !allValidCategories.includes(request.category.toLowerCase())) {
       throw new ValidationError(
         `category must be one of: ${VALID_CATEGORIES.join(', ')}`
       );
@@ -437,11 +438,11 @@ export class IngestNewsUseCase {
   private async fetchFromLocalSource(
     sourceUrl: string,
     sourceName: string
-  ): Promise<any[]> {
+  ): Promise<NewsAPIArticle[]> {
     try {
       const feed = await this.rssParser.parseURL(sourceUrl);
 
-      return (feed.items || []).map((item: any) => ({
+      return (feed.items || []).map((item) => ({
         title: item.title || 'Sin título',
         description: item.contentSnippet || item.description || null,
         content: item.content || item.contentSnippet || null,

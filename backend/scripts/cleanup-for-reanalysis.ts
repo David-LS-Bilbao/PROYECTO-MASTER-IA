@@ -62,7 +62,7 @@ async function cleanupArticlesForReanalysis() {
     });
 
     console.log('📌 Primeras 3 noticias pendientes:');
-    firstPending.forEach((article: any, i: number) => {
+    firstPending.forEach((article, i) => {
       console.log(`   ${i + 1}. ${article.title.substring(0, 50)}`);
       console.log(`      URL Imagen: ${article.urlToImage || 'NULL'}`);
       console.log(`      Analizado: ${article.analyzedAt ? 'SÍ' : 'NO'}\n`);

@@ -21,7 +21,7 @@ export function createUserRoutes(controller: UserController): Router {
    * PATCH /api/user/me
    * Update current user's profile (name and preferences)
    * Headers: Authorization: Bearer <firebase-token>
-   * Body: { name?: string, preferences?: any }
+   * Body: { name?: string, preferences?: Record<string, unknown> }
    */
   router.patch('/me', authenticate, (req, res) => controller.updateProfile(req, res));
 

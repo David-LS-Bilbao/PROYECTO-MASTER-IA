@@ -18,6 +18,7 @@ import { InfrastructureError } from '../../domain/errors/infrastructure.error';
  * Format: https://news.google.com/rss/search?q={query}&hl={language}&gl={country}&ceid={country}:{language}
  */
 const GOOGLE_NEWS_BASE_URL = 'https://news.google.com/rss';
+const ENTERTAINMENT_QUERY = 'cine OR series OR musica OR videojuegos OR espectaculos';
 
 interface GoogleNewsItem {
   title?: string;
@@ -95,8 +96,9 @@ export class GoogleNewsRssClient implements INewsAPIClient {
     const searchParams = new URLSearchParams();
 
     // Add search query
-    if (params.query) {
-      searchParams.append('q', params.query);
+    const query = params.query || this.getCategoryQuery(params.category);
+    if (query) {
+      searchParams.append('q', query);
     }
 
     // Language: Spanish (es or es-ES)
@@ -113,6 +115,18 @@ export class GoogleNewsRssClient implements INewsAPIClient {
     console.log(`[GoogleNewsRssClient] Fetching from: ${url}`);
 
     return url;
+  }
+
+  private getCategoryQuery(category?: string): string | undefined {
+    if (!category) return undefined;
+
+    const normalized = category.toLowerCase().trim();
+
+    if (normalized === 'entretenimiento' || normalized === 'entertainment') {
+      return ENTERTAINMENT_QUERY;
+    }
+
+    return undefined;
   }
 
   /**

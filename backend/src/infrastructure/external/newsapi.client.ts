@@ -13,6 +13,31 @@ import {
   ConfigurationError,
 } from '../../domain/errors/infrastructure.error';
 
+const NEWSAPI_CATEGORIES = new Set([
+  'business',
+  'entertainment',
+  'general',
+  'health',
+  'science',
+  'sports',
+  'technology',
+]);
+
+const CATEGORY_ALIASES: Record<string, string> = {
+  espana: 'general',
+  internacional: 'general',
+  economia: 'business',
+  politica: 'general',
+  cultura: 'entertainment',
+  entretenimiento: 'entertainment',
+  deportes: 'sports',
+  salud: 'health',
+  ciencia: 'science',
+  tecnologia: 'technology',
+  'ciencia-tecnologia': 'science',
+  local: 'general',
+};
+
 export class NewsAPIClient implements INewsAPIClient {
   private readonly baseUrl = 'https://newsapi.org/v2';
   private readonly apiKey: string;
@@ -25,10 +50,11 @@ export class NewsAPIClient implements INewsAPIClient {
   }
 
   async fetchTopHeadlines(params: FetchNewsParams): Promise<FetchNewsResult> {
+    const mappedCategory = this.mapCategory(params.category);
     const queryParams = new URLSearchParams({
       apiKey: this.apiKey,
       ...(params.query && { q: params.query }),
-      ...(params.category && { category: params.category }),
+      ...(mappedCategory && { category: mappedCategory }),
       ...(params.language && { language: params.language }),
       ...(params.pageSize && { pageSize: params.pageSize.toString() }),
       ...(params.page && { page: params.page.toString() }),
@@ -117,33 +143,53 @@ export class NewsAPIClient implements INewsAPIClient {
   /**
    * Sanitize API response to prevent XSS and injection attacks
    */
-  private sanitizeResponse(data: any): FetchNewsResult {
-    return {
-      status: String(data.status || 'error'),
-      totalResults: Number(data.totalResults || 0),
-      articles: (data.articles || []).map((article: any) => ({
-        title: this.sanitizeString(article.title),
+  private sanitizeResponse(data: unknown): FetchNewsResult {
+    const payload = (data ?? {}) as {
+      status?: unknown;
+      totalResults?: unknown;
+      articles?: Array<Record<string, unknown>>;
+    };
+
+    const articles = Array.isArray(payload.articles) ? payload.articles : [];
+    const sanitizedArticles: FetchNewsResult['articles'] = [];
+
+    articles.forEach((article) => {
+      const url = this.sanitizeUrl(article.url);
+      if (!url) {
+        return;
+      }
+
+      sanitizedArticles.push({
+        title: this.sanitizeString(article.title) ?? 'Untitled',
         description: this.sanitizeString(article.description),
         content: this.sanitizeString(article.content),
-        url: this.sanitizeUrl(article.url),
+        url,
         urlToImage: this.sanitizeUrl(article.urlToImage),
         source: {
-          id: this.sanitizeString(article.source?.id),
-          name: this.sanitizeString(article.source?.name) || 'Unknown',
+          id: this.sanitizeString(article.source && (article.source as Record<string, unknown>).id),
+          name:
+            this.sanitizeString(article.source && (article.source as Record<string, unknown>).name) ||
+            'Unknown',
         },
         author: this.sanitizeString(article.author),
         publishedAt: String(article.publishedAt || new Date().toISOString()),
-      })),
+      });
+    });
+
+    return {
+      status: String(payload.status || 'error'),
+      totalResults: Number(payload.totalResults || 0),
+      articles: sanitizedArticles,
     };
   }
 
-  private sanitizeString(value: any): string | null {
+  private sanitizeString(value: unknown): string | null {
     if (!value || typeof value !== 'string') return null;
     // Remove potential script tags and trim
     return value.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '').trim();
   }
 
-  private sanitizeUrl(value: any): string | null {
+  private sanitizeUrl(value: unknown): string | null {
     if (!value || typeof value !== 'string') return null;
     // Basic URL validation
     try {
@@ -153,5 +199,20 @@ export class NewsAPIClient implements INewsAPIClient {
     } catch {
       return null;
     }
+  }
+
+  private mapCategory(category: string | undefined): string | undefined {
+    if (!category) return undefined;
+
+    const lower = category.toLowerCase();
+    if (CATEGORY_ALIASES[lower]) {
+      return CATEGORY_ALIASES[lower];
+    }
+
+    if (NEWSAPI_CATEGORIES.has(lower)) {
+      return lower;
+    }
+
+    return undefined;
   }
 }

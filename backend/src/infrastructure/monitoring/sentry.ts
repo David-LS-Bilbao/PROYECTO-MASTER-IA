@@ -112,7 +112,7 @@ export function captureException(
     endpoint?: string;
     method?: string;
     tags?: Record<string, string>;
-    extra?: Record<string, any>;
+    extra?: Record<string, unknown>;
   }
 ): void {
   Sentry.captureException(error, {
@@ -142,7 +142,7 @@ export function captureException(
 export function addBreadcrumb(
   message: string,
   level: 'fatal' | 'error' | 'warning' | 'info' | 'debug' = 'info',
-  data?: Record<string, any>
+  data?: Record<string, unknown>
 ): void {
   Sentry.addBreadcrumb({
     message,

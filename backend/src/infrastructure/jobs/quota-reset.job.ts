@@ -12,6 +12,10 @@
 
 import cron, { ScheduledTask } from 'node-cron';
 import { PrismaClient } from '@prisma/client';
+import {
+  safeParseUserUsageStats,
+  type UserUsageStats,
+} from '../http/schemas/user-profile.schema';
 
 export class QuotaResetJob {
   private dailyTask?: ScheduledTask;
@@ -35,8 +39,8 @@ export class QuotaResetJob {
       // Update each user's articlesAnalyzed counter to 0
       // We need to use individual updates to preserve other usageStats fields
       for (const user of users) {
-        const currentStats = (user.usageStats as any) || {};
-        const updatedStats = {
+        const currentStats = safeParseUserUsageStats(user.usageStats);
+        const updatedStats: UserUsageStats = {
           ...currentStats,
           articlesAnalyzed: 0,
         };
@@ -74,8 +78,8 @@ export class QuotaResetJob {
 
       // Update each user's monthly counters to 0
       for (const user of users) {
-        const currentStats = (user.usageStats as any) || {};
-        const updatedStats = {
+        const currentStats = safeParseUserUsageStats(user.usageStats);
+        const updatedStats: UserUsageStats = {
           ...currentStats,
           chatMessages: 0,
           groundingSearches: 0,

@@ -20,6 +20,7 @@ import { EntityNotFoundError } from '../../domain/errors/domain.error';
 
 export function createServer(): Application {
   const app = express();
+  app.set('trust proxy', 1);
 
   // Initialize dependencies
   const container = DependencyContainer.getInstance();
@@ -47,7 +48,7 @@ export function createServer(): Application {
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: true,
     // 🔍 Sprint 15 - Paso 3: Allow Sentry trace headers for distributed tracing
-    allowedHeaders: ['Content-Type', 'Authorization', 'sentry-trace', 'baggage'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'sentry-trace', 'baggage', 'x-cron-secret'],
     exposedHeaders: ['sentry-trace'],
   }));
 

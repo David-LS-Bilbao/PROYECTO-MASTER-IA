@@ -11,7 +11,7 @@
 Verity News es una plataforma de análisis de credibilidad de noticias que combina:
 - 📰 **Ingesta automática** desde RSS de medios españoles (El País, El Mundo, 20 Minutos, Europa Press)
 - 🖼️ **Extracción de imágenes reales** mediante MetadataExtractor (Open Graph)
-- 🤖 **Análisis de sesgo político** y credibilidad con Gemini 2.5 Flash
+- 🤖 **Análisis de sesgo político** y credibilidad con Gemini 2.0 Flash
 - 💬 **Chat conversacional con RAG** y Google Search Grounding
 - 🔍 **Búsqueda semántica** con ChromaDB (embeddings vectoriales)
 - 📊 **Dashboard interactivo** con analytics y gestión de favoritos
@@ -19,6 +19,8 @@ Verity News es una plataforma de análisis de credibilidad de noticias que combi
 - 🌍 **8 categorías unificadas** con navegación inteligente y auto-fill automático
 - 🎯 **Smart Search** con keywords optimizados para mejores resultados
 - 💰 **Monitoreo de costes** con Token Taximeter en tiempo real
+- 💎 **Modelo Freemium** (FREE/PREMIUM) con canje de códigos
+- 📢 **Monetización** con Google AdSense (mock/dev y producción)
 - ✅ **328 tests** (100% cobertura crítica) con TDD y Mikado Method
 
 ---
@@ -35,35 +37,32 @@ Verity News es una plataforma de análisis de credibilidad de noticias que combi
 ## 🛠️ Stack Tecnológico
 
 ### Frontend
-- **Framework:** Next.js 16 (App Router) + React 18 + TypeScript
+- **Framework:** Next.js 16 (App Router) + React 19 + TypeScript
 - **UI Library:** shadcn/ui + Radix UI + Tailwind CSS
 - **State Management:** React Query v5 + Context API
 - **Forms:** React Hook Form + Zod validation
-- **Testing:** Vitest (122 tests, 100% passing) + React Testing Library
+- **Testing:** Vitest + React Testing Library
 - **Build:** Turbopack (Next.js optimizations)
 
 ### Backend
 - **Runtime:** Node.js 20+ + TypeScript (strict mode)
-- **Framework:** Express.js con Clean Architecture (Hexagonal)
+- **Framework:** Express 5 con Clean Architecture (Hexagonal)
 - **ORM:** Prisma (PostgreSQL)
 - **Validation:** Zod schemas
 - **Logging:** Pino (structured logging)
-- **Testing:** Vitest (206 tests, 99.5% passing)
+- **Testing:** Vitest
 - **Resilience:** Exponential Backoff + Retry Strategy
 
 ### IA & Machine Learning
-- **LLMs:** 
-  - Gemini 2.5 Flash (análisis de sesgo, categorización)
-  - OpenAI GPT-4 (chat conversacional, embeddings)
+- **LLMs:** Gemini 2.0 Flash (análisis de sesgo, categorización)
 - **Vector Database:** ChromaDB (búsqueda semántica)
-- **Embeddings:** text-embedding-ada-002 (OpenAI)
+- **Embeddings:** Gemini Embeddings
 - **News Sources:** RSS directos (El País, El Mundo, 20 Minutos, Europa Press)
 - **Metadata Extraction:** Custom MetadataExtractor (og:image, og:description)
 - **Chat Grounding:** Google Search API + RAG (Retrieval Augmented Generation)
-
 ### Infrastructure & DevOps
 - **Auth:** Firebase Authentication + Admin SDK
-- **Database:** PostgreSQL 15 (Docker)
+- **Database:** PostgreSQL 17 (Docker)
 - **Containerization:** Docker + Docker Compose
 - **Monitoring:** 
   - Health Probes (liveness + readiness)
@@ -150,7 +149,6 @@ Verity-News/
 - **Cuentas API:**
   - Firebase (Authentication - gratis)
   - Google AI Studio (Gemini API - gratis con límites)
-  - OpenAI (GPT-4 + embeddings - pago con créditos iniciales)
 
 ### Instalación
 
@@ -166,15 +164,18 @@ cd PROYECTO-MASTER-IA/Verity-News
 cp backend/.env.example backend/.env
 # Editar backend/.env con:
 # - DATABASE_URL (PostgreSQL)
-# - OPENAI_API_KEY
-# - GOOGLE_API_KEY (Gemini)
+# - GEMINI_API_KEY
+# - NEWS_API_KEY (NewsAPI)
 # - FIREBASE_PROJECT_ID
 # - CHROMA_URL=http://localhost:8000
 
 # Frontend
 cp frontend/.env.local.example frontend/.env.local
 # Editar frontend/.env.local con:
-# - NEXT_PUBLIC_API_URL=http://localhost:3001/api
+# - NEXT_PUBLIC_API_URL=http://localhost:3000
+# - NEXT_PUBLIC_CRON_SECRET (igual que CRON_SECRET del backend)
+# - NEXT_PUBLIC_ENABLE_ADSENSE (true/false)
+# - NEXT_PUBLIC_ADSENSE_CLIENT_ID=ca-pub-xxxxxxxxxxxxxxxx
 # - NEXT_PUBLIC_FIREBASE_* (credenciales Firebase)
 ```
 
@@ -204,33 +205,33 @@ npx prisma generate
 
 6. **Iniciar en modo desarrollo**
 ```bash
-# Terminal 1 - Backend (puerto 3001)
+# Terminal 1 - Backend (puerto 3000)
 cd backend && npm run dev
 
-# Terminal 2 - Frontend (puerto 3000)
+# Terminal 2 - Frontend (puerto 3001)
 cd frontend && npm run dev
 ```
 
 7. **Abrir en el navegador**
 ```
-http://localhost:3000
+http://localhost:3001
 ```
 
 ### Verificación de la Instalación
 
 ```bash
 # Health check backend
-curl http://localhost:3001/api/health/check
+curl http://localhost:3000/api/health/check
 
 # Readiness probe (verifica DB)
-curl http://localhost:3001/api/health/readiness
+curl http://localhost:3000/api/health/readiness
 ```
 
 ---
 
 ## 📖 Documentación
 
-- [📋 Estado del Proyecto](./ESTADO_PROYECTO.md) - Sprint 27 completado
+- [📋 Estado del Proyecto](./ESTADO_PROYECTO.md) - Sprint 27.2 completado
 - [🗺️ Estructura del Proyecto](./docs/ESTRUCTURA_PROYECTO.md) - Mapa completo
 - [🔬 Deuda Técnica Sprint 13](./docs/DEUDA_TECNICA_SPRINT_13.md) - Análisis + Plan Mikado
 - [✅ Estándares de Calidad](./docs/CALIDAD.md) - Coverage 100/80/0
@@ -238,6 +239,8 @@ curl http://localhost:3001/api/health/readiness
 - [🏗️ Diagramas](./docs/diagrams/) - Arquitectura, ER, secuencias
 - [🌍 Sprint 20: Geolocalización](./docs/sprints/Sprint-20-Geolocalizacion-Topics.md) - Topics + Location
 - [🎨 Sprint 22: UI Cleanup](./docs/sprints/Sprint-22-UI-Cleanup-Smart-Search.md) - Navegación + Keywords
+- [🛡️ Sprint 27.1: Security Remediation](./docs/sprints/Sprint-27.1-Security-Remediation.md)
+- [🎬 Sprint 27.2: Fix Entretenimiento](./docs/sprints/Sprint-27.2-Fix-Entretenimiento.md)
 - [💎 Sprint 27: Freemium + Suscripciones](./Sprint-27-ENTREGABLES.md) - Modelo FREE/PREMIUM (MVP)
 
 ---
@@ -311,6 +314,9 @@ vercel deploy --prod
 
 **Variables de entorno requeridas en Vercel:**
 - `NEXT_PUBLIC_API_URL`
+- `NEXT_PUBLIC_CRON_SECRET`
+- `NEXT_PUBLIC_ENABLE_ADSENSE`
+- `NEXT_PUBLIC_ADSENSE_CLIENT_ID`
 - `NEXT_PUBLIC_FIREBASE_*` (credenciales Firebase)
 
 ### Backend (Railway/Render) - Planificado
@@ -322,10 +328,12 @@ npm run build
 
 **Variables de entorno requeridas:**
 - `DATABASE_URL` (PostgreSQL connection)
-- `OPENAI_API_KEY`
-- `GOOGLE_API_KEY` (Gemini)
+- `GEMINI_API_KEY`
+- `NEWS_API_KEY`
 - `FIREBASE_PROJECT_ID`
 - `CHROMA_URL`
+- `CRON_SECRET`
+- `PROMO_CODES`
 - `NODE_ENV=production`
 
 ### Base de Datos
@@ -366,7 +374,7 @@ Este proyecto es parte de un Trabajo Final de Máster y está bajo licencia MIT.
 - **BIG School** - Por el Máster en Desarrollo con IA
 - **Comunidad Open Source** - shadcn/ui, Prisma, Next.js, React Query
 - **GitHub Copilot** - Asistente IA utilizado durante el desarrollo
-- **Proveedores de IA:** OpenAI (GPT-4), Google (Gemini 2.5 Flash)
+- **Proveedores de IA:** Google (Gemini 2.0 Flash)
 
 ---
 
@@ -385,17 +393,17 @@ Este proyecto demuestra la aplicación práctica de:
 
 ---
 
-**🚀 Proyecto activo - Sprint 27 completado - 97% de progreso**
+**🚀 Proyecto activo - Sprint 27.2 completado - 97% de progreso**
 
 ## 📊 Estado del Proyecto
 
-![Status](https://img.shields.io/badge/status-sprint%2027%20completado-success)
+![Status](https://img.shields.io/badge/status-sprint%2027.2%20completado-success)
 ![Progress](https://img.shields.io/badge/progress-97%25-green)
 ![Tests](https://img.shields.io/badge/tests-328%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen)
 
 **Inicio:** Enero 2026
-**Último Sprint:** 27 - Modelo Freemium y Suscripciones (MVP)
+**Último Sprint:** 27.2 - Fix Entretenimiento y Calidad de Ingesta
 **Fecha:** 10 de febrero de 2026
 
 ### Métricas Actuales
@@ -480,6 +488,8 @@ Este proyecto demuestra la aplicación práctica de:
   - [x] Script de verificación: `verify-analysis-rules.ts`
 
 ### ✅ Fase 7: Freemium y Suscripciones (Sprint 27)
+- [x] **Sprint 27.2:** Fix Entretenimiento y Calidad de Ingesta
+- [x] **Sprint 27.1:** Security Remediation e Ingest Hardening
 - [x] **Sprint 27:** Modelo Freemium + Suscripciones (MVP)
   - [x] `SubscriptionPlan` (FREE/PREMIUM) + migraciones
   - [x] Endpoints `/api/subscription/redeem` y `/api/subscription/cancel`

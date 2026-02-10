@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { DomainError } from '../../../domain/errors/domain.error';
 import { InfrastructureError, ExternalAPIError } from '../../../domain/errors/infrastructure.error';
 import { logger } from '../../logger/logger';
+import { ZodError } from 'zod';
 
 /**
  * Estructura de respuesta de error estandarizada
@@ -73,11 +74,16 @@ export function errorHandler(
     details = { originalMessage: error.message };
   }
   // Errores de validación Zod
-  else if (error.name === 'ZodError') {
+  else if (error instanceof ZodError || error.name === 'ZodError') {
     statusCode = 400;
     errorCode = 'VALIDATION_ERROR';
     message = 'Invalid request data';
-    details = { issues: (error as any).issues }; // Zod issues
+    if (error instanceof ZodError) {
+      details = { issues: error.issues };
+    } else {
+      const issues = (error as { issues?: unknown }).issues;
+      details = { issues };
+    }
   }
   // Error genérico (no exponer detalles internos)
   else {

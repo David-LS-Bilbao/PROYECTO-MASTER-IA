@@ -55,10 +55,12 @@ describe('SubscriptionController - Redeem Promo Code', () => {
   let mockRes: Partial<Response>;
   let statusMock: ReturnType<typeof vi.fn>;
   let jsonMock: ReturnType<typeof vi.fn>;
+  const originalPromoCodes = process.env.PROMO_CODES;
 
   beforeEach(() => {
     controller = new SubscriptionController();
     vi.clearAllMocks();
+    process.env.PROMO_CODES = 'VERITY_ADMIN,MASTER_AI_2026';
 
     jsonMock = vi.fn();
     statusMock = vi.fn(() => ({ json: jsonMock }));
@@ -71,6 +73,11 @@ describe('SubscriptionController - Redeem Promo Code', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    if (originalPromoCodes === undefined) {
+      delete process.env.PROMO_CODES;
+    } else {
+      process.env.PROMO_CODES = originalPromoCodes;
+    }
   });
 
   it('401 UNAUTHORIZED: should reject when user is not authenticated', async () => {

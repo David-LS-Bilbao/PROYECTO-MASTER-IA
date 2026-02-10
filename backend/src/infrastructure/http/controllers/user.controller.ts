@@ -6,9 +6,46 @@
 import { Request, Response } from 'express';
 import { getPrismaClient } from '../../persistence/prisma.client';
 import { GeminiClient } from '../../external/gemini.client';
+import type { Prisma } from '@prisma/client';
+
+type UserWithCounts = Prisma.UserGetPayload<{
+  include: {
+    _count: {
+      select: {
+        favorites: true;
+        searchHistory: true;
+        chats: true;
+      };
+    };
+  };
+}>;
 
 export class UserController {
   constructor(private geminiClient: GeminiClient) {}
+
+  private formatUserProfile(user: UserWithCounts) {
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      picture: user.picture,
+      plan: user.subscriptionPlan,
+      location: user.location || null, // Sprint 20: Geolocalización
+      preferences: user.preferences || {},
+      usageStats: user.usageStats || {
+        articlesAnalyzed: 0,
+        searchesPerformed: 0,
+        chatMessages: 0,
+      },
+      counts: {
+        favorites: user._count.favorites,
+        searchHistory: user._count.searchHistory,
+        chats: user._count.chats,
+      },
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+  }
   /**
    * GET /api/user/me
    * Get complete user profile including usage stats and favorites count
@@ -52,27 +89,7 @@ export class UserController {
       // Formatear respuesta
       res.json({
         success: true,
-        data: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          picture: user.picture,
-          plan: user.subscriptionPlan,
-          location: user.location || null, // Sprint 20: Geolocalización
-          preferences: user.preferences || {},
-          usageStats: user.usageStats || {
-            articlesAnalyzed: 0,
-            searchesPerformed: 0,
-            chatMessages: 0
-          },
-          counts: {
-            favorites: user._count.favorites,
-            searchHistory: user._count.searchHistory,
-            chats: user._count.chats
-          },
-          createdAt: user.createdAt,
-          updatedAt: user.updatedAt
-        }
+        data: this.formatUserProfile(user),
       });
     } catch (error) {
       console.error('Error fetching user profile:', error);
@@ -114,7 +131,7 @@ export class UserController {
       const prisma = getPrismaClient();
 
       // Preparar datos a actualizar
-      const updateData: any = {};
+      const updateData: Prisma.UserUpdateInput = {};
       if (name !== undefined) {
         updateData.name = name;
       }
@@ -143,27 +160,7 @@ export class UserController {
       // Formatear respuesta
       res.json({
         success: true,
-        data: {
-          id: updatedUser.id,
-          email: updatedUser.email,
-          name: updatedUser.name,
-          picture: updatedUser.picture,
-          plan: updatedUser.subscriptionPlan,
-          location: updatedUser.location || null, // Sprint 20: Geolocalización
-          preferences: updatedUser.preferences || {},
-          usageStats: updatedUser.usageStats || {
-            articlesAnalyzed: 0,
-            searchesPerformed: 0,
-            chatMessages: 0
-          },
-          counts: {
-            favorites: updatedUser._count.favorites,
-            searchHistory: updatedUser._count.searchHistory,
-            chats: updatedUser._count.chats
-          },
-          createdAt: updatedUser.createdAt,
-          updatedAt: updatedUser.updatedAt
-        }
+        data: this.formatUserProfile(updatedUser),
       });
     } catch (error) {
       console.error('Error updating user profile:', error);

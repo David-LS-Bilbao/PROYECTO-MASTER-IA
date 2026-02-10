@@ -7,13 +7,28 @@
  * - Status checks (/status) are leniently limited (60 req/min)
  */
 
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { IngestController } from '../controllers/ingest.controller';
 import {
   globalIngestRateLimiter,
   categoryIngestRateLimiter,
   statusCheckRateLimiter,
 } from '../middleware/rate-limit.middleware';
+
+function requireCronSecret(req: Request, res: Response, next: NextFunction): void {
+  const providedSecret = req.header('x-cron-secret');
+  const expectedSecret = process.env.CRON_SECRET || '';
+
+  if (!expectedSecret || !providedSecret || providedSecret !== expectedSecret) {
+    res.status(401).json({
+      success: false,
+      error: 'Unauthorized',
+    });
+    return;
+  }
+
+  next();
+}
 
 export function createIngestRoutes(ingestController: IngestController): Router {
   const router = Router();
@@ -26,6 +41,7 @@ export function createIngestRoutes(ingestController: IngestController): Router {
    */
   router.post(
     '/news',
+    requireCronSecret,
     categoryIngestRateLimiter, // Apply moderate rate limiting
     (req, res) => ingestController.ingestNews(req, res)
   );
@@ -43,6 +59,7 @@ export function createIngestRoutes(ingestController: IngestController): Router {
    */
   router.post(
     '/all',
+    requireCronSecret,
     globalIngestRateLimiter, // Apply strict rate limiting (CRITICAL)
     (req, res) => ingestController.ingestAllNews(req, res)
   );
@@ -55,6 +72,7 @@ export function createIngestRoutes(ingestController: IngestController): Router {
    */
   router.get(
     '/status',
+    requireCronSecret,
     statusCheckRateLimiter, // Apply lenient rate limiting
     (req, res) => ingestController.getIngestionStatus(req, res)
   );
