@@ -145,7 +145,7 @@ export function BiasDistributionChart({ data }: BiasDistributionChartProps) {
                   <Cell key={entry.name} fill={entry.color} />
                 ))}
               </Pie>
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip content={(props) => <CustomTooltip {...props} />} />
             </PieChart>
           </ResponsiveContainer>
         )}
