@@ -14,20 +14,20 @@ describe('AccountLevelCard', () => {
     userId: 'abcdefghij1234567890extra',
   };
 
-  it('muestra el progreso de análisis', () => {
+  it('muestra el progreso de analisis', () => {
     render(<AccountLevelCard {...defaultProps} />);
 
     expect(screen.getByText('25 / 50')).toBeDefined();
-    expect(screen.getByText('Quedan 25 análisis este mes')).toBeDefined();
+    expect(screen.getByText('Quedan 25 analisis este mes')).toBeDefined();
   });
 
-  it('muestra mensaje de límite alcanzado al llegar a 50', () => {
+  it('muestra mensaje de limite alcanzado al llegar a 50', () => {
     render(<AccountLevelCard {...defaultProps} articlesAnalyzed={50} />);
 
-    expect(screen.getByText('Has alcanzado el límite mensual')).toBeDefined();
+    expect(screen.getByText('Has alcanzado el limite mensual')).toBeDefined();
   });
 
-  it('muestra la fecha de creación formateada', () => {
+  it('muestra la fecha de creacion formateada', () => {
     render(<AccountLevelCard {...defaultProps} />);
 
     expect(screen.getByText('Miembro desde')).toBeDefined();
@@ -41,7 +41,7 @@ describe('AccountLevelCard', () => {
     expect(screen.getByText('abcdefghij1234567890...')).toBeDefined();
   });
 
-  it('renderiza el título de la card', () => {
+  it('renderiza el titulo de la card', () => {
     render(<AccountLevelCard {...defaultProps} />);
 
     expect(screen.getByText('Nivel de Cuenta')).toBeDefined();

@@ -38,7 +38,7 @@ declare global {
         email: string;
         name: string | null;
         picture: string | null;
-        plan: 'FREE' | 'QUOTA' | 'PAY_AS_YOU_GO';
+        subscriptionPlan: 'FREE' | 'PREMIUM';
         preferences: UserPreferences; // ✅ Tipo seguro con Zod
         usageStats: UserUsageStats;   // ✅ Tipo seguro con Zod
       };
@@ -136,7 +136,7 @@ export async function authenticate(
     // =========================================================================
     // PASO 3: Sincronizar usuario en PostgreSQL (UPSERT)
     // =========================================================================
-    // Si el usuario no existe, lo crea con plan FREE por defecto
+    // Si el usuario no existe, lo crea con subscriptionPlan FREE por defecto
     // Si existe, actualiza su email y otros datos
     const user = await getPrisma().user.upsert({
       where: { id: uid },
@@ -151,13 +151,13 @@ export async function authenticate(
         email: email,
         name: name || null,
         picture: picture || null,
-        plan: 'FREE', // Plan por defecto
+        subscriptionPlan: 'FREE', // Plan por defecto
         preferences: {}, // Preferencias vacías por defecto
         usageStats: {}, // Estadísticas vacías por defecto
       },
     });
 
-    console.log(`✅ Usuario autenticado: ${email} (${uid}) - Plan: ${user.plan}`);
+    console.log(`✅ Usuario autenticado: ${email} (${uid}) - Plan: ${user.subscriptionPlan}`);
 
     // =========================================================================
     // PASO 4: Inyectar datos del usuario en req.user
@@ -168,7 +168,7 @@ export async function authenticate(
       email: user.email,
       name: user.name,
       picture: user.picture,
-      plan: user.plan as 'FREE' | 'QUOTA' | 'PAY_AS_YOU_GO',
+      subscriptionPlan: user.subscriptionPlan as 'FREE' | 'PREMIUM',
       preferences: safeParseUserPreferences(user.preferences), // ✅ Validado con Zod
       usageStats: safeParseUserUsageStats(user.usageStats),   // ✅ Validado con Zod
     };
@@ -244,7 +244,7 @@ export async function optionalAuthenticate(
             email: email,
             name: name || null,
             picture: picture || null,
-            plan: 'FREE',
+            subscriptionPlan: 'FREE',
             preferences: {},
             usageStats: {},
           },
@@ -255,7 +255,7 @@ export async function optionalAuthenticate(
           email: user.email,
           name: user.name,
           picture: user.picture,
-          plan: user.plan as 'FREE' | 'QUOTA' | 'PAY_AS_YOU_GO',
+          subscriptionPlan: user.subscriptionPlan as 'FREE' | 'PREMIUM',
           preferences: safeParseUserPreferences(user.preferences), // ✅ Validado con Zod
           usageStats: safeParseUserUsageStats(user.usageStats),   // ✅ Validado con Zod
         };
@@ -276,7 +276,7 @@ export async function optionalAuthenticate(
 }
 
 /**
- * Middleware: verificar plan de usuario
+ * Middleware: verificar plan de suscripción
  * 
  * Debe usarse después de `authenticate`. Valida que el usuario tenga uno de los planes permitidos.
  * 
@@ -285,11 +285,11 @@ export async function optionalAuthenticate(
  * 
  * @example
  * ```typescript
- * // Solo usuarios con plan QUOTA o PAY_AS_YOU_GO
- * router.post('/api/analyze/batch', authenticate, requirePlan(['QUOTA', 'PAY_AS_YOU_GO']), batchAnalyze);
+ * // Solo usuarios con plan PREMIUM
+ * router.post('/api/analyze/batch', authenticate, requirePlan(['PREMIUM']), batchAnalyze);
  * ```
  */
-export function requirePlan(allowedPlans: Array<'FREE' | 'QUOTA' | 'PAY_AS_YOU_GO'>) {
+export function requirePlan(allowedPlans: Array<'FREE' | 'PREMIUM'>) {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.user) {
       res.status(401).json({
@@ -300,12 +300,12 @@ export function requirePlan(allowedPlans: Array<'FREE' | 'QUOTA' | 'PAY_AS_YOU_G
       return;
     }
 
-    if (!allowedPlans.includes(req.user.plan)) {
+    if (!allowedPlans.includes(req.user.subscriptionPlan)) {
       res.status(403).json({
         success: false,
         error: 'Plan insuficiente',
         message: `Esta funcionalidad requiere uno de los siguientes planes: ${allowedPlans.join(', ')}`,
-        currentPlan: req.user.plan,
+        currentPlan: req.user.subscriptionPlan,
         requiredPlans: allowedPlans,
       });
       return;

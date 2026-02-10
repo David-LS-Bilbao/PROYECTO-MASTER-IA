@@ -10,7 +10,7 @@ import { QuotaExceededError } from '../errors/domain.error';
 
 export interface User {
   id: string;
-  plan: 'FREE' | 'QUOTA' | 'PAY_AS_YOU_GO';
+  subscriptionPlan: 'FREE' | 'PREMIUM';
   usageStats?: {
     articlesAnalyzed?: number;
     chatMessages?: number;
@@ -28,17 +28,15 @@ export class QuotaService {
    * @throws QuotaExceededError if quota exceeded
    */
   verifyQuota(user: User, resource: 'analysis' | 'chat'): void {
-    // Map Prisma UserPlan to constants USER_PLANS
+    // Map SubscriptionPlan to constants USER_PLANS
     // FREE -> FREE
-    // QUOTA -> PRO
-    // PAY_AS_YOU_GO -> ENTERPRISE
-    const planMapping: Record<string, 'FREE' | 'PRO' | 'ENTERPRISE'> = {
+    // PREMIUM -> PRO
+    const planMapping: Record<string, 'FREE' | 'PRO'> = {
       FREE: 'FREE',
-      QUOTA: 'PRO',
-      PAY_AS_YOU_GO: 'ENTERPRISE',
+      PREMIUM: 'PRO',
     };
 
-    const mappedPlan = planMapping[user.plan] || 'FREE';
+    const mappedPlan = planMapping[user.subscriptionPlan] || 'FREE';
     const planConfig = USER_PLANS[mappedPlan];
 
     const usageStats = user.usageStats || {};

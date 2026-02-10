@@ -57,7 +57,7 @@ export class UserController {
           email: user.email,
           name: user.name,
           picture: user.picture,
-          plan: user.plan,
+          plan: user.subscriptionPlan,
           location: user.location || null, // Sprint 20: Geolocalización
           preferences: user.preferences || {},
           usageStats: user.usageStats || {
@@ -148,7 +148,7 @@ export class UserController {
           email: updatedUser.email,
           name: updatedUser.name,
           picture: updatedUser.picture,
-          plan: updatedUser.plan,
+          plan: updatedUser.subscriptionPlan,
           location: updatedUser.location || null, // Sprint 20: Geolocalización
           preferences: updatedUser.preferences || {},
           usageStats: updatedUser.usageStats || {

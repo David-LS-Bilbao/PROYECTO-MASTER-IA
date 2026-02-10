@@ -6,6 +6,7 @@
  */
 
 import { User, CheckCircle2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -17,7 +18,8 @@ export interface ProfileHeaderProps {
   photoURL?: string | null;
   displayName?: string | null;
   emailVerified: boolean;
-  plan: 'FREE' | 'QUOTA' | 'PAY_AS_YOU_GO';
+  plan: 'FREE' | 'PREMIUM';
+  onManagePlan?: () => void;
   onNameChange: (name: string) => void;
   onLocationChange: (location: string) => void; // Sprint 20: Handler para location
 }
@@ -30,6 +32,7 @@ export function ProfileHeader({
   displayName,
   emailVerified,
   plan,
+  onManagePlan,
   onNameChange,
   onLocationChange,
 }: ProfileHeaderProps) {
@@ -107,14 +110,26 @@ export function ProfileHeader({
 
       {/* Plan Badge */}
       <div className="shrink-0">
-        <Badge
-          variant="secondary"
-          className="text-lg px-4 py-2 font-semibold bg-blue-100 text-blue-900 dark:bg-blue-900 dark:text-blue-100"
-        >
-          {plan === 'FREE' && 'Plan Gratuito'}
-          {plan === 'QUOTA' && 'Plan Quota'}
-          {plan === 'PAY_AS_YOU_GO' && 'Pago por Uso'}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge
+            variant="secondary"
+            className="text-lg px-4 py-2 font-semibold bg-blue-100 text-blue-900 dark:bg-blue-900 dark:text-blue-100"
+          >
+            {plan === 'FREE' && 'Plan Gratuito'}
+            {plan === 'PREMIUM' && 'Plan Premium'}
+          </Badge>
+          {onManagePlan && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onManagePlan}
+              className="whitespace-nowrap"
+            >
+              Gestionar Plan
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

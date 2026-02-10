@@ -34,7 +34,13 @@
       "Bash(npx prisma format:*)",
       "Bash(npx prisma db seed:*)",
       "Bash(npx prisma studio:*)",
-      "Bash(del:*)"
+      "Bash(del:*)",
+      "Bash(tasklist:*)",
+      "Bash(npm view:*)",
+      "Bash(cmd //c \"taskkill /PID 33308 /F\")",
+      "Bash(git remote set-url:*)",
+      "Bash(git restore:*)",
+      "Bash(npx prisma migrate deploy:*)"
     ]
   }
 }

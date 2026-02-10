@@ -13,6 +13,8 @@ const defaultProps = {
   displayName: null,
   emailVerified: true,
   plan: 'FREE' as const,
+  location: 'Madrid',
+  onLocationChange: vi.fn(),
   onNameChange: vi.fn(),
 };
 
@@ -52,9 +54,9 @@ describe('ProfileHeader', () => {
     expect(screen.getByText('Plan Gratuito')).toBeDefined();
   });
 
-  it('muestra Plan Quota para plan QUOTA', () => {
-    render(<ProfileHeader {...defaultProps} plan="QUOTA" />);
-    expect(screen.getByText('Plan Quota')).toBeDefined();
+  it('muestra Plan Premium para plan PREMIUM', () => {
+    render(<ProfileHeader {...defaultProps} plan="PREMIUM" />);
+    expect(screen.getByText('Plan Premium')).toBeDefined();
   });
 
   it('deshabilita el campo email', () => {

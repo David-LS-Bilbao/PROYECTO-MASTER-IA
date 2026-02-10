@@ -14,10 +14,9 @@ datasource db {
 // USER MANAGEMENT
 // ==========================================
 
-enum UserPlan {
+enum SubscriptionPlan {
   FREE
-  QUOTA
-  PAY_AS_YOU_GO
+  PREMIUM
 }
 
 model User {
@@ -25,8 +24,8 @@ model User {
   email       String   @unique
   name        String?
   picture     String?
-  plan        UserPlan @default(FREE)
-  location    String? // Sprint 20: Geolocalización (ej: "Madrid, España")
+  subscriptionPlan SubscriptionPlan @default(FREE) @map("subscription_plan")
+  location    String? // Sprint 20: GeolocalizaciÃ³n (ej: "Madrid, EspaÃ±a")
   preferences Json? // User preferences (theme, notifications, etc.)
   usageStats  Json? // Usage tracking (queries, chats, analyses)
   createdAt   DateTime @default(now())
@@ -99,8 +98,8 @@ model Favorite {
   createdAt DateTime @default(now())
 
   // PRIVACY FIX (Sprint 18.2): Distinguish "Like" from "Analysis Unlocked"
-  // - false: User only liked (❤️) the article (no analysis access)
-  // - true: User requested analysis (✨) and can see AI data
+  // - false: User only liked (â¤ï¸) the article (no analysis access)
+  // - true: User requested analysis (âœ¨) and can see AI data
   unlockedAnalysis Boolean @default(false)
 
   // Relations

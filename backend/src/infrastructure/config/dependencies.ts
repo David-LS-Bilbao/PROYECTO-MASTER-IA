@@ -32,6 +32,7 @@ import { SourcesController } from '../http/controllers/sources.controller';
 import { UserController } from '../http/controllers/user.controller';
 import { TopicController } from '../http/controllers/topic.controller';
 import { HealthController } from '../http/controllers/health.controller';
+import { SubscriptionController } from '../http/controllers/subscription.controller';
 import { QuotaResetJob } from '../jobs/quota-reset.job';
 import { CleanupNewsJob } from '../jobs/cleanup-news.job';
 
@@ -52,6 +53,7 @@ export class DependencyContainer {
   public readonly userController: UserController;
   public readonly topicController: TopicController;
   public readonly healthController: HealthController;
+  public readonly subscriptionController: SubscriptionController;
   public readonly quotaResetJob: QuotaResetJob;
   public readonly cleanupNewsJob: CleanupNewsJob;
 
@@ -142,6 +144,7 @@ export class DependencyContainer {
     this.topicController = new TopicController(this.topicRepository);
     this.sourcesController = new SourcesController(this.geminiClient);
     this.healthController = new HealthController(this.prisma);
+    this.subscriptionController = new SubscriptionController();
 
     // Infrastructure Jobs (Sprint 14 - Paso 2: Automatización de Reset de Cuotas)
     this.quotaResetJob = new QuotaResetJob(this.prisma);

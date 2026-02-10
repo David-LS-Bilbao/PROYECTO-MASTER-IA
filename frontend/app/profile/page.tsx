@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ import {
   AccountLevelCard,
   CategoryPreferences,
 } from '@/components/profile';
+import { PricingModal } from '@/components/subscription/pricing-modal';
 
 const AVAILABLE_CATEGORIES = [
   'Política',
@@ -31,6 +32,7 @@ export default function ProfilePage() {
   const { user, authLoading, getToken } = useProfileAuth();
   const router = useRouter();
   const { profile, loading, saving, authToken, save } = useProfile(user, authLoading, getToken);
+  const [isPricingOpen, setIsPricingOpen] = useState(false);
 
   // Zustand Store - Gestión global de estado del formulario
   const {
@@ -144,6 +146,7 @@ export default function ProfilePage() {
                   displayName={user.displayName}
                   emailVerified={user.emailVerified}
                   plan={profile.plan}
+                  onManagePlan={() => setIsPricingOpen(true)}
                   onNameChange={setName}
                   onLocationChange={setLocation} // Sprint 20: Handler para location
                 />
@@ -177,6 +180,20 @@ export default function ProfilePage() {
             {authToken && showTokenUsage && <TokenUsageCard token={authToken} />}
           </div>
         </div>
+
+        <PricingModal
+          isOpen={isPricingOpen}
+          onOpenChange={setIsPricingOpen}
+          currentPlan={profile.plan}
+          onPlanUpdated={() => {
+            if (typeof router.refresh === 'function') {
+              router.refresh();
+            }
+            if (typeof window !== 'undefined') {
+              window.location.reload();
+            }
+          }}
+        />
       </main>
     </div>
   );

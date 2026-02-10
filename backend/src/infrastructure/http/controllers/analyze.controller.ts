@@ -46,7 +46,7 @@ export class AnalyzeController {
       user: req.user
         ? {
             id: req.user.uid,
-            plan: req.user.plan,
+            subscriptionPlan: req.user.subscriptionPlan,
             usageStats: req.user.usageStats
               ? {
                   articlesAnalyzed: req.user.usageStats.currentMonthUsage,

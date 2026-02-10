@@ -46,7 +46,7 @@ export interface AnalyzeArticleInput {
   articleId: string;
   user?: {
     id: string;
-    plan: 'FREE' | 'QUOTA' | 'PAY_AS_YOU_GO';
+    subscriptionPlan: 'FREE' | 'PREMIUM';
     usageStats?: {
       articlesAnalyzed?: number;
       chatMessages?: number;

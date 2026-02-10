@@ -1,7 +1,7 @@
 /**
  * AccountLevelCard - Step 4 Plan Mikado
  *
- * Componente de presentación: Progreso del plan + info de cuenta.
+ * Componente de presentacion: Progreso del plan + info de cuenta.
  */
 
 import { TrendingUp, Calendar, Shield, Eye, EyeOff } from 'lucide-react';
@@ -13,7 +13,7 @@ const MONTHLY_LIMIT = 50;
 
 export interface AccountLevelCardProps {
   articlesAnalyzed: number;
-  plan: 'FREE' | 'QUOTA' | 'PAY_AS_YOU_GO';
+  plan: 'FREE' | 'PREMIUM';
   createdAt: string;
   userId: string;
   onShowTokenUsage?: () => void;
@@ -28,6 +28,7 @@ export function AccountLevelCard({
   onShowTokenUsage,
   showingTokenUsage = false,
 }: AccountLevelCardProps) {
+  const isPremium = plan === 'PREMIUM';
   const usagePercentage = Math.min(
     (articlesAnalyzed / MONTHLY_LIMIT) * 100,
     100,
@@ -40,25 +41,34 @@ export function AccountLevelCard({
           <TrendingUp className="h-5 w-5 text-purple-600" />
           <CardTitle className="text-lg">Nivel de Cuenta</CardTitle>
         </div>
-        <CardDescription>Tu progreso en el plan gratuito</CardDescription>
+        <CardDescription>
+          {isPremium ? 'Plan Premium activo' : 'Tu progreso en el plan gratuito'}
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-muted-foreground">
-              Análisis realizados
-            </span>
-            <span className="text-sm font-semibold">
-              {articlesAnalyzed} / {MONTHLY_LIMIT}
-            </span>
+        {isPremium ? (
+          <div className="rounded-lg border border-blue-200/70 bg-blue-50/60 p-4 text-sm text-blue-900/90 dark:border-blue-800/60 dark:bg-blue-900/30 dark:text-blue-100">
+            <p className="font-semibold">Analisis ilimitados</p>
+            <p className="text-xs opacity-80">Sin limites mensuales en tu plan.</p>
           </div>
-          <Progress value={usagePercentage} className="h-3" />
-          <p className="text-xs text-muted-foreground mt-2">
-            {usagePercentage >= 100
-              ? 'Has alcanzado el límite mensual'
-              : `Quedan ${MONTHLY_LIMIT - articlesAnalyzed} análisis este mes`}
-          </p>
-        </div>
+        ) : (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-muted-foreground">
+                Analisis realizados
+              </span>
+              <span className="text-sm font-semibold">
+                {articlesAnalyzed} / {MONTHLY_LIMIT}
+              </span>
+            </div>
+            <Progress value={usagePercentage} className="h-3" />
+            <p className="text-xs text-muted-foreground mt-2">
+              {usagePercentage >= 100
+                ? 'Has alcanzado el limite mensual'
+                : `Quedan ${MONTHLY_LIMIT - articlesAnalyzed} analisis este mes`}
+            </p>
+          </div>
+        )}
 
         <div className="pt-4 border-t border-zinc-200 dark:border-zinc-700">
           <div className="space-y-3">
