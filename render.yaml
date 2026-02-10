@@ -1,0 +1,75 @@
+﻿services:
+  # Backend API (Render Web Service)
+  - type: web
+    name: verity-news-backend
+    env: docker
+    rootDir: backend
+    plan: starter
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: NEWS_API_KEY
+        sync: false
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
+      - key: CHROMA_HOST
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: production
+      - key: SENTRY_TRACES_SAMPLE_RATE
+        value: "0.2"
+      - key: SENTRY_PROFILES_SAMPLE_RATE
+        value: "0.1"
+      - key: RELEASE_VERSION
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+      - key: PROMO_CODES
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+      - key: NEWS_CLIENT
+        value: "newsapi"
+
+  # Frontend (Static Site - Optional)
+  # NOTE: Next.js is better on Vercel. This is a placeholder if you later export to static.
+  - type: static
+    name: verity-news-frontend
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: out
+    autoDeploy: false
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
+      - key: NEXT_PUBLIC_CRON_SECRET
+        sync: false
+      - key: NEXT_PUBLIC_ENABLE_ADSENSE
+        value: "false"
+      - key: NEXT_PUBLIC_ADSENSE_CLIENT_ID
+        sync: false
+      - key: NEXT_PUBLIC_FIREBASE_API_KEY
+        sync: false
+      - key: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+        sync: false
+      - key: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+        sync: false
+      - key: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+        sync: false
+      - key: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+        sync: false
+      - key: NEXT_PUBLIC_FIREBASE_APP_ID
+        sync: false
