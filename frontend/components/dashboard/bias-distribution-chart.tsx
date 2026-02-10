@@ -6,7 +6,7 @@ import {
   Cell,
   ResponsiveContainer,
   Tooltip,
-  type TooltipProps,
+  type TooltipContentProps,
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -42,7 +42,7 @@ export function calculatePercentage(value: number, total: number): number {
 function CustomTooltip({
   active,
   payload,
-}: TooltipProps<number, string>) {
+}: TooltipContentProps<number, string>) {
   if (!active || !payload || payload.length === 0) return null;
 
   const item = payload[0];
