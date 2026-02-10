@@ -42,7 +42,7 @@ export function calculatePercentage(value: number, total: number): number {
 function CustomTooltip({
   active,
   payload,
-}: any) {
+}: TooltipProps<number, string>) {
   if (!active || !payload || payload.length === 0) return null;
 
   const item = payload[0];

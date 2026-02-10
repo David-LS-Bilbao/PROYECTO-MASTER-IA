@@ -45,6 +45,7 @@ import {
   Check,
   Eye,
   Maximize2,
+  type LucideIcon,
 } from 'lucide-react';
 
 export default function SettingsPage() {
@@ -105,7 +106,7 @@ export default function SettingsPage() {
   ];
 
   // View mode options
-  const viewModeOptions: { value: ViewMode; label: string; icon: any; description: string }[] = [
+  const viewModeOptions: { value: ViewMode; label: string; icon: LucideIcon; description: string }[] = [
     {
       value: 'comfortable',
       label: 'Cómoda',

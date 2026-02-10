@@ -18,6 +18,17 @@ import { useInvalidateNews } from '@/hooks/useNews';
 import { useDashboardStats } from '@/hooks/useDashboardStats';
 import { groupArticlesByDate } from '@/lib/date-utils';
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+const INFINITE_PAGE_SIZE = 20;
+const INGEST_PAGE_SIZE = 50;
+const INFINITE_SCROLL_ROOT_MARGIN = '100px';
+const HEALTH_CHECK_TIMEOUT_MS = 2000;
+const INGEST_TIMEOUT_MS = 5000;
+const AUTO_INGEST_TTL_MS = 60 * 60 * 1000;
+const AUTO_INGEST_DEBOUNCE_MS = 300;
+const AUTO_INGEST_INITIAL_DELAY_MS = 500;
+const SKELETON_CARD_COUNT = 6;
+
 
 /**
  * InfiniteScrollSentinel - Componente que detecta cuando el usuario llega al final
@@ -34,7 +45,7 @@ interface InfiniteScrollSentinelProps {
 function InfiniteScrollSentinel({ hasNextPage, isFetchingNextPage, fetchNextPage }: InfiniteScrollSentinelProps) {
   const { ref, inView } = useInView({
     threshold: 0,
-    rootMargin: '100px', // Trigger 100px before reaching the element
+    rootMargin: INFINITE_SCROLL_ROOT_MARGIN, // Trigger before reaching the element
   });
 
   // Auto-fetch when sentinel comes into view
@@ -151,7 +162,7 @@ function HomeContent() {
     hasNextPage,
   } = useNewsInfinite({
     category: topic, // El hook todavía espera 'category', pero le pasamos 'topic'
-    limit: 20, // Páginas de 20 artículos
+    limit: INFINITE_PAGE_SIZE, // Páginas de 20 artículos
   });
 
   // Flatten pages into single array + remove duplicates (Sprint 20 FIX)
@@ -172,7 +183,7 @@ function HomeContent() {
     pagination: data.pages[data.pages.length - 1]?.pagination || {
       total: 0,
       hasMore: false,
-      limit: 20,
+      limit: INFINITE_PAGE_SIZE,
       offset: 0,
     },
   } : null;

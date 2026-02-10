@@ -13,12 +13,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { useDebounce } from './useDebounce';
 import { useAuth } from '@/context/AuthContext';
+import type { NewsArticle } from '@/lib/api';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
 export interface SearchResult {
   success: boolean;
-  data: any[]; // NewsArticle[]
+  data: NewsArticle[];
   level?: number; // 1, 2, or undefined for LEVEL 3
   isFresh?: boolean; // true if LEVEL 2 ingested new articles
   suggestion?: {

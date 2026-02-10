@@ -13,8 +13,13 @@ import type { UserProfile, UpdateProfileDTO } from '@/lib/profile.api';
 import { useRetryWithToast } from '@/hooks/useRetryWithToast';
 import { toast } from 'sonner';
 
+interface AuthUser {
+  uid: string;
+  email?: string | null;
+}
+
 export function useProfile(
-  user: any | null,
+  user: AuthUser | null,
   authLoading: boolean,
   getToken: (forceRefresh?: boolean) => Promise<string | null>,
 ) {

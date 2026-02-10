@@ -148,7 +148,7 @@ function SearchResults() {
             {/* Results Grid */}
             {hasResults && (
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {data.data.map((article: any) => (
+                {data.data.map((article) => (
                   <NewsCard key={article.id} article={article} />
                 ))}
               </div>
