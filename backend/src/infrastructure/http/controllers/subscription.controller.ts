@@ -7,7 +7,14 @@ import { Request, Response } from 'express';
 import { getPrismaClient } from '../../persistence/prisma.client';
 import { redeemCodeSchema } from '../schemas/subscription.schema';
 
-const VALID_CODES = new Set(['VERITY_ADMIN', 'MASTER_AI_2026']);
+function getValidCodes(): Set<string> {
+  return new Set(
+    (process.env.PROMO_CODES || '')
+      .split(',')
+      .map(code => code.trim())
+      .filter(Boolean)
+  );
+}
 
 export class SubscriptionController {
   /**
@@ -28,7 +35,9 @@ export class SubscriptionController {
 
       const { code } = redeemCodeSchema.parse(req.body);
 
-      if (!VALID_CODES.has(code)) {
+      const validCodes = getValidCodes();
+
+      if (!validCodes.has(code)) {
         res.status(400).json({
           error: 'Invalid code',
         });

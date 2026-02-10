@@ -46,6 +46,7 @@ export const UserUsageStatsSchema = z.object({
   // Sprint 10: Contadores de uso por tipo de operación
   articlesAnalyzed: z.number().int().nonnegative().default(0).optional(),
   chatMessages: z.number().int().nonnegative().default(0).optional(),
+  groundingSearches: z.number().int().nonnegative().default(0).optional(),
   searchesPerformed: z.number().int().nonnegative().default(0).optional(),
 
   // Número de llamadas a la API de IA
@@ -107,6 +108,7 @@ export function safeParseUserUsageStats(data: unknown): z.infer<typeof UserUsage
   return {
     articlesAnalyzed: 0,
     chatMessages: 0,
+    groundingSearches: 0,
     searchesPerformed: 0,
     apiCalls: 0,
     tokensUsed: 0,

@@ -1,6 +1,6 @@
 # Estado del Proyecto - Verity News
 
-> **Última actualización**: Sprint 27 (2026-02-10) - Modelo Freemium y Suscripciones (MVP)
+> **Última actualización**: Sprint 27.2 (2026-02-10) - Fix Entretenimiento y Hardening de Ingesta
 > **Stack**: Next.js + Express + PostgreSQL + Prisma + Gemini AI + ChromaDB
 > **Arquitectura**: Clean Architecture (Hexagonal) + DDD
 
@@ -27,6 +27,8 @@
 ## 🗂️ Índice de Sprints
 
 ### Producción (✅ Completados)
+- [Sprint 27.2](#sprint-272) - Fix Entretenimiento y Calidad de Ingesta (2026-02-10)
+- [Sprint 27.1](#sprint-271) - Security Remediation e Ingest Hardening (2026-02-10)
 - [Sprint 27](#sprint-27) - Modelo Freemium y Suscripciones (2026-02-10)
 - [Sprint 25](#sprint-25) - AI Prompt Improvements (2026-02-09)
 - [Sprint 24](#sprint-24) - AI-Powered Local Source Discovery (2026-02-09)
@@ -61,6 +63,45 @@
 
 ---
 
+### Sprint 27.2
+**Fix Entretenimiento y Calidad de Ingesta**
+**Fecha**: 2026-02-10 | **Estado**: ✅ Completado
+
+**Objetivo**: Garantizar que la categoría entretenimiento devuelva contenido real (cine, series, música) y no caiga a "general".
+
+**Implementado**:
+- ✅ Alias y keywords de `entretenimiento` en `DirectSpanishRssClient` (mapeo a cultura).
+- ✅ Query dedicada en `GoogleNewsRssClient` cuando la categoría es entretenimiento.
+- ✅ Mapeo `entretenimiento` → `entertainment` en `NewsAPIClient`.
+- ✅ Tests unitarios específicos para el mapeo de entretenimiento.
+
+**Impacto**:
+- 🎯 Contenido de entretenimiento consistente en todas las fuentes.
+- 🧪 Menos falsos positivos de política/actualidad en esta categoría.
+
+**Docs**: [`docs/sprints/Sprint-27.2-Fix-Entretenimiento.md`](docs/sprints/Sprint-27.2-Fix-Entretenimiento.md)
+
+---
+### Sprint 27.1
+**Security Remediation e Ingest Hardening**
+**Fecha**: 2026-02-10 | **Estado**: ✅ Completado
+
+**Objetivo**: Endurecer endpoints de ingesta, validar queries y externalizar secretos.
+
+**Implementado**:
+- ✅ `trust proxy` en Express + CORS permite `x-cron-secret`.
+- ✅ Middleware `x-cron-secret` en `/api/ingest/*`.
+- ✅ Validación Zod en query params (`search` y `news`).
+- ✅ `PROMO_CODES` externalizados en `.env`.
+- ✅ `.env.example` con `CRON_SECRET` y `PROMO_CODES`.
+
+**Impacto**:
+- 🔐 Ingesta protegida y no expuesta públicamente.
+- Validación de entrada consistente en endpoints críticos.
+
+**Docs**: [`docs/sprints/Sprint-27.1-Security-Remediation.md`](docs/sprints/Sprint-27.1-Security-Remediation.md)
+
+---
 ### Sprint 27
 **Modelo Freemium y Gestion de Suscripciones (MVP)**
 **Fecha**: 2026-02-10 | **Estado**: ✅ Completado

@@ -25,9 +25,16 @@ if (!process.env.GEMINI_API_KEY) {
 }
 
 import { DependencyContainer } from '../src/infrastructure/config/dependencies';
+import { IngestNewsUseCase } from '../src/application/use-cases/ingest-news.usecase';
 
 const TEST_CITY = 'Valencia';
 const TEST_TOPIC_SLUG = 'local';
+
+interface ContainerWithIngestUseCase {
+  ingestController: {
+    ingestNewsUseCase: IngestNewsUseCase;
+  };
+}
 
 async function main() {
   console.log('╔════════════════════════════════════════════════════════════════╗');
@@ -90,7 +97,7 @@ async function main() {
     const startTime = Date.now();
 
     // Use the IngestNewsUseCase through the DependencyContainer
-    const ingestUseCase = (container as any).ingestController.ingestNewsUseCase;
+    const ingestUseCase = (container as ContainerWithIngestUseCase).ingestController.ingestNewsUseCase;
 
     const result = await ingestUseCase.execute({
       category: 'local',

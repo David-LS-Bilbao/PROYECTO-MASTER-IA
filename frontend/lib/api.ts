@@ -510,6 +510,12 @@ export interface UserProfileResponse {
   data: UserProfile;
 }
 
+interface UpdateUserProfileData {
+  name?: string;
+  location?: string | null;
+  preferences?: UserProfile['preferences'];
+}
+
 /**
  * Get current user's complete profile
  * Requires authentication token
@@ -544,7 +550,7 @@ export async function getUserProfile(token: string): Promise<UserProfile> {
  */
 export async function updateUserProfile(
   token: string,
-  data: { name?: string; preferences?: any }
+  data: UpdateUserProfileData
 ): Promise<UserProfile> {
   const res = await fetch(`${API_BASE_URL}/api/user/me`, {
     method: 'PATCH',

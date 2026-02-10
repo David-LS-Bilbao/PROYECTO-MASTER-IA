@@ -151,6 +151,7 @@ export function useGlobalRefresh() {
 
   return useCallback(async () => {
     const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+    const cronSecret = process.env.NEXT_PUBLIC_CRON_SECRET || '';
 
     try {
       console.log('🌍 [GlobalRefresh] Iniciando actualización global...');
@@ -158,7 +159,10 @@ export function useGlobalRefresh() {
       // POST to /api/ingest/all
       const response = await fetch(`${API_BASE_URL}/api/ingest/all`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-cron-secret': cronSecret,
+        },
       });
 
       if (!response.ok) {

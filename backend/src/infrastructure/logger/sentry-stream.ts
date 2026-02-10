@@ -15,6 +15,28 @@
 import { Writable } from 'stream';
 import { addBreadcrumb } from '../monitoring/sentry';
 
+type PinoLog = {
+  level?: number;
+  msg?: string;
+  message?: string;
+  req?: {
+    url?: string;
+    method?: string;
+    remoteAddress?: string;
+  };
+  res?: {
+    statusCode?: number;
+  };
+  err?: {
+    message?: string;
+    stack?: string;
+    type?: string;
+  };
+  module?: string;
+  userId?: string;
+  [key: string]: unknown;
+};
+
 /**
  * Map Pino log levels to Sentry breadcrumb levels
  */
@@ -40,13 +62,17 @@ export class SentryStream extends Writable {
    * Process each log chunk from Pino
    * Called for every log entry
    */
-  _write(chunk: any, _encoding: string, callback: (error?: Error | null) => void): void {
+  _write(chunk: unknown, _encoding: string, callback: (error?: Error | null) => void): void {
     try {
       // Parse log entry (Pino emits objects when using multistream)
-      const log = typeof chunk === 'string' ? JSON.parse(chunk) : chunk;
+      const log = this.parseLogChunk(chunk);
+      if (!log) {
+        callback();
+        return;
+      }
 
       // Extract log metadata
-      const level = log.level;
+      const level = typeof log.level === 'number' ? log.level : 30;
       const message = log.msg || log.message || 'Log without message';
       // const timestamp = log.time; // Not currently used
 
@@ -77,7 +103,7 @@ export class SentryStream extends Writable {
    * Decide if log should be skipped
    * Filter out too noisy logs to avoid breadcrumb overflow
    */
-  private shouldSkipLog(log: any): boolean {
+  private shouldSkipLog(log: PinoLog): boolean {
     // Skip health check logs (too noisy)
     if (log.req?.url?.includes('/health')) {
       return true;
@@ -95,8 +121,8 @@ export class SentryStream extends Writable {
    * Extract relevant context from log entry
    * Remove noise and Pino metadata
    */
-  private extractContext(log: any): Record<string, any> {
-    const context: Record<string, any> = {};
+  private extractContext(log: PinoLog): Record<string, unknown> {
+    const context: Record<string, unknown> = {};
 
     // HTTP request context
     if (log.req) {
@@ -138,6 +164,27 @@ export class SentryStream extends Writable {
     });
 
     return context;
+  }
+
+  private parseLogChunk(chunk: unknown): PinoLog | null {
+    if (typeof chunk === 'string') {
+      try {
+        const parsed = JSON.parse(chunk) as unknown;
+        return this.toPinoLog(parsed);
+      } catch (error) {
+        console.error('[SentryStream] Failed to parse log chunk:', error);
+        return null;
+      }
+    }
+
+    return this.toPinoLog(chunk);
+  }
+
+  private toPinoLog(value: unknown): PinoLog {
+    if (value && typeof value === 'object') {
+      return value as PinoLog;
+    }
+    return {};
   }
 }
 

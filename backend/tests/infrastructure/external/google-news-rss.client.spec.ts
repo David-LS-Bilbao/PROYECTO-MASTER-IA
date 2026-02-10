@@ -26,6 +26,16 @@ describe('GoogleNewsRssClient', () => {
     expect(url).toContain('ceid=ES%3Aen');
   });
 
+  it('buildGoogleNewsUrl aplica query por categoria entretenimiento', () => {
+    const buildUrl = (client as any).buildGoogleNewsUrl.bind(client);
+    const url = buildUrl({ category: 'entretenimiento' });
+    const parsed = new URL(url);
+
+    expect(parsed.searchParams.get('q')).toBe(
+      'cine OR series OR musica OR videojuegos OR espectaculos'
+    );
+  });
+
   it('transformRssItemToArticle extrae source desde description', () => {
     const transform = (client as any).transformRssItemToArticle.bind(client);
     const article = transform({

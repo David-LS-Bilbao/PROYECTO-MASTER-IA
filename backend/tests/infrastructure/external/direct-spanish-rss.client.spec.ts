@@ -22,6 +22,8 @@ describe('DirectSpanishRssClient', () => {
 
     expect(resolveCategory()).toBe('general');
     expect(resolveCategory('deportes')).toBe('deportes');
+    expect(resolveCategory('entretenimiento')).toBe('cultura');
+    expect(resolveCategory('entertainment')).toBe('cultura');
     expect(resolveCategory('futbol y liga')).toBe('deportes');
     expect(resolveCategory('tema-desconocido')).toBe('general');
   });

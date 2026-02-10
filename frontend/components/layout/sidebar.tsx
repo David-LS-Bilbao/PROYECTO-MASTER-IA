@@ -42,10 +42,20 @@ export function Sidebar({ onOpenDashboard, onOpenSources, onOpenChat }: SidebarP
   const { user, logout } = useAuth();
   const router = useRouter();
   const globalRefresh = useGlobalRefresh();
+  const cronSecret = process.env.NEXT_PUBLIC_CRON_SECRET;
+  const canGlobalRefresh = !!cronSecret;
 
   // Handler para actualización global de TODAS las categorías
   const handleGlobalRefresh = async () => {
     if (isRefreshing) return; // Prevenir múltiples clicks
+
+    if (!cronSecret) {
+      toast.error('Actualización global deshabilitada', {
+        description: 'Configura NEXT_PUBLIC_CRON_SECRET para habilitar esta acción.',
+        duration: 5000,
+      });
+      return;
+    }
 
     setIsRefreshing(true);
 
@@ -127,6 +137,7 @@ export function Sidebar({ onOpenDashboard, onOpenSources, onOpenChat }: SidebarP
       label: 'Actualizar Todo',
       icon: RefreshCw,
       onClick: handleGlobalRefresh,
+      disabled: !canGlobalRefresh,
     },
     {
       label: 'Favoritos',
@@ -238,6 +249,7 @@ export function Sidebar({ onOpenDashboard, onOpenSources, onOpenChat }: SidebarP
               const Icon = item.icon;
               const isRefreshButton = item.label === 'Actualizar Todo';
               const showSpinner = isRefreshButton && isRefreshing;
+              const isDisabled = Boolean((item as { disabled?: boolean }).disabled) || showSpinner;
 
               // Si el item tiene href, renderizar Link; si tiene onClick, renderizar button
               if ('href' in item && item.href) {
@@ -262,12 +274,12 @@ export function Sidebar({ onOpenDashboard, onOpenSources, onOpenChat }: SidebarP
                 <button
                   key={index}
                   onClick={item.onClick}
-                  disabled={showSpinner}
+                  disabled={isDisabled}
                   className={cn(
                     'w-full h-10 rounded-lg transition-colors flex items-center gap-3 px-3',
                     'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100',
                     'dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-900',
-                    showSpinner && 'opacity-70 cursor-not-allowed'
+                    isDisabled && 'opacity-70 cursor-not-allowed'
                   )}
                   title={!isOpen ? item.label : undefined}
                 >

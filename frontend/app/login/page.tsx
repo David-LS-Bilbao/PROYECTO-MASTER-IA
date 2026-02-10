@@ -18,6 +18,13 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const getFirebaseErrorCode = (err: unknown) => {
+    if (err && typeof err === 'object' && 'code' in err) {
+      return String((err as { code?: unknown }).code);
+    }
+    return undefined;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -34,8 +41,9 @@ export default function LoginPage() {
       
       // Redirigir a la página principal
       router.push('/');
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Manejo de errores de Firebase
+      const errorCode = getFirebaseErrorCode(err);
       const errorMessages: Record<string, string> = {
         'auth/email-already-in-use': 'Este email ya está registrado',
         'auth/invalid-email': 'Email inválido',
@@ -48,7 +56,7 @@ export default function LoginPage() {
         'auth/too-many-requests': 'Demasiados intentos. Inténtalo más tarde',
       };
 
-      setError(errorMessages[err.code] || 'Error al autenticar. Inténtalo de nuevo.');
+      setError(errorMessages[errorCode ?? ''] || 'Error al autenticar. Inténtalo de nuevo.');
     } finally {
       setLoading(false);
     }
@@ -64,7 +72,8 @@ export default function LoginPage() {
       
       // Redirigir a la página principal
       router.push('/');
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorCode = getFirebaseErrorCode(err);
       const errorMessages: Record<string, string> = {
         'auth/popup-closed-by-user': 'Ventana de inicio de sesión cerrada',
         'auth/cancelled-popup-request': 'Inicio de sesión cancelado',
@@ -72,7 +81,7 @@ export default function LoginPage() {
         'auth/account-exists-with-different-credential': 'Ya existe una cuenta con este email usando otro método',
       };
 
-      setError(errorMessages[err.code] || 'Error al iniciar sesión con Google. Inténtalo de nuevo.');
+      setError(errorMessages[errorCode ?? ''] || 'Error al iniciar sesión con Google. Inténtalo de nuevo.');
     } finally {
       setLoading(false);
     }

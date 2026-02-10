@@ -55,12 +55,14 @@ export interface AdBannerProps {
   mockLabel?: string;
 }
 
+type AdsByGoogleQueue = Array<Record<string, unknown>>;
+
 /**
  * Declaración global para el objeto adsbygoogle de Google
  */
 declare global {
   interface Window {
-    adsbygoogle: any[];
+    adsbygoogle: AdsByGoogleQueue;
   }
 }
 

@@ -25,6 +25,8 @@ if (!process.env.GEMINI_API_KEY) {
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { buildRagChatPrompt } from '../src/infrastructure/external/prompts/rag-chat.prompt';
 
+type GeminiModel = ReturnType<GoogleGenerativeAI['getGenerativeModel']>;
+
 // Mock context about Verity News (intentionally limited)
 const MOCK_CONTEXT = `Verity News es una startup fundada en 2026 en Bilbao. Se dedica a combatir la desinformación usando IA.`;
 
@@ -56,7 +58,7 @@ interface TestResult {
 }
 
 async function runTest(
-  model: any,
+  model: GeminiModel,
   testCase: (typeof testCases)[0]
 ): Promise<{ success: boolean; response: string; refused: boolean }> {
   try {

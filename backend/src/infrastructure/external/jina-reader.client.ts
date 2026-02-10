@@ -123,7 +123,7 @@ export class JinaReaderClient implements IJinaReaderClient {
   /**
    * Parse Jina Reader response
    */
-  private parseJinaResponse(data: any, originalUrl: string): ScrapedContent {
+  private parseJinaResponse(data: unknown, originalUrl: string): ScrapedContent {
     // Jina Reader returns different formats depending on the page
     // Handle both direct content and structured response
 
@@ -140,8 +140,11 @@ export class JinaReaderClient implements IJinaReaderClient {
     }
 
     // Structured JSON response
-    const content = data.content || data.text || data.markdown || '';
-    const title = data.title || this.extractTitleFromMarkdown(content);
+    const payload = (data && typeof data === 'object') ? (data as Record<string, unknown>) : {};
+    const content =
+      this.getStringField(payload, ['content', 'text', 'markdown']) || '';
+    const title =
+      this.getStringField(payload, ['title']) || this.extractTitleFromMarkdown(content);
 
     if (!content || content.trim().length === 0) {
       throw new ExternalAPIError(
@@ -152,14 +155,14 @@ export class JinaReaderClient implements IJinaReaderClient {
     }
 
     // Extract image URL from Open Graph metadata or other fields
-    const imageUrl = this.extractImageUrl(data);
+    const imageUrl = this.extractImageUrl(payload);
 
     return {
       title: title || 'Untitled',
       content: this.cleanContent(content),
-      description: data.description || data.excerpt || null,
-      author: data.author || data.byline || null,
-      publishedDate: data.publishedDate || data.date || null,
+      description: this.getStringField(payload, ['description', 'excerpt']),
+      author: this.getStringField(payload, ['author', 'byline']),
+      publishedDate: this.getStringField(payload, ['publishedDate', 'date']),
       imageUrl,
     };
   }
@@ -186,32 +189,49 @@ export class JinaReaderClient implements IJinaReaderClient {
    * Extract image URL from Jina Reader response
    * Prioritizes: og:image > twitter:image > images array > null
    */
-  private extractImageUrl(data: any): string | null {
+  private extractImageUrl(data: Record<string, unknown>): string | null {
     // Priority 1: Open Graph image
-    if (data.ogImage || data['og:image']) {
-      return data.ogImage || data['og:image'];
+    const ogImage = this.getStringField(data, ['ogImage', 'og:image']);
+    if (ogImage) {
+      return ogImage;
     }
 
     // Priority 2: Twitter card image
-    if (data.twitterImage || data['twitter:image']) {
-      return data.twitterImage || data['twitter:image'];
+    const twitterImage = this.getStringField(data, ['twitterImage', 'twitter:image']);
+    if (twitterImage) {
+      return twitterImage;
     }
 
     // Priority 3: Generic image field
-    if (data.image && typeof data.image === 'string') {
-      return data.image;
+    const image = this.getStringField(data, ['image']);
+    if (image) {
+      return image;
     }
 
     // Priority 4: Images array (take first)
     if (Array.isArray(data.images) && data.images.length > 0) {
-      return data.images[0];
+      const firstImage = data.images[0];
+      if (typeof firstImage === 'string') {
+        return firstImage;
+      }
     }
 
     // Priority 5: Featured image
-    if (data.featuredImage) {
-      return data.featuredImage;
+    const featuredImage = this.getStringField(data, ['featuredImage']);
+    if (featuredImage) {
+      return featuredImage;
     }
 
+    return null;
+  }
+
+  private getStringField(data: Record<string, unknown>, keys: string[]): string | null {
+    for (const key of keys) {
+      const value = data[key];
+      if (typeof value === 'string' && value.trim().length > 0) {
+        return value;
+      }
+    }
     return null;
   }
 

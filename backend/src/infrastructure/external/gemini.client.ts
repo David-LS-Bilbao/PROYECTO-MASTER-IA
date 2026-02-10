@@ -54,6 +54,13 @@ import {
  */
 const logger = createModuleLogger('GeminiClient');
 
+const getErrorCode = (error: unknown): string | undefined => {
+  if (error && typeof error === 'object' && 'code' in error) {
+    return String((error as { code?: unknown }).code);
+  }
+  return undefined;
+};
+
 // ============================================================================
 // TOKEN TAXIMETER - DEPENDENCY INJECTION (Bloqueante #2 resuelto)
 // ============================================================================
@@ -147,7 +154,7 @@ export class GeminiClient implements IGeminiClient {
             attempt,
             retries,
             delayMs: delay,
-            errorCode: (error as any)?.code,
+            errorCode: getErrorCode(error),
           },
           `Gemini API transient error - retrying`
         );
@@ -700,7 +707,7 @@ export class GeminiClient implements IGeminiClient {
       }
     } catch (error) {
       logger.error(
-        { errorCode: (error as any)?.code },
+        { errorCode: getErrorCode(error) },
         'Error during RSS URL discovery'
       );
       return null;
@@ -751,7 +758,7 @@ export class GeminiClient implements IGeminiClient {
       return result;
     } catch (error) {
       logger.error(
-        { errorCode: (error as any)?.code },
+        { errorCode: getErrorCode(error) },
         'Error during local sources discovery'
       );
       throw error;

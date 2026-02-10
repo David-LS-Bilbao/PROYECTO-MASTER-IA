@@ -8,6 +8,12 @@ import { SearchNewsUseCase } from '../../../application/use-cases/search-news.us
 import { ValidationError } from '../../../domain/errors/domain.error';
 import { ExternalAPIError, DatabaseError } from '../../../domain/errors/infrastructure.error';
 import { UserStatsTracker } from '../../monitoring/user-stats-tracker';
+import { z } from 'zod';
+
+const searchQuerySchema = z.object({
+  q: z.string().trim().min(2, 'Query must be at least 2 characters'),
+  limit: z.coerce.number().int().min(1).max(50).optional(),
+}).passthrough();
 
 export class SearchController {
   constructor(private readonly searchNewsUseCase: SearchNewsUseCase) {}
@@ -18,21 +24,17 @@ export class SearchController {
    */
   async search(req: Request, res: Response): Promise<void> {
     try {
-      const query = req.query.q as string;
-      const limit = Math.min(parseInt(req.query.limit as string) || 10, 50);
-
-      if (!query || query.trim().length < 2) {
-        res.status(400).json({
-          success: false,
-          error: 'Bad Request',
-          message: 'Query parameter "q" is required and must be at least 2 characters',
-        });
-        return;
+      const parsed = searchQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
+        throw new ValidationError(parsed.error.issues.map(issue => issue.message).join('; '));
       }
 
+      const { q, limit } = parsed.data;
+      const effectiveLimit = limit ?? 10;
+
       const result = await this.searchNewsUseCase.execute({
-        query: query.trim(),
-        limit,
+        query: q,
+        limit: effectiveLimit,
       });
 
       // Track user stats (if authenticated)

@@ -410,7 +410,7 @@ export default async function ArticlePage({ params }) {
 <AdBanner
   dataAdSlot="1234567890"
   format="rectangle"  // 300x250 típicamente
-  className="w-[300px] h-[250px]"
+  className="w-75 h-62.5"
   mockLabel="Banner Rectangular"
 />
 ```
@@ -423,7 +423,7 @@ export default async function ArticlePage({ params }) {
 <AdBanner
   dataAdSlot="1234567890"
   format="fluid"  // Se ajusta al contenedor
-  className="w-full min-h-[200px]"
+  className="w-full min-h-50"
   mockLabel="Banner Fluido"
 />
 ```

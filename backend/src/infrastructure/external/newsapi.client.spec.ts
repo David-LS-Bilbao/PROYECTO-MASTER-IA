@@ -67,6 +67,31 @@ describe('NewsAPIClient', () => {
     expect(result.articles[0].source.id).toBe('');
   });
 
+  it('fetchTopHeadlines maps Spanish categories to NewsAPI categories', async () => {
+    const client = new NewsAPIClient('test-key');
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        status: 'ok',
+        totalResults: 0,
+        articles: [],
+      }),
+    });
+
+    await client.fetchTopHeadlines({
+      query: 'cine',
+      category: 'entretenimiento',
+      language: 'es',
+      pageSize: 5,
+      page: 1,
+    });
+
+    expect(mockFetch).toHaveBeenCalledOnce();
+    const calledUrl = mockFetch.mock.calls[0][0] as string;
+    expect(calledUrl).toContain('category=entertainment');
+  });
+
   it('fetchTopHeadlines throws ExternalAPIError on non-ok response', async () => {
     const client = new NewsAPIClient('test-key');
 

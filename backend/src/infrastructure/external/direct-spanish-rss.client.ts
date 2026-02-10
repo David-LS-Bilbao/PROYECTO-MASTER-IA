@@ -204,9 +204,17 @@ interface RssItem {
   contentSnippet?: string;
   creator?: string;
   'dc:creator'?: string;
+  mediaContent?: RssMediaEntry | RssMediaEntry[];
+  mediaThumbnail?: RssMediaEntry | RssMediaEntry[];
   enclosure?: {
     url?: string;
     type?: string;
+  };
+}
+
+interface RssMediaEntry {
+  $?: {
+    url?: string;
   };
 }
 
@@ -339,6 +347,11 @@ export class DirectSpanishRssClient implements INewsAPIClient {
     // Direct category match
     if (RSS_SOURCES[normalized]) return normalized;
 
+    // Aliases
+    if (normalized === 'entretenimiento' || normalized === 'entertainment') {
+      return 'cultura';
+    }
+
     // Keyword mapping
     const categoryMap: Record<string, string[]> = {
       deportes: ['deporte', 'futbol', 'fútbol', 'liga', 'baloncesto', 'tenis', 'f1'],
@@ -346,7 +359,7 @@ export class DirectSpanishRssClient implements INewsAPIClient {
       politica: ['política', 'gobierno', 'congreso', 'elecciones', 'partidos'],
       tecnologia: ['tecnología', 'tech', 'ia', 'inteligencia artificial', 'apps', 'móvil'],
       ciencia: ['ciencia', 'salud', 'medicina', 'investigación', 'espacio', 'clima'],
-      cultura: ['cultura', 'cine', 'música', 'arte', 'libros', 'teatro'],
+      cultura: ['cultura', 'cine', 'música', 'arte', 'libros', 'teatro', 'series', 'videojuegos', 'espectáculos', 'espectaculos'],
       internacional: ['internacional', 'mundo', 'global', 'europa', 'eeuu', 'asia'],
     };
 
@@ -406,22 +419,22 @@ export class DirectSpanishRssClient implements INewsAPIClient {
     }
 
     // Try media:content (common in news feeds)
-    const mediaContent = (item as any).mediaContent;
+    const mediaContent = item.mediaContent;
     if (!imageUrl && mediaContent) {
       if (Array.isArray(mediaContent)) {
-        imageUrl = mediaContent[0]?.$ ? mediaContent[0].$.url : null;
-      } else if (mediaContent.$) {
-        imageUrl = mediaContent.$.url;
+        imageUrl = mediaContent[0]?.$?.url ?? null;
+      } else {
+        imageUrl = mediaContent.$?.url ?? null;
       }
     }
 
     // Try media:thumbnail
-    const mediaThumbnail = (item as any).mediaThumbnail;
+    const mediaThumbnail = item.mediaThumbnail;
     if (!imageUrl && mediaThumbnail) {
       if (Array.isArray(mediaThumbnail)) {
-        imageUrl = mediaThumbnail[0]?.$ ? mediaThumbnail[0].$.url : null;
-      } else if (mediaThumbnail.$) {
-        imageUrl = mediaThumbnail.$.url;
+        imageUrl = mediaThumbnail[0]?.$?.url ?? null;
+      } else {
+        imageUrl = mediaThumbnail.$?.url ?? null;
       }
     }
 

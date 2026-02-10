@@ -238,9 +238,8 @@ function HomeContent() {
   useEffect(() => {
     const checkBackendHealth = async () => {
       try {
-        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        const timeoutId = setTimeout(() => controller.abort(), HEALTH_CHECK_TIMEOUT_MS);
 
         const response = await fetch(`${API_BASE_URL}/health/check`, {
           signal: controller.signal,
@@ -290,7 +289,6 @@ function HomeContent() {
       const storageKey = `last-ingest-${topic}`;
       const lastIngestStr = localStorage.getItem(storageKey);
       const now = Date.now();
-      const oneHour = 60 * 60 * 1000;
 
       // Si existe timestamp y no ha pasado 1 hora, saltar
       if (lastIngestStr) {
@@ -298,7 +296,7 @@ function HomeContent() {
         const timeSinceIngest = now - lastIngest;
         const minutesSince = Math.round(timeSinceIngest / (60 * 1000));
 
-        if (timeSinceIngest < oneHour) {
+        if (timeSinceIngest < AUTO_INGEST_TTL_MS) {
           console.log(`💰 [AUTO-RELOAD] Última ingesta hace ${minutesSince}min - SALTANDO (TTL: 60min)`);
           return;
         }
@@ -314,17 +312,15 @@ function HomeContent() {
       }
 
       try {
-        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-
-        const requestBody = {
-          pageSize: 50,
+        const requestBody: { pageSize: number; category: string } = {
+          pageSize: INGEST_PAGE_SIZE,
           category: topic, // Backend espera 'category', pero le pasamos el topic
         };
 
         console.log(`📡 [AUTO-RELOAD] POST /api/ingest/news (topic: ${topic})`);
 
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const timeoutId = setTimeout(() => controller.abort(), INGEST_TIMEOUT_MS);
 
         const response = await fetch(`${API_BASE_URL}/api/ingest/news`, {
           method: 'POST',
@@ -343,7 +339,7 @@ function HomeContent() {
           localStorage.setItem(storageKey, now.toString());
 
           // Invalidar cache para mostrar datos actualizados
-          invalidateNews(topic as any);
+          invalidateNews(topic);
         } else {
           console.warn('⚠️ [AUTO-RELOAD] Error en ingesta:', response.status);
         }
@@ -355,7 +351,7 @@ function HomeContent() {
     // Delay de 500ms para que el health check termine primero
     const timeoutId = setTimeout(() => {
       autoIngestWithTTL();
-    }, 500);
+    }, AUTO_INGEST_INITIAL_DELAY_MS);
 
     return () => clearTimeout(timeoutId);
   }, [topic, isBackendAvailable, invalidateNews]); // Ejecutar cuando cambie el topic inicial
@@ -377,14 +373,14 @@ function HomeContent() {
     // Skip favoritos - no necesitan ingesta RSS, solo invalidar para refetch
     if (topic === 'favorites') {
       console.log('⭐ [AUTO-INGESTA] Topic FAVORITOS: invalidando para refetch (sin ingesta RSS)');
-      invalidateNews(topic as any);
+      invalidateNews(topic);
       return;
     }
 
     // Skip si backend no está disponible - solo hacer refetch de BD
     if (!isBackendAvailable) {
       console.log('🔌 [AUTO-INGESTA] Backend no disponible - Solo refetch de BD');
-      invalidateNews(topic as any);
+      invalidateNews(topic);
       return;
     }
 
@@ -399,17 +395,16 @@ function HomeContent() {
         ? new Date(latestArticle.publishedAt).getTime()
         : 0;
       const now = Date.now();
-      const oneHour = 60 * 60 * 1000; // 1 hora en milisegundos
       const ageInMinutes = Math.round((now - lastUpdate) / (60 * 1000));
 
-      const shouldAutoRefresh = !latestArticle || (now - lastUpdate > oneHour);
+      const shouldAutoRefresh = !latestArticle || (now - lastUpdate > AUTO_INGEST_TTL_MS);
 
       if (!shouldAutoRefresh) {
         console.log(`💰 [SMART INGESTION] Datos frescos en BD (${ageInMinutes} min) - SALTANDO ingesta automática`);
         console.log(`   → Ahorro: ~50 artículos × análisis IA no procesados innecesariamente`);
         console.log(`   → Última noticia: "${latestArticle?.title?.substring(0, 60)}..."`);
         // Solo invalidar caché para refetch de BD, sin ingesta RSS
-        invalidateNews(topic as any);
+        invalidateNews(topic);
         return;
       }
 
@@ -417,10 +412,8 @@ function HomeContent() {
       console.log(`   → Antigüedad: ${ageInMinutes > 60 ? `${Math.round(ageInMinutes / 60)}h` : `${ageInMinutes}min`}`);
 
       try {
-        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-
-        const requestBody: any = {
-          pageSize: 50, // Aumentado de 20 a 50 para mejor cobertura y más artículos frescos
+        const requestBody: { pageSize: number; category: string } = {
+          pageSize: INGEST_PAGE_SIZE, // Aumentado de 20 a 50 para mejor cobertura y más artículos frescos
           category: topic, // Backend espera 'category', pero le pasamos el topic
         };
 
@@ -429,7 +422,7 @@ function HomeContent() {
 
         // Fetch con timeout de 5 segundos para evitar hangs
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const timeoutId = setTimeout(() => controller.abort(), INGEST_TIMEOUT_MS);
 
         const response = await fetch(`${API_BASE_URL}/api/ingest/news`, {
           method: 'POST',
@@ -455,11 +448,11 @@ function HomeContent() {
           // CRÍTICO: Invalidar TODOS los topics, no solo el actual
           // Razón: Una noticia puede aparecer en múltiples feeds RSS y actualizarse
           // Ejemplo: Noticia de inflación aparece en "general" y "economia"
-          invalidateNews(topic as any, true); // true = invalidateAll
+          invalidateNews(topic, true); // true = invalidateAll
         } else {
           console.warn(`⚠️ [AUTO-INGESTA] Error HTTP ${response.status}:`, response.statusText);
           // Aún así, invalidar todos los topics por si hay cambios previos
-          invalidateNews(topic as any, true);
+          invalidateNews(topic, true);
         }
       } catch (error) {
         // Manejo de errores más específico
@@ -477,9 +470,9 @@ function HomeContent() {
 
         // Siempre invalidar TODOS los topics, incluso si falla ingesta
         // Esto asegura refetch de BD con los últimos datos disponibles
-        invalidateNews(topic as any, true);
+        invalidateNews(topic, true);
       }
-    }, 300); // Debounce de 300ms
+    }, AUTO_INGEST_DEBOUNCE_MS); // Debounce para evitar cambios rápidos
 
     return () => clearTimeout(timeoutId);
   }, [topic, invalidateNews, isBackendAvailable]); // Ejecutar cada vez que cambia el topic o disponibilidad del backend
@@ -686,7 +679,7 @@ function HomeContent() {
 
                 {/* Skeleton cards */}
                 <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                  {[...Array(6)].map((_, i) => (
+                  {[...Array(SKELETON_CARD_COUNT)].map((_, i) => (
                     <div key={i} className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden animate-pulse">
                       <div className="h-48 bg-zinc-200 dark:bg-zinc-800" />
                       <div className="p-4 space-y-3">

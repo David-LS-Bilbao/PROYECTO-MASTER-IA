@@ -22,6 +22,8 @@ if (!process.env.GEMINI_API_KEY) {
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ANALYSIS_PROMPT } from '../src/infrastructure/external/prompts/analysis.prompt';
 
+type GeminiModel = ReturnType<GoogleGenerativeAI['getGenerativeModel']>;
+
 // Test cases
 const testCases = [
   {
@@ -58,7 +60,7 @@ interface AnalysisResult {
 }
 
 async function runTest(
-  model: any,
+  model: GeminiModel,
   testCase: (typeof testCases)[0]
 ): Promise<{ success: boolean; score: number; reasoning: string }> {
   try {
