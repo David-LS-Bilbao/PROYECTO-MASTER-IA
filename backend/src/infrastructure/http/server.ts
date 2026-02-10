@@ -43,8 +43,18 @@ export function createServer(): Application {
   app.use('/api/', limiter);
 
   // CORS configuration - Allow frontend origins with explicit methods
+  const defaultOrigins = ['http://localhost:3001', 'http://localhost:5173'];
+  const envOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean)
+    : defaultOrigins;
+  const allowedOrigins = envOrigins.length > 0 ? envOrigins : defaultOrigins;
+
   app.use(cors({
-    origin: process.env.CORS_ORIGIN || ['http://localhost:3001', 'http://localhost:5173'],
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error('Not allowed by CORS'));
+    },
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: true,
     // 🔍 Sprint 15 - Paso 3: Allow Sentry trace headers for distributed tracing
