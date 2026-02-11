@@ -17,6 +17,8 @@
  * - No usa RAG (sin embedding generation ni vector search)
  * - Llamada directa a Gemini para respuestas generales
  * - Más eficiente para preguntas de conocimiento general
+ *
+ * IMPORTANTE: Este use case NO debe usar vectorClient ni RAG
  */
 
 import { IGeminiClient, ChatMessage } from '../../domain/services/gemini-client.interface';
