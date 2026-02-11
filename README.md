@@ -231,7 +231,7 @@ curl http://localhost:3000/api/health/readiness
 
 ## 📖 Documentación
 
-- [📋 Estado del Proyecto](./ESTADO_PROYECTO.md) - Sprint 27.2 completado
+- [📋 Estado del Proyecto](./ESTADO_PROYECTO.md) - Sprint 27.3 completado
 - [🗺️ Estructura del Proyecto](./docs/ESTRUCTURA_PROYECTO.md) - Mapa completo
 - [🔬 Deuda Técnica Sprint 13](./docs/DEUDA_TECNICA_SPRINT_13.md) - Análisis + Plan Mikado
 - [✅ Estándares de Calidad](./docs/CALIDAD.md) - Coverage 100/80/0
@@ -241,6 +241,7 @@ curl http://localhost:3000/api/health/readiness
 - [🎨 Sprint 22: UI Cleanup](./docs/sprints/Sprint-22-UI-Cleanup-Smart-Search.md) - Navegación + Keywords
 - [🛡️ Sprint 27.1: Security Remediation](./docs/sprints/Sprint-27.1-Security-Remediation.md)
 - [🎬 Sprint 27.2: Fix Entretenimiento](./docs/sprints/Sprint-27.2-Fix-Entretenimiento.md)
+- [📱 Sprint 27.3: Hotfix Producción + Responsive](./docs/sprints/Sprint-27.3-Production-Responsive-Hotfixes.md)
 - [💎 Sprint 27: Freemium + Suscripciones](./Sprint-27-ENTREGABLES.md) - Modelo FREE/PREMIUM (MVP)
 
 ---
@@ -303,9 +304,9 @@ k6 run latency-test.js
 
 ## 📦 Deployment
 
-> **Nota:** El proyecto está actualmente en desarrollo local. Deploy en producción planificado para Sprint 14.
+> **Estado:** Desplegado en producción (Frontend en Vercel, Backend en Render).
 
-### Frontend (Vercel) - Planificado
+### Frontend (Vercel)
 ```bash
 cd frontend
 npm run build
@@ -319,7 +320,7 @@ vercel deploy --prod
 - `NEXT_PUBLIC_ADSENSE_CLIENT_ID`
 - `NEXT_PUBLIC_FIREBASE_*` (credenciales Firebase)
 
-### Backend (Railway/Render) - Planificado
+### Backend (Render)
 ```bash
 cd backend
 npm run build
@@ -332,13 +333,14 @@ npm run build
 - `NEWS_API_KEY`
 - `FIREBASE_PROJECT_ID`
 - `CHROMA_URL`
+- `CORS_ORIGIN` (lista separada por comas para varios dominios)
 - `CRON_SECRET`
 - `PROMO_CODES`
 - `NODE_ENV=production`
 
 ### Base de Datos
 - **Desarrollo:** PostgreSQL local (Docker)
-- **Producción:** Railway PostgreSQL / Supabase (planificado)
+- **Producción:** PostgreSQL gestionado (Render/Railway/Supabase)
 
 ---
 
@@ -393,18 +395,18 @@ Este proyecto demuestra la aplicación práctica de:
 
 ---
 
-**🚀 Proyecto activo - Sprint 27.2 completado - 97% de progreso**
+**🚀 Proyecto activo - Sprint 27.3 completado - 98% de progreso**
 
 ## 📊 Estado del Proyecto
 
-![Status](https://img.shields.io/badge/status-sprint%2027.2%20completado-success)
-![Progress](https://img.shields.io/badge/progress-97%25-green)
+![Status](https://img.shields.io/badge/status-sprint%2027.3%20completado-success)
+![Progress](https://img.shields.io/badge/progress-98%25-green)
 ![Tests](https://img.shields.io/badge/tests-328%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen)
 
 **Inicio:** Enero 2026
-**Último Sprint:** 27.2 - Fix Entretenimiento y Calidad de Ingesta
-**Fecha:** 10 de febrero de 2026
+**Último Sprint:** 27.3 - Hotfix Producción + Responsive Móvil
+**Fecha:** 11 de febrero de 2026
 
 ### Métricas Actuales
 
@@ -488,6 +490,7 @@ Este proyecto demuestra la aplicación práctica de:
   - [x] Script de verificación: `verify-analysis-rules.ts`
 
 ### ✅ Fase 7: Freemium y Suscripciones (Sprint 27)
+- [x] **Sprint 27.3:** Hotfix Producción + Responsive Móvil
 - [x] **Sprint 27.2:** Fix Entretenimiento y Calidad de Ingesta
 - [x] **Sprint 27.1:** Security Remediation e Ingest Hardening
 - [x] **Sprint 27:** Modelo Freemium + Suscripciones (MVP)

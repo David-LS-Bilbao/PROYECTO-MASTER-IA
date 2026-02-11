@@ -1,6 +1,6 @@
 # Estado del Proyecto - Verity News
 
-> **Última actualización**: Sprint 27.2 (2026-02-10) - Fix Entretenimiento y Hardening de Ingesta
+> **Última actualización**: Sprint 27.3 (2026-02-11) - Hotfix Producción + Responsive Móvil
 > **Stack**: Next.js + Express + PostgreSQL + Prisma + Gemini AI + ChromaDB
 > **Arquitectura**: Clean Architecture (Hexagonal) + DDD
 
@@ -27,6 +27,7 @@
 ## 🗂️ Índice de Sprints
 
 ### Producción (✅ Completados)
+- [Sprint 27.3](#sprint-273) - Hotfix Producción + Responsive Móvil (2026-02-11)
 - [Sprint 27.2](#sprint-272) - Fix Entretenimiento y Calidad de Ingesta (2026-02-10)
 - [Sprint 27.1](#sprint-271) - Security Remediation e Ingest Hardening (2026-02-10)
 - [Sprint 27](#sprint-27) - Modelo Freemium y Suscripciones (2026-02-10)
@@ -60,6 +61,28 @@
 ---
 
 ## 📋 Sprints Detallados
+
+---
+
+### Sprint 27.3
+**Hotfix Producción + Responsive Móvil**
+**Fecha**: 2026-02-11 | **Estado**: ✅ Completado
+
+**Objetivo**: Estabilizar deploy en producción (Render/Vercel) y corregir UX en móvil.
+
+**Implementado**:
+- ✅ Docker `node:20-slim` + copia de Prisma Client en runner.
+- ✅ `node-cron` en dependencias de producción.
+- ✅ CORS con lista de dominios (multi-origen).
+- ✅ Fallback a `Madrid` si falta `location` en categoría `local`.
+- ✅ Sidebar móvil tipo drawer + header responsive con búsqueda full width.
+- ✅ Botón de búsqueda con icono en móvil; footer compacto.
+
+**Impacto**:
+- 🔒 Despliegue estable sin errores de runtime en Render/Vercel.
+- 📱 Experiencia móvil limpia y sin elementos aplastados.
+
+**Docs**: [`docs/sprints/Sprint-27.3-Production-Responsive-Hotfixes.md`](docs/sprints/Sprint-27.3-Production-Responsive-Hotfixes.md)
 
 ---
 
@@ -825,8 +848,8 @@ npm run dev
 
 ---
 
-**Última revisión**: 2026-02-10
-**Versión del documento**: 2.1 (Actualizado Sprint 27)
+**Última revisión**: 2026-02-11
+**Versión del documento**: 2.2 (Actualizado Sprint 27.3)
 
 
 
