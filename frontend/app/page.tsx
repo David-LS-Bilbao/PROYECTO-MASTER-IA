@@ -756,7 +756,7 @@ function HomeContent() {
 
         {/* Footer */}
         <footer className="border-t border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-          <div className="px-4 sm:px-6 py-1.5 sm:py-3 text-center text-[10px] leading-tight sm:text-xs text-muted-foreground">
+          <div className="px-4 sm:px-6 py-1 text-center text-[10px] leading-tight sm:text-xs text-muted-foreground">
             <p>
               Verity News - Análisis de sesgo en noticias con IA{' '}
               <span className="text-zinc-400 dark:text-zinc-600">|</span>{' '}
