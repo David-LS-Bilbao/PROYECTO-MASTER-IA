@@ -7,7 +7,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   ChevronRight,
   ChevronLeft,
-  Menu,
   BarChart3,
   Settings,
   Rss,
@@ -36,11 +35,21 @@ interface SidebarProps {
   onOpenDashboard?: () => void;
   onOpenSources?: () => void;
   onOpenChat?: () => void;
+  isMobileOpen?: boolean;
+  onMobileOpenChange?: (open: boolean) => void;
 }
 
-export function Sidebar({ onOpenDashboard, onOpenSources, onOpenChat }: SidebarProps) {
+export function Sidebar({
+  onOpenDashboard,
+  onOpenSources,
+  onOpenChat,
+  isMobileOpen: isMobileOpenProp,
+  onMobileOpenChange,
+}: SidebarProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [isMobileOpenInternal, setIsMobileOpenInternal] = useState(false);
+  const isMobileOpen = typeof isMobileOpenProp === 'boolean' ? isMobileOpenProp : isMobileOpenInternal;
+  const setIsMobileOpen = onMobileOpenChange ?? setIsMobileOpenInternal;
   const [isRefreshing, setIsRefreshing] = useState(false); // Global refresh loading state
   const { user, logout } = useAuth();
   const router = useRouter();
@@ -172,19 +181,6 @@ export function Sidebar({ onOpenDashboard, onOpenSources, onOpenChat }: SidebarP
 
   return (
     <>
-      {/* Mobile Menu Button */}
-      <div className="lg:hidden fixed top-4 left-4 z-50">
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={() => setIsMobileOpen(true)}
-          className="h-10 w-10 rounded-full bg-white/90 dark:bg-zinc-900/90 border-zinc-200 dark:border-zinc-800 shadow-sm"
-          aria-label="Abrir menú"
-        >
-          <Menu className="h-5 w-5" />
-        </Button>
-      </div>
-
       {/* Mobile Sidebar Sheet */}
       <Sheet open={isMobileOpen} onOpenChange={setIsMobileOpen}>
         <SheetContent side="left" className="w-72 p-0">

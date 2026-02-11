@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useInView } from 'react-intersection-observer';
+import { Menu } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { type NewsArticle, type BiasDistribution } from '@/lib/api';
 import { NewsGrid } from '@/components/news/news-grid';
@@ -11,6 +12,7 @@ import { SourcesDrawer } from '@/components/sources-drawer';
 import { GeneralChatDrawer } from '@/components/general-chat-drawer';
 import { SearchBar } from '@/components/search-bar';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { DateSeparator } from '@/components/date-separator';
 import { ScrollToTop } from '@/components/ui/scroll-to-top';
 import { useNewsInfinite } from '@/hooks/useNewsInfinite';
@@ -129,6 +131,7 @@ function HomeContent() {
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
   const [isSourcesOpen, setIsSourcesOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   // Topic state (UI state, synced with URL)
   // Si no hay topic en URL, mostrar 'general' (portada)
@@ -561,6 +564,8 @@ function HomeContent() {
         onOpenDashboard={() => setIsDashboardOpen(true)}
         onOpenSources={() => setIsSourcesOpen(true)}
         onOpenChat={() => setIsChatOpen(true)}
+        isMobileOpen={isMobileSidebarOpen}
+        onMobileOpenChange={setIsMobileSidebarOpen}
       />
 
       {/* Dashboard Drawer */}
@@ -594,6 +599,17 @@ function HomeContent() {
         <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/95 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-900/95">
           <div className="px-4 sm:px-6 py-3">
             <div className="flex items-center gap-4">
+              {/* Mobile Menu */}
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setIsMobileSidebarOpen(true)}
+                className="lg:hidden h-10 w-10 rounded-full bg-white/90 dark:bg-zinc-900/90 border-zinc-200 dark:border-zinc-800 shadow-sm"
+                aria-label="Abrir menú"
+              >
+                <Menu className="h-5 w-5" />
+              </Button>
+
               {/* Logo/Brand */}
               <div className="flex items-center gap-3 shrink-0">
                 <h1 className="text-xl font-bold text-zinc-900 dark:text-white">
