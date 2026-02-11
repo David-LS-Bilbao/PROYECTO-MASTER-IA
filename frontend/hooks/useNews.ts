@@ -53,18 +53,12 @@ export function useNews(params: UseNewsParams = {}) {
 
       let result;
       if ((category as string) === 'favorites') {
-        console.log('[useNews] Fetching FAVORITES...');
         result = await fetchFavorites(limit, offset, token);
       } else if (category === 'general') {
-        console.log('[useNews] Fetching GENERAL...');
         result = await fetchNews(limit, offset, token);
       } else {
-        console.log(`[useNews] Fetching ${category.toUpperCase()}...`);
         result = await fetchNewsByCategory(category, limit, offset, token);
       }
-
-      const duration = Date.now() - startTime;
-      console.log(`[useNews] "${category}" completado: ${result.data?.length || 0} articulos en ${duration}ms`);
 
       return result;
     },
@@ -104,13 +98,10 @@ export function useInvalidateNews() {
   return useCallback(
     (category?: string, invalidateAll: boolean = false) => {
       if (invalidateAll) {
-        console.log('[Cache] Invalidando TODAS las categorias');
         queryClient.invalidateQueries({ queryKey: ['news'] });
       } else if (category) {
-        console.log(`[Cache] Invalidando: ${category}`);
         queryClient.invalidateQueries({ queryKey: ['news', category] });
       } else {
-        console.log('[Cache] Invalidando todas las news (fallback)');
         queryClient.invalidateQueries({ queryKey: ['news'] });
       }
     },
@@ -154,8 +145,6 @@ export function useGlobalRefresh() {
     const cronSecret = process.env.NEXT_PUBLIC_CRON_SECRET || '';
 
     try {
-      console.log('🌍 [GlobalRefresh] Iniciando actualización global...');
-
       // POST to /api/ingest/all
       const response = await fetch(`${API_BASE_URL}/api/ingest/all`, {
         method: 'POST',
@@ -171,14 +160,7 @@ export function useGlobalRefresh() {
 
       const result = await response.json();
 
-      console.log('✅ [GlobalRefresh] Completado:', {
-        processed: result.data.processed,
-        newArticles: result.data.totalNewArticles,
-        duplicates: result.data.totalDuplicates,
-      });
-
       // Invalidar TODAS las queries de news para forzar refetch
-      console.log('🗑️ [GlobalRefresh] Invalidando todas las queries de news...');
       await queryClient.invalidateQueries({
         predicate: (query) => {
           const [base] = query.queryKey;

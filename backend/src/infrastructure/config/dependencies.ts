@@ -11,7 +11,7 @@ import { DirectSpanishRssClient } from '../external/direct-spanish-rss.client';
 import { GeminiClient } from '../external/gemini.client';
 import { JinaReaderClient } from '../external/jina-reader.client';
 import { MetadataExtractor } from '../external/metadata-extractor';
-import { ChromaClient } from '../external/chroma.client';
+import { PgVectorClient } from '../external/pgvector.client';
 import { TokenTaximeter } from '../monitoring/token-taximeter';
 import { PrismaNewsArticleRepository } from '../persistence/prisma-news-article.repository';
 import { PrismaTopicRepository } from '../persistence/prisma-topic.repository';
@@ -40,7 +40,7 @@ export class DependencyContainer {
   private static instance: DependencyContainer;
 
   public readonly prisma: PrismaClient;
-  public readonly chromaClient: ChromaClient;
+  public readonly vectorClient: PgVectorClient;
   public readonly geminiClient: GeminiClient;
   public readonly newsRepository: PrismaNewsArticleRepository;
   public readonly topicRepository: PrismaTopicRepository;
@@ -79,7 +79,7 @@ export class DependencyContainer {
     this.geminiClient = new GeminiClient(process.env.GEMINI_API_KEY || '', tokenTaximeter);
     const jinaReaderClient = new JinaReaderClient(process.env.JINA_API_KEY || '');
     const metadataExtractor = new MetadataExtractor();
-    this.chromaClient = new ChromaClient();
+    this.vectorClient = new PgVectorClient(this.prisma);
     this.newsRepository = new PrismaNewsArticleRepository(this.prisma);
     this.topicRepository = new PrismaTopicRepository(this.prisma);
 
@@ -106,26 +106,26 @@ export class DependencyContainer {
       this.geminiClient,
       jinaReaderClient,
       metadataExtractor,
-      this.chromaClient,
+      this.vectorClient,
       quotaService
     );
 
     const chatArticleUseCase = new ChatArticleUseCase(
       this.newsRepository,
       this.geminiClient,
-      this.chromaClient // Añadido para RAG
+      this.vectorClient // Añadido para RAG
     );
 
     const chatGeneralUseCase = new ChatGeneralUseCase(
       this.geminiClient,
-      this.chromaClient, // Sprint 19.6: RAG sobre toda la base de datos
-      this.newsRepository // Fallback cuando ChromaDB no está disponible
+      this.vectorClient, // Sprint 19.6: RAG sobre toda la base de datos
+      this.newsRepository // Fallback cuando vector DB no está disponible
     );
 
     const searchNewsUseCase = new SearchNewsUseCase(
       this.newsRepository,
       this.geminiClient,
-      this.chromaClient
+      this.vectorClient
     );
 
     const toggleFavoriteUseCase = new ToggleFavoriteUseCase(this.newsRepository);

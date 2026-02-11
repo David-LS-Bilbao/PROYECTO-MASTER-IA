@@ -174,10 +174,7 @@ export class NewsController {
         }
 
         // Sprint 24: Active Local Ingestion - fetch fresh news about the city via Google News RSS
-        console.log(`[NewsController.getNews] 📍 Local news requested for location: ${city}`);
-
         if (shouldIngestLocal(city)) {
-          console.log(`[NewsController.getNews] 🌐 Triggering local ingestion for "${city}" (TTL expired or first request)`);
           try {
             const ingestionResult = await this.ingestNewsUseCase.execute({
               category: 'local',
@@ -187,12 +184,9 @@ export class NewsController {
               language: 'es',
             });
             markLocalIngested(city);
-            console.log(`[NewsController.getNews] 📍 Local ingestion: ${ingestionResult.newArticles} new articles for "${city}"`);
           } catch (ingestionError) {
             console.error(`[NewsController.getNews] ❌ Local ingestion failed for "${city}":`, ingestionError);
           }
-        } else {
-          console.log(`[NewsController.getNews] 💰 Local ingestion skipped for "${city}" (TTL active)`);
         }
 
         // Search DB for articles mentioning the location
@@ -261,8 +255,6 @@ export class NewsController {
 
         // Sprint 22 FIX: Auto-fill if both categories are empty
         if (cienciaNews.length === 0 && tecnologiaNews.length === 0 && !onlyFavorites && resolvedOffset === 0) {
-          console.log(`[NewsController.getNews] 📭 Ciencia-Tecnologia categories empty - triggering auto-ingestion`);
-
           try {
             // Ingest both categories in parallel
             // Sprint 23: Pass topicSlug to assign articles to correct Topic
@@ -270,8 +262,6 @@ export class NewsController {
               this.ingestNewsUseCase.execute({ category: 'ciencia', topicSlug: 'ciencia-tecnologia', pageSize: 15, language: 'es' }),
               this.ingestNewsUseCase.execute({ category: 'tecnologia', topicSlug: 'ciencia-tecnologia', pageSize: 15, language: 'es' }),
             ]);
-
-            console.log(`[NewsController.getNews] ✅ Auto-ingestion completed for ciencia-tecnologia`);
 
             // Re-query both categories
             cienciaNews = await this.repository.findAll({
@@ -289,8 +279,6 @@ export class NewsController {
               onlyFavorites,
               userId,
             });
-
-            console.log(`[NewsController.getNews] 📰 Re-queried: ${cienciaNews.length} ciencia + ${tecnologiaNews.length} tecnologia`);
           } catch (ingestionError) {
             console.error(`[NewsController.getNews] ❌ Auto-ingestion failed for ciencia-tecnologia:`, ingestionError);
           }
@@ -355,8 +343,6 @@ export class NewsController {
       // If category is specified but DB is empty, trigger automatic ingestion
       // =========================================================================
       if (news.length === 0 && resolvedCategory && !onlyFavorites && resolvedOffset === 0) {
-        console.log(`[NewsController.getNews] 📭 Category "${resolvedCategory}" is empty - triggering auto-ingestion`);
-
         try {
           // Trigger ingestion for this category
           // Sprint 23: Pass topicSlug to assign articles to correct Topic
@@ -368,8 +354,6 @@ export class NewsController {
             language: 'es',
           });
 
-          console.log(`[NewsController.getNews] ✅ Auto-ingestion completed: ${ingestionResult.newArticles} new articles`);
-
           // Re-query the database after ingestion
           if (ingestionResult.newArticles > 0) {
             news = await this.repository.findAll({
@@ -379,7 +363,6 @@ export class NewsController {
               onlyFavorites,
               userId,
             });
-            console.log(`[NewsController.getNews] 📰 Re-queried DB: Found ${news.length} articles`);
           }
         } catch (ingestionError) {
           // Log error but don't break the request - return empty array with helpful message
@@ -441,8 +424,6 @@ export class NewsController {
   async getNewsById(req: Request, res: Response): Promise<void> {
     try {
       const id = req.params.id as string;
-      console.log(`\n[NewsController] 🔵 GET /api/news/${id.substring(0, 8)}...`);
-      console.log(`[NewsController]    User: ${req.user?.email || 'anonymous'}`);
 
       if (!id) {
         res.status(400).json({
@@ -455,20 +436,12 @@ export class NewsController {
       const article = await this.repository.findById(id);
 
       if (!article) {
-        console.log(`[NewsController]    ❌ Article not found in DB`);
         res.status(404).json({
           success: false,
           error: 'Article not found',
         });
         return;
       }
-
-      console.log(`[NewsController]    ✅ Article found:`, {
-        title: article.title.substring(0, 40),
-        analyzedAt: article.analyzedAt ? 'YES' : 'NO',
-        biasScore: article.biasScore,
-        summary: article.summary ? `${article.summary.substring(0, 30)}...` : 'NO',
-      });
 
       // Enrich with per-user favorite status
       const userId = req.user?.uid;
@@ -477,7 +450,6 @@ export class NewsController {
       if (userId) {
         const favoriteIds = await this.repository.getUserFavoriteArticleIds(userId, [id]);
         const isFav = favoriteIds.has(id);
-        console.log(`[NewsController]    🔍 Per-user favorite check: ${isFav ? 'YES' : 'NO'}`);
         enrichedArticle = NewsArticle.reconstitute({
           ...article.toJSON(),
           isFavorite: isFav,
@@ -489,17 +461,12 @@ export class NewsController {
         });
       }
 
-      console.log(`[NewsController]    📤 Sending enriched article (isFavorite: ${enrichedArticle.isFavorite})`);
-
       // Sprint 18.2: PRIVACY - Mask analysis if user hasn't UNLOCKED it
       // (user can favorite ❤️ without unlocking analysis ✨)
       let shouldMask = true;
       if (userId) {
         const unlockedIds = await this.repository.getUserUnlockedArticleIds(userId, [id]);
         shouldMask = !unlockedIds.has(id);
-        console.log(`[NewsController]    🔒 Analysis unlocked: ${!shouldMask ? 'YES' : 'NO'}`);
-      } else {
-        console.log(`[NewsController]    🔒 Analysis masking: YES (no user)`);
       }
 
       res.json({
@@ -540,8 +507,6 @@ export class NewsController {
         });
         return;
       }
-
-      console.log(`[Favorites] Toggle: user=${userId.substring(0, 8)}... article=${articleId.substring(0, 8)}...`);
 
       const result = await this.toggleFavoriteUseCase.execute({ articleId, userId });
 
@@ -599,24 +564,10 @@ export class NewsController {
       const resolvedOffset = offset ?? 0;
       const userId = req.user?.uid;
 
-      console.log(`\n========================================`);
-      console.log(`🔍 SEARCH REQUEST:`, {
-        query: q,
-        limit: resolvedLimit,
-        offset: resolvedOffset,
-        userId: userId ? userId.substring(0, 8) + '...' : 'anonymous',
-        timestamp: new Date().toISOString(),
-      });
-      console.log(`========================================`);
-
       // =====================================================================
       // LEVEL 1: QUICK DB SEARCH (Full-Text Search)
       // =====================================================================
-      console.log(`[NewsController.search]    📊 LEVEL 1: Quick DB Search...`);
-
       let results = await this.repository.searchArticles(q, resolvedLimit, userId);
-
-      console.log(`[NewsController.search]    📊 LEVEL 1: Found ${results.length} results`);
 
       // If NO results, log warning
       if (results.length === 0) {
@@ -653,8 +604,6 @@ export class NewsController {
       // =====================================================================
       // LEVEL 2: REACTIVE INGESTION ("Deep Search")
       // =====================================================================
-      console.log(`[NewsController.search]    📡 LEVEL 2: No results, triggering reactive ingestion...`);
-
       try {
         // Trigger quick RSS ingestion (limited to general category)
         // Timeout: 8 seconds maximum
@@ -671,8 +620,6 @@ export class NewsController {
             setTimeout(() => reject(new Error('Ingestion timeout')), INGESTION_TIMEOUT)
           ),
         ]);
-
-        console.log(`[NewsController.search]    ✅ LEVEL 2: Ingestion completed`);
       } catch (ingestionError) {
         if (ingestionError instanceof Error && ingestionError.message === 'Ingestion timeout') {
           console.warn(`[NewsController.search]    ⏱️ LEVEL 2: Ingestion timed out after 8s`);
@@ -683,9 +630,7 @@ export class NewsController {
       }
 
       // Retry DB search after ingestion
-      console.log(`[NewsController.search]    🔄 LEVEL 2: Retrying DB search...`);
       results = await this.repository.searchArticles(q, resolvedLimit, userId);
-      console.log(`[NewsController.search]    📊 LEVEL 2: Found ${results.length} results after ingestion`);
 
       // If results found after ingestion, return with isFresh flag
       if (results.length > 0) {
@@ -718,8 +663,6 @@ export class NewsController {
       // =====================================================================
       // LEVEL 3: FALLBACK WITH EXTERNAL SUGGESTION
       // =====================================================================
-      console.log(`[NewsController.search]    🌐 LEVEL 3: No results found, returning fallback`);
-
       const encodedQuery = encodeURIComponent(q);
 
       res.json({

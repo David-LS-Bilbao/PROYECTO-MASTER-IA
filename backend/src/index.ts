@@ -18,13 +18,13 @@ const app = createServer();
 // Initialize services on startup
 const container = DependencyContainer.getInstance();
 
-// Initialize ChromaDB collection
-container.chromaClient.initCollection()
+// Initialize pgvector extension
+container.vectorClient.initCollection()
   .then(() => {
-    console.log('✅ ChromaDB collection initialized');
+    console.log('✅ pgvector extension initialized');
   })
   .catch((err) => {
-    console.warn('⚠️ ChromaDB initialization failed (search may not work):', err.message);
+    console.warn('⚠️ pgvector initialization failed (search may not work):', err.message);
   });
 
 // Start Quota Reset Jobs (Sprint 14 - Paso 2: Automatización de Reset de Cuotas)

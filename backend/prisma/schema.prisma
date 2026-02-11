@@ -1,13 +1,14 @@
 // Prisma Schema - Verity News
-// Database: PostgreSQL
+// Database: PostgreSQL with pgvector extension
 
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["fullTextSearchPostgres"]
+  previewFeatures = ["fullTextSearchPostgres", "postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
+  provider   = "postgresql"
+  extensions = [vector]
 }
 
 // ==========================================
@@ -60,8 +61,8 @@ model Article {
   topicId String? // Foreign key to Topic
   topic   Topic?  @relation(fields: [topicId], references: [id], onDelete: SetNull)
 
-  // RAG fields
-  embedding String? @db.Text // JSON string of vector embedding
+  // RAG fields - pgvector (768 dimensions for Gemini text-embedding-004)
+  embedding Unsupported("vector(768)")?
 
   // AI Analysis fields
   summary           String?   @db.Text // AI-generated summary

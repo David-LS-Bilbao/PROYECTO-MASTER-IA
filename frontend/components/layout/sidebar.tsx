@@ -85,8 +85,6 @@ export function Sidebar({
         description: `Noticias frescas en todas las categorías. ${result.data.totalNewArticles} artículos nuevos.`,
         duration: 5000,
       });
-
-      console.log('✅ [GlobalRefresh] Completado:', result.data);
     } catch (error) {
       // Toast de error
       toast.error('Error al actualizar', {

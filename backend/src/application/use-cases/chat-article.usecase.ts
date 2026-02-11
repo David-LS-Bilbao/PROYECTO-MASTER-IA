@@ -5,7 +5,7 @@
  * Flow:
  * 1. Receive articleId and user message
  * 2. Generate embedding of the question
- * 3. Query ChromaDB for relevant context
+ * 3. Query pgvector for relevant context
  * 4. Combine retrieved documents as context
  * 5. Generate response using Gemini with context
  *
@@ -18,7 +18,7 @@
 
 import { INewsArticleRepository } from '../../domain/repositories/news-article.repository';
 import { IGeminiClient, ChatMessage } from '../../domain/services/gemini-client.interface';
-import { IChromaClient, QueryResult } from '../../domain/services/chroma-client.interface';
+import { IVectorClient, QueryResult } from '../../domain/services/vector-client.interface';
 import { EntityNotFoundError, ValidationError } from '../../domain/errors/domain.error';
 import { GeminiErrorMapper } from '../../infrastructure/external/gemini-error-mapper';
 
@@ -27,7 +27,7 @@ import { GeminiErrorMapper } from '../../infrastructure/external/gemini-error-ma
 // ============================================================================
 
 /**
- * Máximo de documentos recuperados de ChromaDB.
+ * Máximo de documentos recuperados del vector store.
  * Más documentos = más contexto = más tokens = más coste.
  * 3 documentos es suficiente para la mayoría de preguntas.
  */
@@ -41,7 +41,7 @@ const MAX_DOCUMENT_CHARS = 2000;
 
 /**
  * Máximo de caracteres para contenido de fallback.
- * Cuando ChromaDB no está disponible, limitar el contenido del artículo.
+ * Cuando el vector store no está disponible, limitar el contenido del artículo.
  */
 const MAX_FALLBACK_CONTENT_CHARS = 3000;
 
@@ -60,7 +60,7 @@ export class ChatArticleUseCase {
   constructor(
     private readonly articleRepository: INewsArticleRepository,
     private readonly geminiClient: IGeminiClient,
-    private readonly chromaClient: IChromaClient
+    private readonly vectorClient: IVectorClient
   ) {}
 
   /**
@@ -155,14 +155,14 @@ export class ChatArticleUseCase {
     }
 
     // COST OPTIMIZATION: Límite de documentos recuperados
-    console.log(`   🔎 Buscando en ChromaDB (max ${MAX_RAG_DOCUMENTS} docs)...`);
-    const results: QueryResult[] = await this.chromaClient.querySimilarWithDocuments(
+    console.log(`   🔎 Buscando en pgvector (max ${MAX_RAG_DOCUMENTS} docs)...`);
+    const results: QueryResult[] = await this.vectorClient.querySimilarWithDocuments(
       questionEmbedding,
       MAX_RAG_DOCUMENTS
     );
 
     if (results.length === 0) {
-      console.log(`   ℹ️ No se encontraron documentos similares en ChromaDB`);
+      console.log(`   ℹ️ No se encontraron documentos similares`);
       return '';
     }
 

@@ -521,17 +521,12 @@ interface UpdateUserProfileData {
  * Requires authentication token
  */
 export async function getUserProfile(token: string): Promise<UserProfile> {
-  console.log('📡 getUserProfile - Token length:', token?.length);
-  console.log('📡 getUserProfile - API URL:', `${API_BASE_URL}/api/user/me`);
-  
   const res = await fetch(`${API_BASE_URL}/api/user/me`, {
     headers: {
       'Authorization': `Bearer ${token}`,
     },
     cache: 'no-store',
   });
-
-  console.log('📡 getUserProfile - Response status:', res.status, res.statusText);
 
   if (!res.ok) {
     const errorText = await res.text();
@@ -540,7 +535,6 @@ export async function getUserProfile(token: string): Promise<UserProfile> {
   }
 
   const response: UserProfileResponse = await res.json();
-  console.log('📡 getUserProfile - Success:', response.data);
   return response.data;
 }
 

@@ -7,7 +7,7 @@
  * Flow:
  * 1. Receive user message
  * 2. Generate embedding of the question
- * 3. Query ChromaDB for relevant context (across ALL articles)
+ * 3. Query pgvector for relevant context (across ALL articles)
  * 4. Combine retrieved documents as context
  * 5. Generate response using Gemini with context
  *
@@ -19,7 +19,7 @@
  */
 
 import { IGeminiClient, ChatMessage } from '../../domain/services/gemini-client.interface';
-import { IChromaClient, QueryResult } from '../../domain/services/chroma-client.interface';
+import { IVectorClient, QueryResult } from '../../domain/services/vector-client.interface';
 import { INewsArticleRepository } from '../../domain/repositories/news-article.repository';
 import { ValidationError } from '../../domain/errors/domain.error';
 import { GeminiErrorMapper } from '../../infrastructure/external/gemini-error-mapper';
@@ -29,7 +29,7 @@ import { GeminiErrorMapper } from '../../infrastructure/external/gemini-error-ma
 // ============================================================================
 
 /**
- * Máximo de documentos recuperados de ChromaDB.
+ * Máximo de documentos recuperados del vector store.
  * 5 documentos para tener más contexto en consultas generales
  */
 const MAX_RAG_DOCUMENTS = 5;
@@ -52,7 +52,7 @@ export interface ChatGeneralOutput {
 export class ChatGeneralUseCase {
   constructor(
     private readonly geminiClient: IGeminiClient,
-    private readonly chromaClient: IChromaClient,
+    private readonly vectorClient: IVectorClient,
     private readonly newsRepository: INewsArticleRepository
   ) {}
 
@@ -148,14 +148,14 @@ export class ChatGeneralUseCase {
     }
 
     // COST OPTIMIZATION: Límite de documentos recuperados
-    console.log(`   🔎 Buscando en ChromaDB (max ${MAX_RAG_DOCUMENTS} docs)...`);
-    const results: QueryResult[] = await this.chromaClient.querySimilarWithDocuments(
+    console.log(`   🔎 Buscando en pgvector (max ${MAX_RAG_DOCUMENTS} docs)...`);
+    const results: QueryResult[] = await this.vectorClient.querySimilarWithDocuments(
       questionEmbedding,
       MAX_RAG_DOCUMENTS
     );
 
     if (results.length === 0) {
-      console.log(`   ℹ️ No se encontraron documentos similares en ChromaDB`);
+      console.log(`   ℹ️ No se encontraron documentos similares`);
       throw new ValidationError('No se encontraron noticias relacionadas con tu pregunta.');
     }
 

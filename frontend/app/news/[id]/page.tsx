@@ -120,18 +120,13 @@ export default function NewsDetailPage() {
   }, [article?.content]);
 
   const handleAnalyze = async () => {
-    console.log(`[page.tsx] 🟡 handleAnalyze called`);
     if (!article) {
-      console.log(`[page.tsx]    ❌ No article - aborting`);
       return;
     }
-
-    console.log(`[page.tsx]    Article ID: ${article.id.substring(0, 8)}...`);
 
     // Rate limiting: cooldown to prevent spam
     const now = Date.now();
     if (now - lastAnalyzeTime < ANALYSIS_COOLDOWN_MS) {
-      console.log(`[page.tsx]    ⏱️ Rate limit - waiting ${ANALYSIS_COOLDOWN_MS / 1000}s`);
       setAnalyzeError(`Espera ${ANALYSIS_COOLDOWN_MS / 1000} segundos antes de re-analizar`);
       return;
     }
@@ -139,62 +134,39 @@ export default function NewsDetailPage() {
     setIsAnalyzing(true);
     setAnalyzeError(null);
     setLastAnalyzeTime(now);
-    console.log(`[page.tsx]    📡 Starting analysis API call...`);
 
     try {
       // Get authentication token
       const token = await getToken();
       if (!token) {
-        console.log(`[page.tsx]    ❌ No auth token available`);
         setAnalyzeError('No se pudo obtener el token de autenticación');
         return;
       }
 
-      console.log(`[page.tsx]    ✅ Token obtained, calling analyzeArticle API...`);
       const result = await analyzeArticle(article.id, token);
-      console.log(`[page.tsx]    ✅ Analysis API response:`, result);
 
       // Invalidate caches to refetch article and update dashboard buttons
-      console.log(`[page.tsx]    🔄 Invalidating caches...`);
       queryClient.invalidateQueries({ queryKey: ['article', id] });
       queryClient.invalidateQueries({ queryKey: ['news'] });
-      console.log(`[page.tsx]    ✅ Caches invalidated`);
     } catch (e) {
       console.error(`[page.tsx]    ❌ Analysis failed:`, e);
       setAnalyzeError(e instanceof Error ? e.message : 'Error al analizar');
     } finally {
       setIsAnalyzing(false);
-      console.log(`[page.tsx]    🏁 Analysis flow completed`);
     }
   };
 
   // Auto-trigger analysis when navigating from card with ?analyze=true
   useEffect(() => {
-    console.log(`[page.tsx] 🟢 Auto-trigger useEffect fired`);
-    console.log(`[page.tsx]    shouldAutoAnalyze: ${shouldAutoAnalyze}`);
-    console.log(`[page.tsx]    autoAnalyzeTriggered: ${autoAnalyzeTriggered}`);
-    console.log(`[page.tsx]    article exists: ${!!article}`);
-    console.log(`[page.tsx]    isAnalyzing: ${isAnalyzing}`);
-
-    if (article) {
-      console.log(`[page.tsx]    article.id: ${article.id.substring(0, 8)}...`);
-      console.log(`[page.tsx]    article.analyzedAt: ${article.analyzedAt ? 'YES' : 'NO'}`);
-      console.log(`[page.tsx]    article.isFavorite: ${article.isFavorite}`);
-    }
-
     if (!shouldAutoAnalyze || autoAnalyzeTriggered || !article || isAnalyzing) {
-      console.log(`[page.tsx]    ❌ Skipping auto-trigger (conditions not met)`);
       return;
     }
 
     // Case 1: Article not analyzed at all → trigger fresh analysis
     // Case 2: Article analyzed globally but user hasn't seen it → trigger to add auto-favorite
     if (!article.analyzedAt || (article.analyzedAt && !article.isFavorite)) {
-      console.log(`[page.tsx]    ✅ Conditions met! Triggering handleAnalyze()`);
       setAutoAnalyzeTriggered(true);
       handleAnalyze();
-    } else {
-      console.log(`[page.tsx]    ℹ️ Article already analyzed AND in favorites - no action needed`);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shouldAutoAnalyze, autoAnalyzeTriggered, article]);
@@ -206,8 +178,6 @@ export default function NewsDetailPage() {
   // (user has it unlocked from before), apply fake delay to maintain UX value
   // =========================================================================
   useEffect(() => {
-    console.log(`[page.tsx] 🎭 Reveal useEffect fired`);
-
     // Only apply reveal delay if:
     // 1. User came with ?analyze=true intent
     // 2. Article is already analyzed (data available)
@@ -215,18 +185,14 @@ export default function NewsDetailPage() {
     // 4. Not already revealing
     const shouldReveal = shouldAutoAnalyze && article?.analyzedAt && !isAnalyzing && !isRevealing;
 
-    console.log(`[page.tsx]    shouldReveal: ${shouldReveal}`);
-
     if (!shouldReveal) {
       return;
     }
 
-    console.log(`[page.tsx]    ✨ Starting artificial reveal (1.8s delay)...`);
     setIsRevealing(true);
 
     const REVEAL_DELAY = 1800; // 1.8 seconds
     const timer = setTimeout(() => {
-      console.log(`[page.tsx]    ✅ Reveal completed - showing analysis`);
       setIsRevealing(false);
     }, REVEAL_DELAY);
 

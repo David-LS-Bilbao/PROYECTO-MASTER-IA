@@ -19,7 +19,7 @@ import { ArticleAnalysis } from '../../domain/entities/news-article.entity';
 import { INewsArticleRepository } from '../../domain/repositories/news-article.repository';
 import { IGeminiClient } from '../../domain/services/gemini-client.interface';
 import { IJinaReaderClient } from '../../domain/services/jina-reader-client.interface';
-import { IChromaClient } from '../../domain/services/chroma-client.interface';
+import { IVectorClient } from '../../domain/services/vector-client.interface';
 import { EntityNotFoundError, ValidationError } from '../../domain/errors/domain.error';
 import { QuotaService } from '../../domain/services/quota.service';
 import { MetadataExtractor } from '../../infrastructure/external/metadata-extractor';
@@ -84,7 +84,7 @@ export class AnalyzeArticleUseCase {
     private readonly geminiClient: IGeminiClient,
     private readonly jinaReaderClient: IJinaReaderClient,
     private readonly metadataExtractor: MetadataExtractor,
-    private readonly chromaClient: IChromaClient,
+    private readonly vectorClient: IVectorClient,
     private readonly quotaService?: QuotaService
   ) {}
 
@@ -267,9 +267,9 @@ export class AnalyzeArticleUseCase {
       }
     }
 
-    // 6. Index in ChromaDB for semantic search
+    // 6. Generate and store embedding in pgvector for semantic search
     try {
-      console.log(`   🔗 Indexando en ChromaDB...`);
+      console.log(`   🔗 Generando embedding para búsqueda semántica...`);
 
       // Combine relevant text for embedding
       const textToEmbed = `${article.title}. ${article.description || ''}. ${analysis.summary || ''}`;
@@ -284,8 +284,8 @@ export class AnalyzeArticleUseCase {
         throw mappedError;
       }
 
-      // Upsert to ChromaDB
-      await this.chromaClient.upsertItem(
+      // Upsert embedding to PostgreSQL using pgvector
+      await this.vectorClient.upsertItem(
         article.id,
         embedding,
         {
@@ -297,10 +297,10 @@ export class AnalyzeArticleUseCase {
         textToEmbed
       );
 
-      console.log(`   ✅ Indexado en ChromaDB OK`);
+      console.log(`   ✅ Embedding almacenado en pgvector OK`);
     } catch (indexError) {
       // Non-blocking: log error but don't fail the analysis
-      console.warn(`   ⚠️ Indexación ChromaDB falló (análisis completado): ${indexError instanceof Error ? indexError.message : 'Error desconocido'}`);
+      console.warn(`   ⚠️ Almacenamiento de embedding falló (análisis completado): ${indexError instanceof Error ? indexError.message : 'Error desconocido'}`);
     }
 
     return {

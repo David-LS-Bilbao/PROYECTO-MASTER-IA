@@ -53,7 +53,6 @@ function InfiniteScrollSentinel({ hasNextPage, isFetchingNextPage, fetchNextPage
   // Auto-fetch when sentinel comes into view
   useEffect(() => {
     if (inView && hasNextPage && !isFetchingNextPage) {
-      console.log('[InfiniteScroll] 📄 Sentinel in view - Fetching next page...');
       fetchNextPage();
     }
   }, [inView, hasNextPage, isFetchingNextPage, fetchNextPage]);
@@ -215,7 +214,6 @@ function HomeContent() {
   // =========================================================================
   useEffect(() => {
     if (!authLoading && !user) {
-      console.log('🔒 Usuario no autenticado. Redirigiendo a /login...');
       router.push('/login');
     }
   }, [authLoading, user, router]);
@@ -229,7 +227,6 @@ function HomeContent() {
 
     // Solo actualizar si el topic cambió (evitar loops infinitos)
     if (targetTopic !== topic) {
-      console.log(`🔗 [URL SYNC] URL cambió: Actualizando topic de "${topic}" a "${targetTopic}"`);
       setTopic(targetTopic);
     }
   }, [urlTopic, topic]);
@@ -251,7 +248,6 @@ function HomeContent() {
         clearTimeout(timeoutId);
 
         if (response.ok) {
-          console.log('✅ [HEALTH CHECK] Backend disponible para auto-ingesta');
           setIsBackendAvailable(true);
         } else {
           console.warn('⚠️ [HEALTH CHECK] Backend respondió con error:', response.status);
@@ -277,13 +273,11 @@ function HomeContent() {
 
     // Skip favoritos - no necesitan ingesta RSS
     if (topic === 'favorites') {
-      console.log('⭐ [AUTO-RELOAD] Topic FAVORITOS: sin ingesta RSS');
       return;
     }
 
     // Skip si backend no disponible
     if (!isBackendAvailable) {
-      console.log('🔌 [AUTO-RELOAD] Backend no disponible - Sin ingesta');
       return;
     }
 
@@ -297,20 +291,14 @@ function HomeContent() {
       if (lastIngestStr) {
         const lastIngest = parseInt(lastIngestStr, 10);
         const timeSinceIngest = now - lastIngest;
-        const minutesSince = Math.round(timeSinceIngest / (60 * 1000));
 
         if (timeSinceIngest < AUTO_INGEST_TTL_MS) {
-          console.log(`💰 [AUTO-RELOAD] Última ingesta hace ${minutesSince}min - SALTANDO (TTL: 60min)`);
           return;
         }
-        console.log(`🔄 [AUTO-RELOAD] Última ingesta hace ${minutesSince}min - Actualizando...`);
-      } else {
-        console.log('📥 [AUTO-RELOAD] Primera ingesta para topic:', topic);
       }
 
       // Skip ingestion for special topics that don't have RSS feeds
       if (topic === 'local' || topic === 'favorites') {
-        console.log(`⏭️ [AUTO-RELOAD] Skipping ingestion for special topic: ${topic}`);
         return; // Exit early, these topics use search/favorites, not RSS
       }
 
@@ -319,8 +307,6 @@ function HomeContent() {
           pageSize: INGEST_PAGE_SIZE,
           category: topic, // Backend espera 'category', pero le pasamos el topic
         };
-
-        console.log(`📡 [AUTO-RELOAD] POST /api/ingest/news (topic: ${topic})`);
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), INGEST_TIMEOUT_MS);
@@ -336,7 +322,6 @@ function HomeContent() {
 
         if (response.ok) {
           const data = await response.json();
-          console.log('✅ [AUTO-RELOAD] Ingesta completada:', data.data?.newArticles || 0, 'nuevos artículos');
 
           // Guardar timestamp de última ingesta
           localStorage.setItem(storageKey, now.toString());
@@ -369,20 +354,17 @@ function HomeContent() {
     // Skip primera carga - solo queremos ingesta en cambios de topic
     if (isFirstMount.current) {
       isFirstMount.current = false;
-      console.log(`🚀 [AUTO-INGESTA] Primera carga de topic: ${topic} (sin ingesta)`);
       return;
     }
 
     // Skip favoritos - no necesitan ingesta RSS, solo invalidar para refetch
     if (topic === 'favorites') {
-      console.log('⭐ [AUTO-INGESTA] Topic FAVORITOS: invalidando para refetch (sin ingesta RSS)');
       invalidateNews(topic);
       return;
     }
 
     // Skip si backend no está disponible - solo hacer refetch de BD
     if (!isBackendAvailable) {
-      console.log('🔌 [AUTO-INGESTA] Backend no disponible - Solo refetch de BD');
       invalidateNews(topic);
       return;
     }
@@ -398,21 +380,14 @@ function HomeContent() {
         ? new Date(latestArticle.publishedAt).getTime()
         : 0;
       const now = Date.now();
-      const ageInMinutes = Math.round((now - lastUpdate) / (60 * 1000));
 
       const shouldAutoRefresh = !latestArticle || (now - lastUpdate > AUTO_INGEST_TTL_MS);
 
       if (!shouldAutoRefresh) {
-        console.log(`💰 [SMART INGESTION] Datos frescos en BD (${ageInMinutes} min) - SALTANDO ingesta automática`);
-        console.log(`   → Ahorro: ~50 artículos × análisis IA no procesados innecesariamente`);
-        console.log(`   → Última noticia: "${latestArticle?.title?.substring(0, 60)}..."`);
         // Solo invalidar caché para refetch de BD, sin ingesta RSS
         invalidateNews(topic);
         return;
       }
-
-      console.log(`📥 [AUTO-INGESTA] Iniciando ingesta (datos > 1h o vacíos)`);
-      console.log(`   → Antigüedad: ${ageInMinutes > 60 ? `${Math.round(ageInMinutes / 60)}h` : `${ageInMinutes}min`}`);
 
       try {
         const requestBody: { pageSize: number; category: string } = {
@@ -437,17 +412,6 @@ function HomeContent() {
         clearTimeout(timeoutId);
 
         if (response.ok) {
-          const data = await response.json();
-          console.log('✅ [AUTO-INGESTA] Completada:', data.message);
-          console.log('📊 [AUTO-INGESTA] Nuevos artículos:', data.data?.newArticles || 0);
-          console.log('♻️  [AUTO-INGESTA] Artículos actualizados:', data.data?.duplicates || 0);
-
-          if (data.data?.newArticles === 0) {
-            console.log('💰 [SMART INGESTION] Sin artículos nuevos - próxima vez se saltará por TTL');
-          } else {
-            console.log('🔄 [SMART INGESTION] Artículos frescos ingresados - BD actualizada');
-          }
-
           // CRÍTICO: Invalidar TODOS los topics, no solo el actual
           // Razón: Una noticia puede aparecer en múltiples feeds RSS y actualizarse
           // Ejemplo: Noticia de inflación aparece en "general" y "economia"
@@ -487,7 +451,6 @@ function HomeContent() {
   useEffect(() => {
     if (isChangingTopic && !isLoading && !isFetching) {
       // Datos nuevos cargados, desactivar loading state
-      console.log('✅ [TOPIC CHANGE] Datos nuevos cargados, ocultando loading');
       setIsChangingTopic(false);
       previousTopicRef.current = topic;
     }
