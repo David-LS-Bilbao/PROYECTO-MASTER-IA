@@ -598,7 +598,7 @@ function HomeContent() {
         {/* Header - Google News Style */}
         <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/95 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-900/95">
           <div className="px-4 sm:px-6 py-3">
-            <div className="grid gap-3 sm:gap-4 sm:grid-cols-[auto,1fr,auto] sm:items-center">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
               {/* Brand Row (Mobile) */}
               <div className="flex items-center gap-3 shrink-0">
                 <Button
@@ -619,7 +619,7 @@ function HomeContent() {
               </div>
 
               {/* Search Bar - Full Width on Mobile */}
-              <div className="w-full sm:max-w-2xl sm:justify-self-center -mx-4 sm:mx-0 px-4 sm:px-0">
+              <div className="w-full sm:flex-1 sm:max-w-2xl -mx-4 sm:mx-0 px-4 sm:px-0 sm:min-w-0">
                 <SearchBar
                   placeholder="Buscar temas, noticias..."
                   className="w-full"
@@ -756,7 +756,7 @@ function HomeContent() {
 
         {/* Footer */}
         <footer className="hidden sm:block border-t border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-          <div className="px-4 sm:px-6 py-1 text-center text-[10px] leading-tight sm:text-xs text-muted-foreground">
+          <div className="px-4 sm:px-6 py-0.5 text-center text-[10px] leading-tight sm:text-xs text-muted-foreground">
             <p>
               Verity News - Análisis de sesgo en noticias con IA{' '}
               <span className="text-zinc-400 dark:text-zinc-600">|</span>{' '}

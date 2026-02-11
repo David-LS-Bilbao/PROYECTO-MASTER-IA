@@ -10,9 +10,9 @@ const socialLinks = [
 export default function Footer() {
   const year = new Date().getFullYear();
   return (
-    <footer className="w-full bg-gray-100 border-t border-gray-200 py-1 mt-4">
+    <footer className="w-full bg-gray-100 border-t border-gray-200 py-0.5 mt-3">
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between px-4 gap-1">
-        <div className="text-[10px] leading-tight text-gray-500">
+        <div className="text-[9px] leading-tight text-gray-500">
           &copy; {year} Verity News. Todos los derechos reservados.
         </div>
         <nav className="hidden sm:flex gap-4 text-[10px]">
