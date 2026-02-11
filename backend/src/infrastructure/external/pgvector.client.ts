@@ -31,20 +31,21 @@ export class PgVectorClient implements IVectorClient {
   async initCollection(): Promise<boolean> {
     try {
       // Verify pgvector extension is enabled
-      const result = await this.prisma.$queryRaw<Array<{ extname: string }>>`
+      const extensionCheck = await this.prisma.$queryRaw<Array<{ extname: string }>>`
         SELECT extname FROM pg_extension WHERE extname = 'vector';
       `;
 
-      if (result.length === 0) {
+      if (extensionCheck.length === 0) {
         throw new ConfigurationError(
           'pgvector extension not enabled. Run migration to enable it.'
         );
       }
 
-      // Count articles with embeddings
-      const count = await this.prisma.article.count({
-        where: { embedding: { not: null } },
-      });
+      // Count articles with embeddings (using raw SQL since embedding is Unsupported type)
+      const countResult = await this.prisma.$queryRaw<Array<{ count: bigint }>>`
+        SELECT COUNT(*) as count FROM articles WHERE embedding IS NOT NULL
+      `;
+      const count = Number(countResult[0]?.count || 0);
 
       console.log(`[PgVectorClient] pgvector extension ready. Articles with embeddings: ${count}`);
       return true;

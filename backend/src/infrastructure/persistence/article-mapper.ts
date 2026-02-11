@@ -26,7 +26,8 @@ export class ArticleMapper {
       category: prismaArticle.category,
       topicId: prismaArticle.topicId, // Sprint 23: Topic relation
       language: prismaArticle.language,
-      embedding: prismaArticle.embedding,
+      // embedding: Managed separately via PgVectorClient raw SQL (Unsupported type)
+      embedding: null,
       summary: prismaArticle.summary,
       biasScore: prismaArticle.biasScore,
       analysis: prismaArticle.analysis,
@@ -64,7 +65,7 @@ export class ArticleMapper {
         urlToImage: article.urlToImage,
         author: article.author,
         category: article.category, // ✅ CRÍTICO: Actualizar categoría si la noticia aparece en otro feed
-        embedding: article.embedding,
+        // embedding: Managed separately via PgVectorClient raw SQL (Unsupported type)
         summary: article.summary,
         biasScore: article.biasScore,
         analysis: article.analysis,
@@ -89,7 +90,7 @@ export class ArticleMapper {
         publishedAt: article.publishedAt,
         category: article.category,
         language: article.language,
-        embedding: article.embedding,
+        // embedding: Managed separately via PgVectorClient raw SQL (Unsupported type)
         summary: article.summary,
         biasScore: article.biasScore,
         analysis: article.analysis,
