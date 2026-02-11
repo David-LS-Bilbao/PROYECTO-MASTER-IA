@@ -79,7 +79,6 @@ export class ChatController {
         success: true,
         data: {
           response: result.response,
-          sourcesCount: result.sourcesCount,
         },
         message: 'General chat response generated successfully',
       });

@@ -117,9 +117,7 @@ export class DependencyContainer {
     );
 
     const chatGeneralUseCase = new ChatGeneralUseCase(
-      this.geminiClient,
-      this.vectorClient, // Sprint 19.6: RAG sobre toda la base de datos
-      this.newsRepository // Fallback cuando vector DB no está disponible
+      this.geminiClient // Sprint 27.4: Chat general usa conocimiento completo de Gemini (sin RAG)
     );
 
     const searchNewsUseCase = new SearchNewsUseCase(
