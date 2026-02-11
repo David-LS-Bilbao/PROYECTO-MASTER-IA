@@ -10,12 +10,12 @@ const socialLinks = [
 export default function Footer() {
   const year = new Date().getFullYear();
   return (
-    <footer className="w-full bg-gray-100 border-t border-gray-200 py-6 mt-12">
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between px-4 gap-4">
-        <div className="text-sm text-gray-500">
+    <footer className="w-full bg-gray-100 border-t border-gray-200 py-2 mt-6">
+      <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between px-4 gap-2">
+        <div className="text-xs text-gray-500">
           &copy; {year} Verity News. Todos los derechos reservados.
         </div>
-        <nav className="flex gap-6">
+        <nav className="flex gap-4 text-xs">
           <Link href="/aviso-legal" className="text-gray-600 hover:text-gray-900">Aviso Legal</Link>
           <Link href="/politica-privacidad" className="text-gray-600 hover:text-gray-900">Política de Privacidad</Link>
           <Link href="/politica-cookies" className="text-gray-600 hover:text-gray-900">Política de Cookies</Link>

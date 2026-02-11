@@ -70,7 +70,7 @@ export function SearchBar({
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           autoFocus={autoFocus}
-          className="pl-9 pr-20 h-11 rounded-xl"
+          className="pl-9 pr-20 h-12 rounded-2xl"
           aria-label="Buscar noticias"
         />
         {query && (
@@ -89,7 +89,7 @@ export function SearchBar({
           type="submit"
           size="sm"
           disabled={!query.trim() || isSearching}
-          className="absolute right-1 h-9 rounded-lg"
+          className="absolute right-1 h-9 rounded-xl"
         >
           {isSearching ? (
             <Loader2 className="h-4 w-4 animate-spin" />
