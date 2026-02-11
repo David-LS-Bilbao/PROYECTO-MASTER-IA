@@ -82,8 +82,8 @@ export class PgVectorClient implements IVectorClient {
   async upsertItem(
     id: string,
     embedding: number[],
-    metadata: ArticleVectorMetadata,
-    document: string
+    _metadata: ArticleVectorMetadata,
+    _document: string
   ): Promise<void> {
     try {
       // Convert embedding array to pgvector format string

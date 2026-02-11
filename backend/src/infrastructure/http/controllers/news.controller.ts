@@ -176,7 +176,7 @@ export class NewsController {
         // Sprint 24: Active Local Ingestion - fetch fresh news about the city via Google News RSS
         if (shouldIngestLocal(city)) {
           try {
-            const ingestionResult = await this.ingestNewsUseCase.execute({
+            await this.ingestNewsUseCase.execute({
               category: 'local',
               topicSlug: 'local',
               query: city,
@@ -559,9 +559,8 @@ export class NewsController {
         throw new ValidationError(parsed.error.issues.map(issue => issue.message).join('; '));
       }
 
-      const { q, limit, offset } = parsed.data;
+      const { q, limit } = parsed.data;
       const resolvedLimit = limit ?? 20;
-      const resolvedOffset = offset ?? 0;
       const userId = req.user?.uid;
 
       // =====================================================================
