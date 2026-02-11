@@ -598,28 +598,28 @@ function HomeContent() {
         {/* Header - Google News Style */}
         <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/95 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-900/95">
           <div className="px-4 sm:px-6 py-3">
-            <div className="flex items-center gap-4">
-              {/* Mobile Menu */}
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => setIsMobileSidebarOpen(true)}
-                className="lg:hidden h-10 w-10 rounded-full bg-white/90 dark:bg-zinc-900/90 border-zinc-200 dark:border-zinc-800 shadow-sm"
-                aria-label="Abrir menú"
-              >
-                <Menu className="h-5 w-5" />
-              </Button>
-
-              {/* Logo/Brand */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+              {/* Brand Row (Mobile) */}
               <div className="flex items-center gap-3 shrink-0">
-                <h1 className="text-xl font-bold text-zinc-900 dark:text-white">
-                  Verity News
-                </h1>
-                <Badge variant="secondary" className="hidden sm:inline-flex">Beta</Badge>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setIsMobileSidebarOpen(true)}
+                  className="lg:hidden h-10 w-10 rounded-full bg-white/90 dark:bg-zinc-900/90 border-zinc-200 dark:border-zinc-800 shadow-sm mt-1 sm:mt-0"
+                  aria-label="Abrir menú"
+                >
+                  <Menu className="h-5 w-5" />
+                </Button>
+                <div className="flex items-center gap-3">
+                  <h1 className="text-xl font-bold text-zinc-900 dark:text-white">
+                    Verity News
+                  </h1>
+                  <Badge variant="secondary" className="hidden sm:inline-flex">Beta</Badge>
+                </div>
               </div>
 
-              {/* Search Bar - Center/Flexible */}
-              <div className="flex-1 max-w-2xl">
+              {/* Search Bar - Full Width on Mobile */}
+              <div className="w-full sm:flex-1 sm:max-w-2xl">
                 <SearchBar
                   placeholder="Buscar temas, noticias..."
                   className="w-full"
@@ -756,7 +756,7 @@ function HomeContent() {
 
         {/* Footer */}
         <footer className="border-t border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-          <div className="px-4 sm:px-6 py-4 text-center text-sm text-muted-foreground">
+          <div className="px-4 sm:px-6 py-2 sm:py-4 text-center text-xs sm:text-sm text-muted-foreground">
             <p>
               Verity News - Análisis de sesgo en noticias con IA{' '}
               <span className="text-zinc-400 dark:text-zinc-600">|</span>{' '}
