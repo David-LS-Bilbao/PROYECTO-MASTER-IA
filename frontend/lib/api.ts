@@ -251,12 +251,13 @@ export async function chatWithArticle(
 
 /**
  * Chat general response from backend (Sprint 19.6)
+ * Sprint 27.4: Chat General usa conocimiento completo de Gemini (NO RAG)
  */
 export interface ChatGeneralResponse {
   success: boolean;
   data: {
     response: string;
-    sourcesCount: number;
+    // Chat General NO usa RAG, no incluye sourcesCount
   };
   message: string;
 }
