@@ -50,6 +50,7 @@ const newsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional(),
   offset: z.coerce.number().int().min(0).optional(),
   category: z.string().trim().min(1).optional(),
+  location: z.string().trim().min(1).optional(),
   favorite: z.enum(['true', 'false']).optional(),
 }).passthrough();
 
@@ -129,7 +130,7 @@ export class NewsController {
         throw new ValidationError(parsed.error.issues.map(issue => issue.message).join('; '));
       }
 
-      const { limit, offset, category, favorite } = parsed.data;
+      const { limit, offset, category, favorite, location } = parsed.data;
       const resolvedLimit = limit ?? 20;
       const resolvedOffset = offset ?? 0;
       let resolvedCategory = category;
@@ -167,39 +168,35 @@ export class NewsController {
           select: { location: true },
         });
 
-        if (!user || !user.location) {
-          res.status(400).json({
-            success: false,
-            error: 'Debes configurar tu ubicación en el perfil para ver noticias locales',
-            hint: 'Actualiza tu perfil en /api/user/me con el campo "location"',
-          });
-          return;
+        let city = location || user?.location;
+        if (!city) {
+          city = 'Madrid';
         }
 
         // Sprint 24: Active Local Ingestion - fetch fresh news about the city via Google News RSS
-        console.log(`[NewsController.getNews] 📍 Local news requested for location: ${user.location}`);
+        console.log(`[NewsController.getNews] 📍 Local news requested for location: ${city}`);
 
-        if (shouldIngestLocal(user.location)) {
-          console.log(`[NewsController.getNews] 🌐 Triggering local ingestion for "${user.location}" (TTL expired or first request)`);
+        if (shouldIngestLocal(city)) {
+          console.log(`[NewsController.getNews] 🌐 Triggering local ingestion for "${city}" (TTL expired or first request)`);
           try {
             const ingestionResult = await this.ingestNewsUseCase.execute({
               category: 'local',
               topicSlug: 'local',
-              query: user.location,
+              query: city,
               pageSize: 20,
               language: 'es',
             });
-            markLocalIngested(user.location);
-            console.log(`[NewsController.getNews] 📍 Local ingestion: ${ingestionResult.newArticles} new articles for "${user.location}"`);
+            markLocalIngested(city);
+            console.log(`[NewsController.getNews] 📍 Local ingestion: ${ingestionResult.newArticles} new articles for "${city}"`);
           } catch (ingestionError) {
-            console.error(`[NewsController.getNews] ❌ Local ingestion failed for "${user.location}":`, ingestionError);
+            console.error(`[NewsController.getNews] ❌ Local ingestion failed for "${city}":`, ingestionError);
           }
         } else {
-          console.log(`[NewsController.getNews] 💰 Local ingestion skipped for "${user.location}" (TTL active)`);
+          console.log(`[NewsController.getNews] 💰 Local ingestion skipped for "${city}" (TTL active)`);
         }
 
         // Search DB for articles mentioning the location
-        const localNews = await this.repository.searchArticles(user.location, resolvedLimit, userId);
+        const localNews = await this.repository.searchArticles(city, resolvedLimit, userId);
 
         // If no results, suggest fallback
         if (localNews.length === 0) {
@@ -208,7 +205,7 @@ export class NewsController {
             data: [],
             pagination: { total: 0, limit: resolvedLimit, offset: resolvedOffset, hasMore: false },
             meta: {
-              message: `No hay noticias recientes sobre ${user.location}. Intenta con una búsqueda manual.`,
+              message: `No hay noticias recientes sobre ${city}. Intenta con una búsqueda manual.`,
             },
           });
           return;
@@ -234,8 +231,8 @@ export class NewsController {
             hasMore: localNews.length >= resolvedLimit, // Si devolvió el límite completo, puede haber más
           },
           meta: {
-            location: user.location,
-            message: `Noticias locales para ${user.location}`,
+            location: city,
+            message: `Noticias locales para ${city}`,
           },
         });
         return;
