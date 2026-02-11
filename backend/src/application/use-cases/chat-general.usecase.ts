@@ -70,7 +70,7 @@ export class ChatGeneralUseCase {
     // Call Gemini directly with full knowledge access
     let response: string;
     try {
-      response = await this.geminiClient.generateChatResponse(
+      response = await this.geminiClient.generateGeneralResponse(
         systemPrompt,
         userQuestion
       );

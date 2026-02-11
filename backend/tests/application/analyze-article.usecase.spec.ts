@@ -25,6 +25,8 @@ const mockGeminiClient = {
   analyzeArticle: vi.fn(),
   chatWithContext: vi.fn(),
   chatWithGrounding: vi.fn(),
+  generateChatResponse: vi.fn(),
+  generateGeneralResponse: vi.fn(),
   generateEmbedding: vi.fn(),
   getSessionCostReport: vi.fn(),
 };

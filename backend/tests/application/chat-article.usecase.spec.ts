@@ -26,6 +26,7 @@ import type { QueryResult } from '../../src/domain/services/chroma-client.interf
 const mockGeminiClient = {
   analyzeArticle: vi.fn(),
   generateChatResponse: vi.fn(),
+  generateGeneralResponse: vi.fn(),
   generateEmbedding: vi.fn(),
   getSessionCostReport: vi.fn(),
 };

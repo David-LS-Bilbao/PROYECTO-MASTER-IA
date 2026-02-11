@@ -166,6 +166,10 @@ class MockGeminiClient implements IGeminiClient {
     return 'Mock chat response';
   }
 
+  async generateGeneralResponse(_systemPrompt: string, _question: string): Promise<string> {
+    return 'Mock general response';
+  }
+
   async discoverRssUrl(_mediaName: string): Promise<string | null> {
     return 'https://example.com/rss';
   }

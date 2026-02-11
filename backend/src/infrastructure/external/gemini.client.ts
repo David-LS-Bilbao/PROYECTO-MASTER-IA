@@ -505,6 +505,74 @@ export class GeminiClient implements IGeminiClient {
   }
 
   /**
+   * Generate a general chat response using a system prompt and full Gemini knowledge.
+   * Unlike generateChatResponse, this does NOT wrap with RAG prompts.
+   *
+   * Sprint 27.4: Chat General usa conocimiento completo de Gemini
+   */
+  async generateGeneralResponse(systemPrompt: string, question: string): Promise<string> {
+    if (!systemPrompt || systemPrompt.trim().length === 0) {
+      throw new ExternalAPIError('Gemini', 'System prompt is required', 400);
+    }
+
+    if (!question || question.trim().length === 0) {
+      throw new ExternalAPIError('Gemini', 'Question is required', 400);
+    }
+
+    const prompt = `${systemPrompt}\n\nPregunta del usuario: ${question}`;
+
+    return this.executeWithRetry(async () => {
+      logger.info('Starting general chat response generation');
+
+      const result = await Sentry.startSpan(
+        {
+          name: 'gemini.general_chat',
+          op: 'ai.chat',
+          attributes: {
+            'ai.model': 'gemini-2.5-flash',
+            'ai.operation': 'general_chat',
+            'ai.grounding.enabled': false,
+          },
+        },
+        async () => await this.model.generateContent(prompt)
+      );
+
+      const response = result.response;
+      const text = response.text().trim();
+
+      // TOKEN TAXIMETER
+      const usageMetadata = response.usageMetadata;
+      if (usageMetadata) {
+        const promptTokens = usageMetadata.promptTokenCount || 0;
+        const completionTokens = usageMetadata.candidatesTokenCount || 0;
+        const totalTokens = usageMetadata.totalTokenCount || (promptTokens + completionTokens);
+        const costEstimated = this.taximeter.calculateCost(promptTokens, completionTokens);
+
+        const activeSpan = Sentry.getActiveSpan();
+        if (activeSpan) {
+          activeSpan.setAttribute('ai.tokens.prompt', promptTokens);
+          activeSpan.setAttribute('ai.tokens.completion', completionTokens);
+          activeSpan.setAttribute('ai.tokens.total', totalTokens);
+          activeSpan.setAttribute('ai.cost_eur', costEstimated);
+        }
+
+        this.taximeter.logRagChat('[GENERAL]', promptTokens, completionTokens, totalTokens, costEstimated);
+
+        logger.debug(
+          { promptTokens, completionTokens, totalTokens, costEUR: costEstimated },
+          'General chat completed with token usage'
+        );
+      }
+
+      if (!text) {
+        throw new ExternalAPIError('Gemini', 'Empty response from general chat', 500);
+      }
+
+      return text;
+    }, 3, 1000);
+  }
+
+  /**
    * Sanitize input to prevent prompt injection
    */
   private sanitizeInput(input: string): string {

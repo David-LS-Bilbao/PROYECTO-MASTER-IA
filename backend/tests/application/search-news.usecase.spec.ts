@@ -23,6 +23,7 @@ import { ValidationError } from '../../src/domain/errors/domain.error';
 const mockGeminiClient = {
   analyzeArticle: vi.fn(),
   generateChatResponse: vi.fn(),
+  generateGeneralResponse: vi.fn(),
   generateEmbedding: vi.fn(),
   getSessionCostReport: vi.fn(),
 };

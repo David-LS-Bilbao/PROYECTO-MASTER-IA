@@ -42,12 +42,22 @@ export interface IGeminiClient {
   /**
    * Generate a chat response using RAG context (Retrieval-Augmented Generation)
    * Uses a focused system prompt that only answers from provided context
-   * @param context The retrieved context from ChromaDB
+   * @param context The retrieved context from pgvector
    * @param question The user's question
    * @returns The AI-generated response
    * @throws ExternalAPIError if API call fails
    */
   generateChatResponse(context: string, question: string): Promise<string>;
+
+  /**
+   * Generate a general chat response using a system prompt and full knowledge
+   * Unlike generateChatResponse, this does NOT use RAG context wrapping
+   * @param systemPrompt The system instructions for the LLM
+   * @param question The user's question
+   * @returns The AI-generated response
+   * @throws ExternalAPIError if API call fails
+   */
+  generateGeneralResponse(systemPrompt: string, question: string): Promise<string>;
 
   /**
    * Generate embedding vector for text using text-embedding-004
