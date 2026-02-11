@@ -3,6 +3,9 @@
 # ============================================
 FROM node:20-slim AS builder
 
+# Cache buster - invalida cache de Docker cuando cambia
+ARG CACHEBUST=1
+
 WORKDIR /app
 
 # Instalar dependencias del sistema necesarias para Prisma
