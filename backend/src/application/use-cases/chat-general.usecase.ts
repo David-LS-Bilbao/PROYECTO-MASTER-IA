@@ -13,12 +13,12 @@
  * - Chat de Artículo (chat-article): RAG estricto sobre UN artículo específico
  * - Chat General (este): Conocimiento general completo de Gemini
  *
- * === COST OPTIMIZATION ===
- * - No usa RAG (sin embedding generation ni vector search)
- * - Llamada directa a Gemini para respuestas generales
- * - Más eficiente para preguntas de conocimiento general
+ * === FEATURES ===
+ * - Historial multi-turno: envía conversación completa a Gemini
+ * - Google Search Grounding: datos en tiempo real via búsqueda web
+ * - Sliding window: solo últimos 6 mensajes para optimizar costes
  *
- * IMPORTANTE: Este use case NO debe usar vectorClient ni RAG
+ * IMPORTANTE: Este use case NO usa vectorClient ni RAG
  */
 
 import { IGeminiClient, ChatMessage } from '../../domain/services/gemini-client.interface';
@@ -40,10 +40,10 @@ export class ChatGeneralUseCase {
   ) {}
 
   /**
-   * Process a general chat message using Gemini's full knowledge base
+   * Process a general chat with full conversation history
    *
-   * Este use case NO usa RAG - permite preguntas abiertas sobre cualquier tema
-   * usando el conocimiento general completo de Gemini.
+   * Envía el historial completo a Gemini con Google Search Grounding
+   * para respuestas con contexto conversacional y datos en tiempo real.
    */
   async execute(input: ChatGeneralInput): Promise<ChatGeneralOutput> {
     const { messages } = input;
@@ -59,20 +59,18 @@ export class ChatGeneralUseCase {
       throw new ValidationError('Last message must be from user');
     }
 
-    const userQuestion = lastMessage.content;
-
-    console.log(`\n💬 [Chat General] Pregunta de conocimiento general`);
-    console.log(`   📝 Pregunta: "${userQuestion.substring(0, 100)}..."`);
+    console.log(`\n💬 [Chat General] Pregunta con historial (${messages.length} mensajes)`);
+    console.log(`   📝 Última pregunta: "${lastMessage.content.substring(0, 100)}..."`);
 
     // Build system prompt for general chat (allows full knowledge access)
     const systemPrompt = buildGeneralChatSystemPrompt();
 
-    // Call Gemini directly with full knowledge access
+    // Call Gemini with full conversation history + Google Search
     let response: string;
     try {
       response = await this.geminiClient.generateGeneralResponse(
         systemPrompt,
-        userQuestion
+        messages
       );
       console.log(`   ✅ Respuesta generada (${response.length} caracteres)`);
     } catch (error) {

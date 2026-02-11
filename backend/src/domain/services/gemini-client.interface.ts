@@ -50,14 +50,14 @@ export interface IGeminiClient {
   generateChatResponse(context: string, question: string): Promise<string>;
 
   /**
-   * Generate a general chat response using a system prompt and full knowledge
-   * Unlike generateChatResponse, this does NOT use RAG context wrapping
+   * Generate a general chat response with full conversation history and Google Search
+   * Uses Google Search Grounding for real-time data access
    * @param systemPrompt The system instructions for the LLM
-   * @param question The user's question
+   * @param messages Full conversation history (sliding window applied internally)
    * @returns The AI-generated response
    * @throws ExternalAPIError if API call fails
    */
-  generateGeneralResponse(systemPrompt: string, question: string): Promise<string>;
+  generateGeneralResponse(systemPrompt: string, messages: ChatMessage[]): Promise<string>;
 
   /**
    * Generate embedding vector for text using text-embedding-004

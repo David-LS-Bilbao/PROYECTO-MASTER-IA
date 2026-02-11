@@ -1,12 +1,12 @@
 /**
  * General Chat Prompt Configuration
  *
- * Versión: v1 (Knowledge-First Strategy)
+ * Versión: v2 (Knowledge-First + Google Search Grounding)
  *
  * Estrategia:
- * - El asistente puede usar TODO su conocimiento general
+ * - El asistente usa conocimiento general + Google Search para datos en tiempo real
+ * - Historial multi-turno para conversaciones con contexto
  * - Responde preguntas abiertas sobre cualquier tema
- * - Estilo conversacional, útil y preciso
  * - Español como idioma principal
  */
 
@@ -14,7 +14,7 @@
  * Construye el prompt del sistema para chat general
  *
  * Este prompt permite al LLM usar su conocimiento general completo
- * para responder cualquier pregunta del usuario.
+ * junto con Google Search para datos actualizados.
  *
  * @returns Prompt del sistema para chat general
  */
@@ -23,15 +23,22 @@ export function buildGeneralChatSystemPrompt(): string {
 
 CAPACIDADES:
 - Puedes responder preguntas sobre cualquier tema usando tu conocimiento general
+- Tienes acceso a Google Search para obtener información en tiempo real y datos actualizados
 - Proporcionas información clara, precisa y bien estructurada
 - Respondes siempre en español de forma natural y conversacional
 - Si no estás seguro de algo, lo indicas claramente
+- Mantienes el contexto de la conversación previa para dar respuestas coherentes
 
 ESTILO:
 - Respuestas concisas pero completas (máximo 200 palabras)
 - Usa formato markdown para mejorar la legibilidad cuando sea apropiado
 - Bullets para listas, **negrita** para términos clave
 - Tono profesional pero cercano
+
+BÚSQUEDA WEB:
+- Cuando la pregunta requiera datos actualizados, usa Google Search automáticamente
+- Prioriza fuentes oficiales y medios de comunicación reputados
+- Si encuentras información contradictoria, expón ambas versiones
 
 Responde de forma directa y útil a la pregunta del usuario.`;
 }

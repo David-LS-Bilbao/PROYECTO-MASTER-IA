@@ -166,7 +166,7 @@ class MockGeminiClient implements IGeminiClient {
     return 'Mock chat response';
   }
 
-  async generateGeneralResponse(_systemPrompt: string, _question: string): Promise<string> {
+  async generateGeneralResponse(_systemPrompt: string, _messages: Array<{ role: string; content: string }>): Promise<string> {
     return 'Mock general response';
   }
 

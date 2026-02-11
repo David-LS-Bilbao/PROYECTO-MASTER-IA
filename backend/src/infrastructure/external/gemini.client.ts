@@ -505,25 +505,52 @@ export class GeminiClient implements IGeminiClient {
   }
 
   /**
-   * Generate a general chat response using a system prompt and full Gemini knowledge.
-   * Unlike generateChatResponse, this does NOT wrap with RAG prompts.
+   * Generate a general chat response with conversation history and Google Search Grounding.
+   * Uses chatModel (Google Search enabled) for real-time data access.
    *
-   * Sprint 27.4: Chat General usa conocimiento completo de Gemini
+   * Sprint 27.4: Chat General con conocimiento completo + Google Search
    */
-  async generateGeneralResponse(systemPrompt: string, question: string): Promise<string> {
+  async generateGeneralResponse(
+    systemPrompt: string,
+    messages: Array<{ role: string; content: string }>
+  ): Promise<string> {
     if (!systemPrompt || systemPrompt.trim().length === 0) {
       throw new ExternalAPIError('Gemini', 'System prompt is required', 400);
     }
 
-    if (!question || question.trim().length === 0) {
-      throw new ExternalAPIError('Gemini', 'Question is required', 400);
+    if (!messages || messages.length === 0) {
+      throw new ExternalAPIError('Gemini', 'At least one message is required', 400);
     }
 
-    const prompt = `${systemPrompt}\n\nPregunta del usuario: ${question}`;
+    // COST OPTIMIZATION: Sliding window - only last N messages
+    const recentMessages = messages.slice(-MAX_CHAT_HISTORY_MESSAGES);
+
+    if (messages.length > MAX_CHAT_HISTORY_MESSAGES) {
+      logger.debug(
+        { originalCount: messages.length, truncatedCount: recentMessages.length },
+        'General chat history window truncated to optimize costs'
+      );
+    }
+
+    // Build multi-turn prompt with system prompt + conversation history
+    const promptParts: string[] = [systemPrompt, '\n[HISTORIAL]'];
+    for (const msg of recentMessages) {
+      if (msg.role === 'user') {
+        promptParts.push(`Usuario: ${msg.content}`);
+      } else if (msg.role === 'assistant') {
+        promptParts.push(`Asistente: ${msg.content}`);
+      }
+    }
+    promptParts.push('\nResponde a la última pregunta del usuario.');
+    const prompt = promptParts.join('\n');
 
     return this.executeWithRetry(async () => {
-      logger.info('Starting general chat response generation');
+      logger.info(
+        { messageCount: recentMessages.length },
+        'Starting general chat with Google Search Grounding'
+      );
 
+      // Uses chatModel (Google Search enabled) for real-time data
       const result = await Sentry.startSpan(
         {
           name: 'gemini.general_chat',
@@ -531,10 +558,11 @@ export class GeminiClient implements IGeminiClient {
           attributes: {
             'ai.model': 'gemini-2.5-flash',
             'ai.operation': 'general_chat',
-            'ai.grounding.enabled': false,
+            'ai.grounding.enabled': true,
+            'chat.message_count': recentMessages.length,
           },
         },
-        async () => await this.model.generateContent(prompt)
+        async () => await this.chatModel.generateContent(prompt)
       );
 
       const response = result.response;

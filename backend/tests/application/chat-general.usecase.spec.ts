@@ -1,8 +1,8 @@
 /**
  * ChatGeneralUseCase Unit Tests
  *
- * Sprint 27.4: Chat General usa conocimiento completo de Gemini (NO RAG)
- * Verifica validaciones y llamada directa a generateGeneralResponse.
+ * Sprint 27.4: Chat General con historial multi-turno + Google Search Grounding
+ * Verifica validaciones, paso de historial completo y system prompt.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -30,6 +30,14 @@ const mockGeminiClient = {
 
 function createChatMessages(userMessage: string): ChatMessage[] {
   return [{ role: 'user', content: userMessage }];
+}
+
+function createMultiTurnMessages(): ChatMessage[] {
+  return [
+    { role: 'user', content: '¿Quién es el presidente de España?' },
+    { role: 'assistant', content: 'El presidente del Gobierno de España es Pedro Sánchez.' },
+    { role: 'user', content: '¿Y cuándo asumió el cargo?' },
+  ];
 }
 
 // ============================================================================
@@ -68,7 +76,7 @@ describe('ChatGeneralUseCase', () => {
   });
 
   // ========================================================================
-  // HAPPY PATH - Knowledge-First Strategy (NO RAG)
+  // HAPPY PATH - Knowledge-First + Google Search + Multi-turn
   // ========================================================================
 
   it('genera respuesta usando conocimiento general de Gemini', async () => {
@@ -80,13 +88,38 @@ describe('ChatGeneralUseCase', () => {
     const result = await useCase.execute({ messages: createChatMessages(userQuestion) });
 
     expect(mockGeminiClient.generateGeneralResponse).toHaveBeenCalledTimes(1);
-    expect(mockGeminiClient.generateGeneralResponse).toHaveBeenCalledWith(
-      expect.stringContaining('asistente inteligente'),
-      userQuestion
-    );
     expect(result.response).toBe(
       'La fotosíntesis es el proceso por el cual las plantas convierten la luz solar en energía.'
     );
+  });
+
+  it('pasa el historial completo de mensajes a Gemini', async () => {
+    const multiTurnMessages = createMultiTurnMessages();
+    mockGeminiClient.generateGeneralResponse.mockResolvedValueOnce('Asumió el cargo en 2018.');
+
+    const result = await useCase.execute({ messages: multiTurnMessages });
+
+    expect(mockGeminiClient.generateGeneralResponse).toHaveBeenCalledTimes(1);
+
+    // Verify full history is passed (not just last message)
+    const passedMessages = mockGeminiClient.generateGeneralResponse.mock.calls[0][1];
+    expect(passedMessages).toHaveLength(3);
+    expect(passedMessages[0].content).toBe('¿Quién es el presidente de España?');
+    expect(passedMessages[1].role).toBe('assistant');
+    expect(passedMessages[2].content).toBe('¿Y cuándo asumió el cargo?');
+
+    expect(result.response).toBe('Asumió el cargo en 2018.');
+  });
+
+  it('pasa el system prompt con Google Search y conocimiento general', async () => {
+    mockGeminiClient.generateGeneralResponse.mockResolvedValueOnce('Respuesta');
+
+    await useCase.execute({ messages: createChatMessages('Test') });
+
+    const systemPrompt = mockGeminiClient.generateGeneralResponse.mock.calls[0][0];
+    expect(systemPrompt).toContain('conocimiento general');
+    expect(systemPrompt).toContain('Google Search');
+    expect(systemPrompt).toContain('español');
   });
 
   it('NO llama a generateChatResponse (método RAG)', async () => {
@@ -97,16 +130,6 @@ describe('ChatGeneralUseCase', () => {
     expect(mockGeminiClient.generateGeneralResponse).toHaveBeenCalledTimes(1);
     expect(mockGeminiClient.generateChatResponse).not.toHaveBeenCalled();
     expect(mockGeminiClient.generateEmbedding).not.toHaveBeenCalled();
-  });
-
-  it('pasa el system prompt de conocimiento general', async () => {
-    mockGeminiClient.generateGeneralResponse.mockResolvedValueOnce('Respuesta');
-
-    await useCase.execute({ messages: createChatMessages('Test') });
-
-    const systemPrompt = mockGeminiClient.generateGeneralResponse.mock.calls[0][0];
-    expect(systemPrompt).toContain('conocimiento general');
-    expect(systemPrompt).toContain('español');
   });
 
   // ========================================================================
