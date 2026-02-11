@@ -7,6 +7,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   ChevronRight,
   ChevronLeft,
+  Menu,
   BarChart3,
   Settings,
   Rss,
@@ -25,6 +26,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useGlobalRefresh } from '@/hooks/useNews';
@@ -38,6 +40,7 @@ interface SidebarProps {
 
 export function Sidebar({ onOpenDashboard, onOpenSources, onOpenChat }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false); // Global refresh loading state
   const { user, logout } = useAuth();
   const router = useRouter();
@@ -169,10 +172,172 @@ export function Sidebar({ onOpenDashboard, onOpenSources, onOpenChat }: SidebarP
 
   return (
     <>
+      {/* Mobile Menu Button */}
+      <div className="lg:hidden fixed top-4 left-4 z-50">
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => setIsMobileOpen(true)}
+          className="h-10 w-10 rounded-full bg-white/90 dark:bg-zinc-900/90 border-zinc-200 dark:border-zinc-800 shadow-sm"
+          aria-label="Abrir menú"
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
+      </div>
+
+      {/* Mobile Sidebar Sheet */}
+      <Sheet open={isMobileOpen} onOpenChange={setIsMobileOpen}>
+        <SheetContent side="left" className="w-72 p-0">
+          <SheetHeader className="border-b border-zinc-200 dark:border-zinc-800 px-4 py-4">
+            <SheetTitle className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+                <img src="/favicon.ico" alt="Logo Verity News" className="w-6 h-6 object-contain" />
+              </div>
+              <span className="font-bold text-lg">Verity</span>
+            </SheetTitle>
+          </SheetHeader>
+
+          <nav className="px-3 py-4 space-y-4 overflow-y-auto h-[calc(100vh-80px)]">
+            <div className="px-2 py-2">
+              <h3 className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                Temas
+              </h3>
+            </div>
+            <div className="space-y-1">
+              {topicItems.map((item, index) => {
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={index}
+                    href={item.href}
+                    onClick={() => setIsMobileOpen(false)}
+                    className={cn(
+                      'w-full h-10 rounded-lg transition-colors flex items-center gap-3 px-3',
+                      'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100',
+                      'dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-900'
+                    )}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="text-sm">{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+
+            <div className="border-t border-zinc-200 dark:border-zinc-800 my-4" />
+
+            <div className="space-y-1">
+              {navItems.map((item, index) => {
+                const Icon = item.icon;
+                const isRefreshButton = item.label === 'Actualizar Todo';
+                const showSpinner = isRefreshButton && isRefreshing;
+                const isDisabled = Boolean((item as { disabled?: boolean }).disabled) || showSpinner;
+
+                if ('href' in item && item.href) {
+                  return (
+                    <Link
+                      key={index}
+                      href={item.href}
+                      onClick={() => setIsMobileOpen(false)}
+                      className={cn(
+                        'w-full h-10 rounded-lg transition-colors flex items-center gap-3 px-3',
+                        'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100',
+                        'dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-900'
+                      )}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" />
+                      <span className="text-sm font-medium">{item.label}</span>
+                    </Link>
+                  );
+                }
+
+                return (
+                  <button
+                    key={index}
+                    onClick={async () => {
+                      await item.onClick?.();
+                      setIsMobileOpen(false);
+                    }}
+                    disabled={isDisabled}
+                    className={cn(
+                      'w-full h-10 rounded-lg transition-colors flex items-center gap-3 px-3',
+                      'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100',
+                      'dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-900',
+                      isDisabled && 'opacity-70 cursor-not-allowed'
+                    )}
+                  >
+                    <Icon className={cn('h-4 w-4 shrink-0', showSpinner && 'animate-spin')} />
+                    <span className="text-sm font-medium">
+                      {showSpinner ? 'Actualizando...' : item.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="border-t border-zinc-200 dark:border-zinc-800 my-4" />
+
+            <div className="space-y-2">
+              <Link
+                href="/settings"
+                onClick={() => setIsMobileOpen(false)}
+                className="w-full h-11 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors flex items-center gap-3 px-3 text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
+              >
+                <Settings className="h-5 w-5" />
+                <span className="text-sm">Ajustes</span>
+              </Link>
+
+              {user && (
+                <Link
+                  href="/profile"
+                  onClick={() => setIsMobileOpen(false)}
+                  className="w-full h-11 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors flex items-center gap-3 px-3 text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
+                >
+                  <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center shrink-0 overflow-hidden">
+                    {user.photoURL ? (
+                      <img
+                        src={user.photoURL}
+                        alt={user.displayName || 'Usuario'}
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <User className="h-4 w-4 text-white" />
+                    )}
+                  </div>
+                  <span className="text-sm truncate flex-1">{user.email}</span>
+                </Link>
+              )}
+
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={async () => {
+                  try {
+                    await logout();
+                  } catch (error) {
+                    console.error('Error al cerrar sesión:', error);
+                  } finally {
+                    setIsMobileOpen(false);
+                  }
+                }}
+                className="w-full h-11 justify-start text-zinc-600 hover:text-red-600 dark:text-zinc-400 dark:hover:text-red-400"
+              >
+                <LogOut className="h-5 w-5" />
+                <span className="text-sm ml-2">Salir</span>
+              </Button>
+            </div>
+          </nav>
+        </SheetContent>
+      </Sheet>
+
       {/* Collapsible Sidebar - Side Tab Design */}
       <aside
         className={cn(
-          'fixed left-0 top-0 h-screen bg-white dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800 transition-all duration-300 z-40 flex flex-col',
+          'hidden lg:flex fixed left-0 top-0 h-screen bg-white dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800 transition-all duration-300 z-40 flex-col',
           isOpen ? 'w-64' : 'w-20'
         )}
       >
@@ -355,7 +520,7 @@ export function Sidebar({ onOpenDashboard, onOpenSources, onOpenChat }: SidebarP
       </aside>
 
       {/* Spacer */}
-      <div className={cn('transition-all duration-300', isOpen ? 'w-64' : 'w-20')} />
+      <div className={cn('hidden lg:block transition-all duration-300', isOpen ? 'w-64' : 'w-20')} />
     </>
   );
 }
