@@ -619,7 +619,7 @@ function HomeContent() {
               </div>
 
               {/* Search Bar - Full Width on Mobile */}
-              <div className="w-full sm:max-w-2xl sm:justify-self-center">
+              <div className="w-full sm:max-w-2xl sm:justify-self-center -mx-4 sm:mx-0 px-4 sm:px-0">
                 <SearchBar
                   placeholder="Buscar temas, noticias..."
                   className="w-full"
@@ -755,7 +755,7 @@ function HomeContent() {
         </div>
 
         {/* Footer */}
-        <footer className="border-t border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+        <footer className="hidden sm:block border-t border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
           <div className="px-4 sm:px-6 py-1 text-center text-[10px] leading-tight sm:text-xs text-muted-foreground">
             <p>
               Verity News - Análisis de sesgo en noticias con IA{' '}
