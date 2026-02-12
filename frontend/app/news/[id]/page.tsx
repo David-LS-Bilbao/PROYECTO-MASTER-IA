@@ -19,6 +19,7 @@ import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ReliabilityBadge } from '@/components/reliability-badge';
 import { NewsChatDrawer } from '@/components/news-chat-drawer';
+import { GeneralChatDrawer } from '@/components/general-chat-drawer';
 
 /**
  * Loading skeleton for the article
@@ -97,6 +98,12 @@ export default function NewsDetailPage() {
   // perceived value of AI analysis regardless of cache status.
   // =========================================================================
   const [isRevealing, setIsRevealing] = useState(false);
+
+  // =========================================================================
+  // SPRINT 29: GRACEFUL DEGRADATION - General Chat Fallback
+  // =========================================================================
+  const [isGeneralChatOpen, setIsGeneralChatOpen] = useState(false);
+  const [generalChatInitialQuestion, setGeneralChatInitialQuestion] = useState('');
 
   // Redirect to not-found if 404 error
   useEffect(() => {
@@ -550,7 +557,21 @@ export default function NewsDetailPage() {
       </footer>
 
       {/* Floating Chat Button - RAG-powered conversation with the article */}
-      <NewsChatDrawer articleId={article.id} articleTitle={article.title} />
+      <NewsChatDrawer
+        articleId={article.id}
+        articleTitle={article.title}
+        onOpenGeneralChat={(question) => {
+          setGeneralChatInitialQuestion(question);
+          setIsGeneralChatOpen(true);
+        }}
+      />
+
+      {/* Sprint 29: General Chat Drawer - Fallback for out-of-domain questions */}
+      <GeneralChatDrawer
+        isOpen={isGeneralChatOpen}
+        onOpenChange={setIsGeneralChatOpen}
+        initialQuestion={generalChatInitialQuestion}
+      />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { MessageCircle, Send, Loader2, Bot, User } from 'lucide-react';
+import { MessageCircle, Send, Loader2, Bot, User, Sparkles } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -17,14 +17,26 @@ import { chatWithArticle, ChatMessage } from '@/lib/api';
 interface NewsChatDrawerProps {
   articleId: string;
   articleTitle: string;
+  /**
+   * Sprint 29 (Graceful Degradation): Callback to open General Chat with pre-filled question
+   */
+  onOpenGeneralChat?: (initialQuestion: string) => void;
 }
 
-export function NewsChatDrawer({ articleId, articleTitle }: NewsChatDrawerProps) {
+/**
+ * Extended ChatMessage type for fallback UI (Sprint 29)
+ */
+interface ExtendedChatMessage extends ChatMessage {
+  isFallback?: boolean; // Flag for special fallback message
+}
+
+export function NewsChatDrawer({ articleId, articleTitle, onOpenGeneralChat }: NewsChatDrawerProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ExtendedChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastUserQuestion, setLastUserQuestion] = useState<string>(''); // Track last question for fallback
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
 
@@ -44,7 +56,7 @@ export function NewsChatDrawer({ articleId, articleTitle }: NewsChatDrawerProps)
     e.preventDefault();
     if (!inputValue.trim() || isLoading) return;
 
-    const userMessage: ChatMessage = {
+    const userMessage: ExtendedChatMessage = {
       role: 'user',
       content: inputValue.trim(),
     };
@@ -52,6 +64,7 @@ export function NewsChatDrawer({ articleId, articleTitle }: NewsChatDrawerProps)
     // Add user message to chat
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
+    setLastUserQuestion(inputValue.trim()); // Save for fallback
     setInputValue('');
     setError(null);
     setIsLoading(true);
@@ -59,17 +72,42 @@ export function NewsChatDrawer({ articleId, articleTitle }: NewsChatDrawerProps)
     try {
       const response = await chatWithArticle(articleId, newMessages);
 
-      // Add assistant response
-      const assistantMessage: ChatMessage = {
-        role: 'assistant',
-        content: response.data.response,
-      };
-      setMessages([...newMessages, assistantMessage]);
+      // =========================================================================
+      // GRACEFUL DEGRADATION (Sprint 29): Detect low_context flag
+      // =========================================================================
+      if (response.meta?.low_context) {
+        // Out-of-domain question → Show fallback message with CTA button
+        const fallbackMessage: ExtendedChatMessage = {
+          role: 'assistant',
+          content: response.data.response,
+          isFallback: true, // Special flag for custom rendering
+        };
+        setMessages([...newMessages, fallbackMessage]);
+      } else {
+        // Normal RAG response
+        const assistantMessage: ExtendedChatMessage = {
+          role: 'assistant',
+          content: response.data.response,
+        };
+        setMessages([...newMessages, assistantMessage]);
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Error al enviar mensaje';
       setError(errorMessage);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  /**
+   * Handle fallback button click - Open General Chat with pre-filled question
+   */
+  const handleFallbackClick = () => {
+    if (onOpenGeneralChat && lastUserQuestion) {
+      setIsOpen(false); // Close news chat drawer
+      setTimeout(() => {
+        onOpenGeneralChat(lastUserQuestion); // Open general chat with question
+      }, 300); // Small delay for smooth transition
     }
   };
 
@@ -98,7 +136,7 @@ export function NewsChatDrawer({ articleId, articleTitle }: NewsChatDrawerProps)
 
         {/* Messages area */}
         <div className="flex-1 relative overflow-hidden">
-          <div 
+          <div
             ref={viewportRef}
             className="absolute inset-0 overflow-y-auto px-1"
             style={{ scrollBehavior: 'smooth' }}
@@ -115,34 +153,63 @@ export function NewsChatDrawer({ articleId, articleTitle }: NewsChatDrawerProps)
             )}
 
             {messages.map((message, index) => (
-              <div
-                key={index}
-                className={`flex gap-3 ${
-                  message.role === 'user' ? 'flex-row-reverse' : ''
-                }`}
-              >
-                <div
-                  className={`shrink-0 size-8 rounded-full flex items-center justify-center ${
-                    message.role === 'user'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted'
-                  }`}
-                >
-                  {message.role === 'user' ? (
-                    <User className="size-4" />
-                  ) : (
-                    <img src="/boticon.png" alt="Bot" className="w-6 h-6" />
-                  )}
-                </div>
-                <div
-                  className={`flex-1 rounded-lg px-4 py-3 text-sm ${
-                    message.role === 'user'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted'
-                  }`}
-                >
-                  <p className="whitespace-pre-wrap">{message.content}</p>
-                </div>
+              <div key={index}>
+                {/* Normal message rendering */}
+                {!message.isFallback && (
+                  <div
+                    className={`flex gap-3 ${
+                      message.role === 'user' ? 'flex-row-reverse' : ''
+                    }`}
+                  >
+                    <div
+                      className={`shrink-0 size-8 rounded-full flex items-center justify-center ${
+                        message.role === 'user'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted'
+                      }`}
+                    >
+                      {message.role === 'user' ? (
+                        <User className="size-4" />
+                      ) : (
+                        <img src="/boticon.png" alt="Bot" className="w-6 h-6" />
+                      )}
+                    </div>
+                    <div
+                      className={`flex-1 rounded-lg px-4 py-3 text-sm ${
+                        message.role === 'user'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted'
+                      }`}
+                    >
+                      <p className="whitespace-pre-wrap">{message.content}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Sprint 29: Special fallback message with CTA button */}
+                {message.isFallback && (
+                  <div className="flex gap-3">
+                    <div className="shrink-0 size-8 rounded-full bg-amber-100 dark:bg-amber-900 flex items-center justify-center">
+                      <Bot className="size-4 text-amber-600 dark:text-amber-400" />
+                    </div>
+                    <div className="flex-1 rounded-lg px-4 py-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800">
+                      <p className="text-sm text-amber-900 dark:text-amber-100 mb-3">
+                        {message.content}
+                      </p>
+                      <p className="text-xs text-amber-700 dark:text-amber-300 mb-3">
+                        Pero puedo ayudarte con el <strong>Chat General</strong>, donde tengo acceso a conocimiento completo sobre cualquier tema.
+                      </p>
+                      <Button
+                        onClick={handleFallbackClick}
+                        size="sm"
+                        className="w-full bg-linear-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white gap-2"
+                      >
+                        <Sparkles className="size-4" />
+                        Preguntar a la IA General
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
 

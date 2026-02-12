@@ -85,3 +85,18 @@ export class SecurityError extends DomainError {
     this.name = 'SecurityError';
   }
 }
+
+/**
+ * LowRelevanceError - Sprint 29 (Graceful Degradation)
+ * Thrown when RAG retrieval finds no relevant context for user's question
+ * NOT a 4xx/5xx error - this is expected behavior for out-of-domain questions
+ *
+ * HTTP 200 OK with special flag to trigger frontend fallback to General Chat
+ */
+export class LowRelevanceError extends DomainError {
+  constructor(message: string = 'No encuentro información sobre eso en esta noticia.') {
+    // 200 status code - this is not an error, it's a graceful fallback
+    super(message, 200, 'LOW_RELEVANCE', { isFallback: true });
+    this.name = 'LowRelevanceError';
+  }
+}

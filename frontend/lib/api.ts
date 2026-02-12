@@ -219,9 +219,12 @@ export interface ChatMessage {
 export interface ChatResponse {
   success: boolean;
   data: {
-    articleId: string;
-    articleTitle: string;
+    articleId?: string; // Optional when low_context (Sprint 29)
+    articleTitle?: string; // Optional when low_context (Sprint 29)
     response: string;
+  };
+  meta?: {
+    low_context?: boolean; // Sprint 29: Graceful Degradation flag
   };
   message: string;
 }

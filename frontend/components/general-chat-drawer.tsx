@@ -25,9 +25,13 @@ import { chatGeneral, ChatMessage } from '@/lib/api';
 interface GeneralChatDrawerProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * Sprint 29 (Graceful Degradation): Pre-fill input with question from News Chat fallback
+   */
+  initialQuestion?: string;
 }
 
-export function GeneralChatDrawer({ isOpen, onOpenChange }: GeneralChatDrawerProps) {
+export function GeneralChatDrawer({ isOpen, onOpenChange, initialQuestion }: GeneralChatDrawerProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -58,6 +62,13 @@ export function GeneralChatDrawer({ isOpen, onOpenChange }: GeneralChatDrawerPro
       return () => clearTimeout(timer);
     }
   }, [isOpen]);
+
+  // Sprint 29: Pre-fill input when opened with initialQuestion (fallback from News Chat)
+  useEffect(() => {
+    if (isOpen && initialQuestion) {
+      setInputValue(initialQuestion);
+    }
+  }, [isOpen, initialQuestion]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

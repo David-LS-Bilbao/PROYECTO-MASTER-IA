@@ -19,7 +19,7 @@
 import { INewsArticleRepository } from '../../domain/repositories/news-article.repository';
 import { IGeminiClient, ChatMessage } from '../../domain/services/gemini-client.interface';
 import { IVectorClient, QueryResult } from '../../domain/services/vector-client.interface';
-import { EntityNotFoundError, ValidationError } from '../../domain/errors/domain.error';
+import { EntityNotFoundError, ValidationError, LowRelevanceError } from '../../domain/errors/domain.error';
 import { GeminiErrorMapper } from '../../infrastructure/external/gemini-error-mapper';
 
 // ============================================================================
@@ -44,6 +44,22 @@ const MAX_DOCUMENT_CHARS = 2000;
  * Cuando el vector store no está disponible, limitar el contenido del artículo.
  */
 const MAX_FALLBACK_CONTENT_CHARS = 3000;
+
+// ============================================================================
+// GRACEFUL DEGRADATION CONSTANTS (Sprint 29)
+// ============================================================================
+
+/**
+ * Threshold de similitud de coseno para considerar contexto relevante.
+ * Score < 0.25 indica que la pregunta está fuera del dominio del artículo.
+ *
+ * Valores típicos:
+ * - 0.8-1.0: Muy similar (mismas palabras clave)
+ * - 0.5-0.8: Relacionado (mismo tema)
+ * - 0.25-0.5: Vagamente relacionado
+ * - < 0.25: No relacionado (Out-of-Domain)
+ */
+const SIMILARITY_THRESHOLD = 0.25;
 
 export interface ChatArticleInput {
   articleId: string;
@@ -161,10 +177,29 @@ export class ChatArticleUseCase {
       MAX_RAG_DOCUMENTS
     );
 
+    // =========================================================================
+    // GRACEFUL DEGRADATION (Sprint 29): Detectar preguntas fuera de contexto
+    // =========================================================================
+    // Si no hay resultados O el mejor resultado tiene score muy bajo:
+    // - NO llamar a Gemini (ahorra tokens)
+    // - Lanzar LowRelevanceError para trigger fallback a Chat General
     if (results.length === 0) {
-      console.log(`   ℹ️ No se encontraron documentos similares`);
-      return '';
+      console.log(`   ⚠️ Sin resultados RAG → Pregunta fuera de contexto`);
+      throw new LowRelevanceError('No encuentro información sobre eso en esta noticia.');
     }
+
+    // Score de similitud = 1 - distance (pgvector usa distancia coseno)
+    // distance=0 → 100% similar, distance=1 → 0% similar
+    const bestDistance = results[0].distance ?? 1;
+    const bestScore = 1 - bestDistance;
+
+    if (bestScore < SIMILARITY_THRESHOLD) {
+      console.log(`   ⚠️ Score bajo (${bestScore.toFixed(3)} < ${SIMILARITY_THRESHOLD}) → Pregunta fuera de contexto`);
+      throw new LowRelevanceError('No encuentro información sobre eso en esta noticia.');
+    }
+
+    console.log(`   ✅ Contexto relevante encontrado (score: ${bestScore.toFixed(3)})`);
+
 
     // Prioritize the requested article if found in results
     const sortedResults = this.prioritizeArticle(results, articleId);

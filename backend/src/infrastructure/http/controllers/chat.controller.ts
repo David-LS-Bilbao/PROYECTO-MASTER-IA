@@ -7,7 +7,7 @@ import { Request, Response } from 'express';
 import { ChatArticleUseCase } from '../../../application/use-cases/chat-article.usecase';
 import { ChatGeneralUseCase } from '../../../application/use-cases/chat-general.usecase';
 import { chatArticleSchema, chatGeneralSchema } from '../schemas/chat.schema';
-import { ValidationError, EntityNotFoundError } from '../../../domain/errors/domain.error';
+import { ValidationError, EntityNotFoundError, LowRelevanceError } from '../../../domain/errors/domain.error';
 import {
   ExternalAPIError,
   DatabaseError,
@@ -92,6 +92,25 @@ export class ChatController {
    */
   private handleError(error: unknown, res: Response): void {
     console.error('Chat Controller Error:', error);
+
+    // =========================================================================
+    // GRACEFUL DEGRADATION (Sprint 29): Low Relevance - Fallback to General Chat
+    // =========================================================================
+    // NOT an error - this is expected behavior for out-of-domain questions
+    // Return HTTP 200 with special flag to trigger frontend fallback
+    if (error instanceof LowRelevanceError) {
+      res.status(200).json({
+        success: true,
+        data: {
+          response: error.message,
+        },
+        meta: {
+          low_context: true, // Flag for frontend to show fallback UI
+        },
+        message: 'Pregunta fuera del contexto del artículo',
+      });
+      return;
+    }
 
     // Zod validation errors
     if (error instanceof ZodError) {
