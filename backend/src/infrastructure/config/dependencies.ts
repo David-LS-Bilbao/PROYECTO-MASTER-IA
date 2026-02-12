@@ -136,7 +136,7 @@ export class DependencyContainer {
       toggleFavoriteUseCase,
       ingestNewsUseCase // Sprint 19: Inject for reactive ingestion in search
     );
-    this.chatController = new ChatController(chatArticleUseCase, chatGeneralUseCase);
+    this.chatController = new ChatController(chatArticleUseCase, chatGeneralUseCase, quotaService);
     this.searchController = new SearchController(searchNewsUseCase);
     this.userController = new UserController(this.geminiClient);
     this.topicController = new TopicController(this.topicRepository);

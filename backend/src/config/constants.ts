@@ -100,6 +100,12 @@ export const CONTENT_CONFIG = {
 // ============================================================================
 // Define usage limits for different subscription tiers
 
+/**
+ * Sprint 30: Trial period in days for new FREE users to access PREMIUM features
+ * FREE users created within this period can access Chat endpoints
+ */
+export const TRIAL_PERIOD_DAYS = 7;
+
 export const USER_PLANS = {
   FREE: {
     name: 'Free',

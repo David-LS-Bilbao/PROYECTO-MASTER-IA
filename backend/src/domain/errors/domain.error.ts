@@ -100,3 +100,19 @@ export class LowRelevanceError extends DomainError {
     this.name = 'LowRelevanceError';
   }
 }
+
+/**
+ * FeatureLockedError - Sprint 30 (Premium Chat)
+ * Thrown when user tries to access a PREMIUM-only feature without subscription
+ * HTTP 403 Forbidden with specific error code for frontend to show upgrade CTA
+ */
+export class FeatureLockedError extends DomainError {
+  constructor(
+    feature: string = 'Chat',
+    message: string = 'Esta funcionalidad es exclusiva para usuarios Premium',
+    details?: Record<string, unknown>
+  ) {
+    super(message, 403, 'CHAT_FEATURE_LOCKED', { feature, ...details });
+    this.name = 'FeatureLockedError';
+  }
+}

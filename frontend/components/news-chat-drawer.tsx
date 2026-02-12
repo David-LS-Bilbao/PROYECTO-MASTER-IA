@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { MessageCircle, Send, Loader2, Bot, User, Sparkles } from 'lucide-react';
+import { MessageCircle, Send, Loader2, Bot, User, Sparkles, Lock, Crown } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -13,6 +13,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { chatWithArticle, ChatMessage } from '@/lib/api';
+import { useCanAccessChat } from '@/hooks/useCanAccessChat';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/context/AuthContext';
 
 interface NewsChatDrawerProps {
   articleId: string;
@@ -31,6 +34,8 @@ interface ExtendedChatMessage extends ChatMessage {
 }
 
 export function NewsChatDrawer({ articleId, articleTitle, onOpenGeneralChat }: NewsChatDrawerProps) {
+  const router = useRouter();
+  const { getToken } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ExtendedChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -39,6 +44,9 @@ export function NewsChatDrawer({ articleId, articleTitle, onOpenGeneralChat }: N
   const [lastUserQuestion, setLastUserQuestion] = useState<string>(''); // Track last question for fallback
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
+
+  // Sprint 30: Check if user can access Chat (PREMIUM or trial)
+  const chatAccess = useCanAccessChat();
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -70,7 +78,15 @@ export function NewsChatDrawer({ articleId, articleTitle, onOpenGeneralChat }: N
     setIsLoading(true);
 
     try {
-      const response = await chatWithArticle(articleId, newMessages);
+      // Sprint 30: Get auth token for Premium verification
+      const token = await getToken();
+      if (!token) {
+        setError('Debes iniciar sesión para usar el Chat');
+        setIsLoading(false);
+        return;
+      }
+
+      const response = await chatWithArticle(articleId, newMessages, token);
 
       // =========================================================================
       // GRACEFUL DEGRADATION (Sprint 29): Detect low_context flag
@@ -91,9 +107,16 @@ export function NewsChatDrawer({ articleId, articleTitle, onOpenGeneralChat }: N
         };
         setMessages([...newMessages, assistantMessage]);
       }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Error al enviar mensaje';
-      setError(errorMessage);
+    } catch (err: any) {
+      // =========================================================================
+      // PREMIUM GATE (Sprint 30): Detect CHAT_FEATURE_LOCKED error
+      // =========================================================================
+      if (err.errorCode === 'CHAT_FEATURE_LOCKED') {
+        setError('Tu periodo de prueba ha expirado. Actualiza a Premium para continuar usando el Chat.');
+      } else {
+        const errorMessage = err instanceof Error ? err.message : 'Error al enviar mensaje';
+        setError(errorMessage);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -237,22 +260,48 @@ export function NewsChatDrawer({ articleId, articleTitle, onOpenGeneralChat }: N
         </div>
 
         {/* Input area */}
-        <form onSubmit={handleSubmit} className="border-t pt-4 pb-6 px-2 flex gap-2">
-          <Input
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            placeholder="Escribe tu pregunta..."
-            disabled={isLoading}
-            className="flex-1"
-          />
-          <Button type="submit" size="icon" disabled={isLoading || !inputValue.trim()}>
-            {isLoading ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Send className="size-4" />
-            )}
-          </Button>
-        </form>
+        {chatAccess.canAccess ? (
+          <form onSubmit={handleSubmit} className="border-t pt-4 pb-6 px-2 flex gap-2">
+            <Input
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              placeholder="Escribe tu pregunta..."
+              disabled={isLoading}
+              className="flex-1"
+            />
+            <Button type="submit" size="icon" disabled={isLoading || !inputValue.trim()}>
+              {isLoading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Send className="size-4" />
+              )}
+            </Button>
+          </form>
+        ) : (
+          // Sprint 30: Locked state - show upgrade CTA
+          <div className="border-t pt-4 pb-6 px-4">
+            <div className="bg-linear-to-r from-purple-50 to-blue-50 dark:from-purple-950 dark:to-blue-950 rounded-lg p-4 border border-purple-200 dark:border-purple-800">
+              <div className="flex items-center gap-2 mb-2">
+                <Crown className="size-5 text-purple-600 dark:text-purple-400" />
+                <h3 className="font-semibold text-purple-900 dark:text-purple-100">
+                  {chatAccess.reason === 'TRIAL_EXPIRED' ? 'Periodo de prueba finalizado' : 'Funcionalidad Premium'}
+                </h3>
+              </div>
+              <p className="text-sm text-purple-700 dark:text-purple-300 mb-3">
+                {chatAccess.reason === 'TRIAL_EXPIRED'
+                  ? 'Tu periodo de prueba de 7 días ha expirado. Actualiza a Premium para seguir usando el Chat con IA.'
+                  : 'El acceso al Chat con IA es exclusivo para usuarios Premium.'}
+              </p>
+              <Button
+                onClick={() => router.push('/pricing')}
+                className="w-full bg-linear-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white gap-2"
+              >
+                <Crown className="size-4" />
+                Actualizar a Premium
+              </Button>
+            </div>
+          </div>
+        )}
       </SheetContent>
     </Sheet>
   );

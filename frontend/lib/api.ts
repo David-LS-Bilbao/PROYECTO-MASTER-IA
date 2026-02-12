@@ -214,6 +214,20 @@ export interface ChatMessage {
 }
 
 /**
+ * Sprint 30: Custom error class to preserve backend errorCode (e.g., CHAT_FEATURE_LOCKED)
+ */
+export class APIError extends Error {
+  constructor(
+    message: string,
+    public errorCode?: string,
+    public details?: any
+  ) {
+    super(message);
+    this.name = 'APIError';
+  }
+}
+
+/**
  * Chat response from backend
  */
 export interface ChatResponse {
@@ -231,22 +245,30 @@ export interface ChatResponse {
 
 /**
  * Send a chat message about an article
+ * Sprint 30: Requires authentication and Premium plan (7-day trial for new users)
  */
 export async function chatWithArticle(
   articleId: string,
-  messages: ChatMessage[]
+  messages: ChatMessage[],
+  token: string
 ): Promise<ChatResponse> {
   const res = await fetch(`${API_BASE_URL}/api/chat/article`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
     },
     body: JSON.stringify({ articleId, messages }),
   });
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.message || `Chat failed: ${res.status}`);
+    // Sprint 30: Preserve errorCode for frontend handling (e.g., CHAT_FEATURE_LOCKED)
+    throw new APIError(
+      errorData.message || `Chat failed: ${res.status}`,
+      errorData.errorCode,
+      errorData.details
+    );
   }
 
   return res.json();
@@ -267,21 +289,29 @@ export interface ChatGeneralResponse {
 
 /**
  * Send a general chat message (Sprint 19.6)
+ * Sprint 30: Requires authentication and Premium plan (7-day trial for new users)
  */
 export async function chatGeneral(
-  messages: ChatMessage[]
+  messages: ChatMessage[],
+  token: string
 ): Promise<ChatGeneralResponse> {
   const res = await fetch(`${API_BASE_URL}/api/chat/general`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
     },
     body: JSON.stringify({ messages }),
   });
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.message || `Chat failed: ${res.status}`);
+    // Sprint 30: Preserve errorCode for frontend handling (e.g., CHAT_FEATURE_LOCKED)
+    throw new APIError(
+      errorData.message || `Chat failed: ${res.status}`,
+      errorData.errorCode,
+      errorData.details
+    );
   }
 
   return res.json();
