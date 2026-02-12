@@ -449,15 +449,25 @@ export async function fetchNewsByCategory(
   category: string,
   limit = 50,
   offset = 0,
-  token?: string
+  token?: string,
+  refresh = false
 ): Promise<NewsResponse> {
   const headers: Record<string, string> = {};
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
+  const query = new URLSearchParams({
+    category,
+    limit: String(limit),
+    offset: String(offset),
+  });
+  if (refresh) {
+    query.set('refresh', 'true');
+  }
+
   const res = await fetch(
-    `${API_BASE_URL}/api/news?category=${encodeURIComponent(category)}&limit=${limit}&offset=${offset}`,
+    `${API_BASE_URL}/api/news?${query.toString()}`,
     {
       cache: 'no-store',
       headers,
@@ -469,6 +479,17 @@ export async function fetchNewsByCategory(
   }
 
   return res.json();
+}
+
+/**
+ * Force refresh local news (bypasses local ingestion TTL on backend).
+ */
+export async function refreshLocalNews(
+  token: string,
+  limit = 20,
+  offset = 0
+): Promise<NewsResponse> {
+  return fetchNewsByCategory('local', limit, offset, token, true);
 }
 
 /**

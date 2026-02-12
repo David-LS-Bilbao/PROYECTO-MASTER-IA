@@ -26,7 +26,8 @@ export interface UseNewsInfiniteParams {
 
 export function useNewsInfinite(params: UseNewsInfiniteParams = {}) {
   const { category = 'general', limit = 20 } = params;
-  const { getToken, user } = useAuth();
+  const { getToken, user, loading: authLoading } = useAuth();
+  const requiresAuth = category === 'local' || category === 'favorites';
 
   // Cache the token to avoid re-fetching on every render
   const tokenRef = useRef<string | null>(null);
@@ -42,13 +43,16 @@ export function useNewsInfinite(params: UseNewsInfiniteParams = {}) {
   const staleTime = (category as string) === 'favorites' ? 2 * 60 * 1000 : undefined;
 
   return useInfiniteQuery<NewsResponse>({
-    queryKey: ['news-infinite', category, limit],
+    queryKey: ['news-infinite', category, limit, user?.uid ?? 'anon'],
 
     queryFn: async ({ pageParam = 0 }) => {
       const offset = pageParam as number;
 
       // Get fresh token for this request
       const token = await getToken() || tokenRef.current || undefined;
+      if (requiresAuth && !token) {
+        throw new Error('Authentication token not ready yet');
+      }
 
       let result;
       if ((category as string) === 'favorites') {
@@ -72,6 +76,6 @@ export function useNewsInfinite(params: UseNewsInfiniteParams = {}) {
     },
 
     staleTime,
-    enabled: !!category,
+    enabled: !!category && (!requiresAuth || (!authLoading && !!user)),
   });
 }

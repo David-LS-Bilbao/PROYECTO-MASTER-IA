@@ -66,6 +66,7 @@ const newsQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).optional(),
   category: z.string().trim().min(1).optional(),
   location: z.string().trim().min(1).optional(),
+  refresh: z.enum(['true', 'false']).optional(),
   favorite: z.enum(['true', 'false']).optional(),
 }).passthrough();
 
@@ -154,11 +155,12 @@ export class NewsController {
         throw new ValidationError(parsed.error.issues.map(issue => issue.message).join('; '));
       }
 
-      const { limit, offset, category, favorite, location } = parsed.data;
+      const { limit, offset, category, favorite, location, refresh } = parsed.data;
       const resolvedLimit = limit ?? 20;
       const resolvedOffset = offset ?? 0;
       let resolvedCategory = category;
       const onlyFavorites = favorite === 'true';
+      const forceRefresh = refresh === 'true';
 
       // Per-user favorites require authentication
       const userId = req.user?.uid;
@@ -197,7 +199,7 @@ export class NewsController {
         const city = normalizedCity || 'Madrid';
 
         // Sprint 24: Active Local Ingestion - fetch fresh news about the city via Google News RSS
-        if (shouldIngestLocal(city)) {
+        if (forceRefresh || shouldIngestLocal(city)) {
           const ingestionPromise = this.ingestNewsUseCase.execute({
             category: 'local',
             topicSlug: 'local',

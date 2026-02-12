@@ -27,7 +27,8 @@ export interface UseNewsParams {
 
 export function useNews(params: UseNewsParams = {}) {
   const { category = 'general', limit = 50, offset = 0, refetchInterval } = params;
-  const { getToken, user } = useAuth();
+  const { getToken, user, loading: authLoading } = useAuth();
+  const requiresAuth = category === 'local' || category === 'favorites';
 
   // Cache the token to avoid re-fetching on every render
   const tokenRef = useRef<string | null>(null);
@@ -43,13 +44,16 @@ export function useNews(params: UseNewsParams = {}) {
   const staleTime = (category as string) === 'favorites' ? 2 * 60 * 1000 : undefined;
 
   return useQuery<NewsResponse>({
-    queryKey: ['news', category, limit, offset],
+    queryKey: ['news', category, limit, offset, user?.uid ?? 'anon'],
 
     queryFn: async () => {
       const startTime = Date.now();
 
       // Get fresh token for this request
       const token = await getToken() || tokenRef.current || undefined;
+      if (requiresAuth && !token) {
+        throw new Error('Authentication token not ready yet');
+      }
 
       let result;
       if ((category as string) === 'favorites') {
@@ -64,7 +68,7 @@ export function useNews(params: UseNewsParams = {}) {
     },
 
     placeholderData: keepPreviousData,
-    enabled: !!category,
+    enabled: !!category && (!requiresAuth || (!authLoading && !!user)),
     staleTime,
     refetchInterval,
     refetchIntervalInBackground: false,

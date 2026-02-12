@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ChevronRight,
@@ -30,6 +30,7 @@ import { LocationButton } from '@/components/ui/location-button';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useGlobalRefresh } from '@/hooks/useNews';
+import { refreshLocalNews } from '@/lib/api';
 import { toast } from 'sonner';
 import { updateUserProfile } from '@/lib/profile.api';
 
@@ -55,9 +56,13 @@ export function Sidebar({
   const [isRefreshing, setIsRefreshing] = useState(false); // Global refresh loading state
   const { user, logout, getToken } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const currentTopic = searchParams.get('topic') || 'general';
   const globalRefresh = useGlobalRefresh();
+  const queryClient = useQueryClient();
   const cronSecret = process.env.NEXT_PUBLIC_CRON_SECRET;
   const canGlobalRefresh = !!cronSecret;
+  const canRefreshCurrentTopic = currentTopic === 'local' ? !!user : canGlobalRefresh;
 
   // Sprint 28: Save detected location to backend and navigate to local news
   const handleLocationDetected = async (location: string) => {
@@ -78,7 +83,7 @@ export function Sidebar({
   const handleGlobalRefresh = async () => {
     if (isRefreshing) return; // Prevenir múltiples clicks
 
-    if (!cronSecret) {
+    if (currentTopic !== 'local' && !cronSecret) {
       toast.error('Actualización global deshabilitada', {
         description: 'Configura NEXT_PUBLIC_CRON_SECRET para habilitar esta acción.',
         duration: 5000,
@@ -95,6 +100,30 @@ export function Sidebar({
     });
 
     try {
+      // Local refresh path: force refresh local feed (bypasses backend local TTL).
+      if (currentTopic === 'local') {
+        const token = await getToken();
+        if (!token) {
+          throw new Error('Debes iniciar sesión para recargar noticias locales');
+        }
+
+        await refreshLocalNews(token, 20, 0);
+
+        await queryClient.invalidateQueries({
+          predicate: (query) => {
+            const [base] = query.queryKey;
+            return base === 'news' || base === 'news-infinite';
+          },
+          refetchType: 'active',
+        });
+
+        toast.success('Noticias locales actualizadas', {
+          description: 'Se han solicitado noticias frescas para tu ciudad.',
+          duration: 5000,
+        });
+        return;
+      }
+
       const result = await globalRefresh();
 
       // Toast de éxito con estadísticas
@@ -164,7 +193,7 @@ export function Sidebar({
       label: 'Actualizar Todo',
       icon: RefreshCw,
       onClick: handleGlobalRefresh,
-      disabled: !canGlobalRefresh,
+      disabled: !canRefreshCurrentTopic,
     },
     {
       label: 'Favoritos',
