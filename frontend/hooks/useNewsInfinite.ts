@@ -47,8 +47,6 @@ export function useNewsInfinite(params: UseNewsInfiniteParams = {}) {
     queryFn: async ({ pageParam = 0 }) => {
       const offset = pageParam as number;
 
-      console.log(`[useNewsInfinite] 📄 Fetching page: offset=${offset}, limit=${limit}, category=${category}`);
-
       // Get fresh token for this request
       const token = await getToken() || tokenRef.current || undefined;
 
@@ -61,25 +59,16 @@ export function useNewsInfinite(params: UseNewsInfiniteParams = {}) {
         result = await fetchNewsByCategory(category, limit, offset, token);
       }
 
-      console.log(`[useNewsInfinite] ✅ Page loaded: ${result.data?.length || 0} articles (offset=${offset})`);
-
       return result;
     },
 
     initialPageParam: 0,
 
     getNextPageParam: (lastPage, allPages) => {
-      // Si la última página tiene menos artículos que el límite, no hay más páginas
       if (!lastPage.pagination.hasMore) {
-        console.log(`[useNewsInfinite] 🏁 No more pages (hasMore=false)`);
         return undefined;
       }
-
-      // Calcular el siguiente offset
-      const nextOffset = allPages.length * limit;
-      console.log(`[useNewsInfinite] ➡️ Next page available: offset=${nextOffset}`);
-
-      return nextOffset;
+      return allPages.length * limit;
     },
 
     staleTime,

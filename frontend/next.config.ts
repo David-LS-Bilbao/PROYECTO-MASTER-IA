@@ -14,6 +14,20 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // Allow Firebase Auth popups (Google Sign-In) without COOP warnings
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'Cross-Origin-Opener-Policy',
+            value: 'same-origin-allow-popups',
+          },
+        ],
+      },
+    ];
+  },
 };
 
 // 🔍 Sprint 15: Wrap config with Sentry for error tracking and performance monitoring
