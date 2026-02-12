@@ -81,7 +81,8 @@ describe('MetadataExtractor', () => {
 
     const meta = await extractor.extractMetadata('https://example.com');
 
-    expect(meta.ogImage).toBeNull();
+    // Sprint 29: extractOgImage ahora usa twitter:image como fallback si og:image no existe
+    expect(meta.ogImage).toBe('https://example.com/tw2.jpg'); // Antes era null, ahora fallback
     expect(meta.twitterImage).toBe('https://example.com/tw2.jpg');
     expect(meta.title).toBe('TW Title');
     expect(meta.description).toBe('TW Desc');

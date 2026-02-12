@@ -16,7 +16,7 @@ export interface ArticleMetadata {
 }
 
 export class MetadataExtractor {
-  private readonly timeout: number = 2000; // 2 seconds - fast extraction
+  private readonly timeout: number = 8000; // 8 seconds - allow time for redirects + slow sites (Sprint 29)
   private readonly maxRedirects: number = 5; // Follow redirects from Google News to original sources
 
   /**
@@ -31,13 +31,15 @@ export class MetadataExtractor {
         throw new ExternalAPIError('MetadataExtractor', 'Invalid URL format', 400);
       }
 
-      // Fetch HTML with timeout and User-Agent to avoid blocking
+      // Fetch HTML with timeout and realistic User-Agent to avoid WAF blocking
       const response = await axios.get(url, {
         timeout: this.timeout,
         maxRedirects: this.maxRedirects,
         headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; VerityNewsBot/1.0; +https://verity-news.com/bot)',
-          Accept: 'text/html',
+          // Sprint 29: Humanize User-Agent to bypass WAF (403) on health/tech sites
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
         },
         validateStatus: (status) => status >= 200 && status < 400,
       });
@@ -97,7 +99,7 @@ export class MetadataExtractor {
   }
 
   /**
-   * Extract Open Graph image
+   * Extract Open Graph image with Twitter fallback (Sprint 29 improvement)
    */
   private extractOgImage($: cheerio.CheerioAPI): string | null {
     // Try og:image
@@ -110,6 +112,14 @@ export class MetadataExtractor {
 
     // Try link rel="image_src" (older standard)
     imageUrl = $('link[rel="image_src"]').attr('href');
+    if (imageUrl) return this.normalizeUrl(imageUrl);
+
+    // Sprint 29: Fallback to twitter:image if og:image not found
+    // Some sites (especially health/tech) only provide twitter:image
+    imageUrl = $('meta[name="twitter:image"]').attr('content');
+    if (imageUrl) return this.normalizeUrl(imageUrl);
+
+    imageUrl = $('meta[name="twitter:image:src"]').attr('content');
     if (imageUrl) return this.normalizeUrl(imageUrl);
 
     return null;
