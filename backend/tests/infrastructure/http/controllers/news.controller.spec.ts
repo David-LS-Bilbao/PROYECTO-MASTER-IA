@@ -99,6 +99,7 @@ describe('NewsController', () => {
       findAll: vi.fn(),
       count: vi.fn(),
       countFiltered: vi.fn(),
+      countLocalArticles: vi.fn(),
       findById: vi.fn(),
       searchArticles: vi.fn(),
       searchLocalArticles: vi.fn(),
@@ -140,6 +141,7 @@ describe('NewsController', () => {
 
       mockUserFindUnique.mockResolvedValueOnce({ location: null });
       repository.searchLocalArticles.mockResolvedValueOnce([]);
+      repository.countLocalArticles.mockResolvedValueOnce(0);
       ingestNewsUseCase.execute.mockResolvedValueOnce({ newArticles: 0 });
 
       await controller.getNews(req, res as Response);
@@ -149,6 +151,28 @@ describe('NewsController', () => {
       expect(payload.success).toBe(true);
       expect(payload.data).toEqual([]);
       expect(payload.meta.message).toContain('Madrid');
+    });
+
+    it('local respeta offset y calcula hasMore con total real', async () => {
+      const { res, jsonMock } = createRes();
+      const req = {
+        query: { category: 'local', limit: '2', offset: '2' },
+        user: { uid: 'user-1' },
+      } as Request;
+
+      mockUserFindUnique.mockResolvedValueOnce({ location: 'Bilbao' });
+      repository.searchLocalArticles.mockResolvedValueOnce([createArticle({ id: 'article-1' })]);
+      repository.countLocalArticles.mockResolvedValueOnce(5);
+      repository.getUserUnlockedArticleIds.mockResolvedValueOnce(new Set(['article-1']));
+      ingestNewsUseCase.execute.mockResolvedValueOnce({ newArticles: 0 });
+
+      await controller.getNews(req, res as Response);
+
+      expect(repository.searchLocalArticles).toHaveBeenCalledWith('Bilbao', 2, 2, 'user-1');
+
+      const payload = jsonMock.mock.calls[0][0];
+      expect(payload.pagination.total).toBe(5);
+      expect(payload.pagination.hasMore).toBe(true);
     });
 
     it('200 en caso normal con usuario y analisis desbloqueado', async () => {
@@ -288,4 +312,3 @@ describe('NewsController', () => {
     });
   });
 });
-

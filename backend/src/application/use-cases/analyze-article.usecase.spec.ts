@@ -139,6 +139,14 @@ class MockNewsArticleRepository implements INewsArticleRepository {
     return [];
   }
 
+  async searchLocalArticles(_city: string, _limit: number, _offset: number): Promise<NewsArticle[]> {
+    return [];
+  }
+
+  async countLocalArticles(_city: string): Promise<number> {
+    return 0;
+  }
+
   // Test helpers
   setArticle(article: NewsArticle): void {
     this.articles.set(article.id, article);

@@ -160,7 +160,15 @@ export interface INewsArticleRepository {
    * Only returns articles stored as local news that mention the city.
    * @param city City name to search for
    * @param limit Maximum number of results
+   * @param offset Pagination offset
    * @param userId Optional user ID for favorite enrichment
    */
-  searchLocalArticles(city: string, limit: number, userId?: string): Promise<NewsArticle[]>;
+  searchLocalArticles(city: string, limit: number, offset: number, userId?: string): Promise<NewsArticle[]>;
+
+  /**
+   * Count LOCAL articles for a city filter.
+   * Applies the same fallback behavior as searchLocalArticles:
+   * if no city-matching local articles are found, counts all local articles.
+   */
+  countLocalArticles(city: string): Promise<number>;
 }

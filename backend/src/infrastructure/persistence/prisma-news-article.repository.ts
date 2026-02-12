@@ -736,7 +736,7 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
    * returning international/national articles that happened to mention the city.
    * Now properly filters to category='local' first, then searches by city name.
    */
-  async searchLocalArticles(city: string, limit: number, userId?: string): Promise<NewsArticle[]> {
+  async searchLocalArticles(city: string, limit: number, offset: number, userId?: string): Promise<NewsArticle[]> {
     try {
       if (!city || city.trim().length === 0) {
         return [];
@@ -776,6 +776,7 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
           publishedAt: 'desc',
         },
         take: limit,
+        skip: offset,
       });
 
       console.log(`[Repository.searchLocalArticles] ✅ Found ${articles.length} local articles for "${trimmedCity}"`);
@@ -794,6 +795,7 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
             publishedAt: 'desc',
           },
           take: limit,
+          skip: offset,
         });
 
         if (fallbackArticles.length === 0) return [];
@@ -825,6 +827,57 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
     } catch (error) {
       throw new DatabaseError(
         `Failed to search local articles: ${(error as Error).message}`,
+        error as Error
+      );
+    }
+  }
+
+  async countLocalArticles(city: string): Promise<number> {
+    try {
+      if (!city || city.trim().length === 0) {
+        return 0;
+      }
+
+      const trimmedCity = city.trim();
+      const normalizedCity = this.normalizeText(trimmedCity);
+      const cityVariants = this.generateAccentVariants(normalizedCity);
+      const searchFields = ['title', 'description', 'summary', 'content'] as const;
+      const cityConditions = searchFields.flatMap(field =>
+        cityVariants.map(variant => ({
+          [field]: { contains: variant, mode: 'insensitive' as const }
+        }))
+      );
+
+      const filteredCount = await this.prisma.article.count({
+        where: {
+          AND: [
+            {
+              category: {
+                equals: 'local',
+                mode: 'insensitive',
+              },
+            },
+            { OR: cityConditions },
+          ],
+        },
+      });
+
+      if (filteredCount > 0) {
+        return filteredCount;
+      }
+
+      // Fallback count aligned with searchLocalArticles fallback behavior
+      return await this.prisma.article.count({
+        where: {
+          category: {
+            equals: 'local',
+            mode: 'insensitive',
+          },
+        },
+      });
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to count local articles: ${(error as Error).message}`,
         error as Error
       );
     }

@@ -40,10 +40,17 @@ const CATEGORY_TO_TOPIC_SLUG: Record<string, string> = {
 
 /**
  * Sprint 24: TTL cache for local ingestion
- * Prevents re-fetching Google News RSS for the same city within 1 hour
+ * Prevents re-fetching Google News RSS for the same city too frequently
  * Key: city name (lowercase), Value: timestamp of last ingestion
  */
-const LOCAL_INGEST_TTL = 60 * 60 * 1000; // 1 hour
+const DEFAULT_LOCAL_INGEST_TTL_MINUTES = 15;
+const parsedLocalIngestTtlMinutes = Number(
+  process.env.LOCAL_INGEST_TTL_MINUTES ?? DEFAULT_LOCAL_INGEST_TTL_MINUTES
+);
+const LOCAL_INGEST_TTL =
+  Number.isFinite(parsedLocalIngestTtlMinutes) && parsedLocalIngestTtlMinutes > 0
+    ? parsedLocalIngestTtlMinutes * 60 * 1000
+    : DEFAULT_LOCAL_INGEST_TTL_MINUTES * 60 * 1000;
 const localIngestCache = new Map<string, number>();
 
 const newsQuerySchema = z.object({
@@ -191,14 +198,15 @@ export class NewsController {
 
         // Sprint 28 BUG #1 FIX: Use searchLocalArticles (category='local' + city filter)
         // Previously used searchArticles(city) which searched ALL categories
-        const localNews = await this.repository.searchLocalArticles(city, resolvedLimit, userId);
+        const localNews = await this.repository.searchLocalArticles(city, resolvedLimit, resolvedOffset, userId);
+        const localTotal = await this.repository.countLocalArticles(city);
 
         // If no results, suggest fallback
         if (localNews.length === 0) {
           res.json({
             success: true,
             data: [],
-            pagination: { total: 0, limit: resolvedLimit, offset: resolvedOffset, hasMore: false },
+            pagination: { total: localTotal, limit: resolvedLimit, offset: resolvedOffset, hasMore: false },
             meta: {
               message: `No hay noticias recientes sobre ${city}. Intenta con una búsqueda manual.`,
             },
@@ -220,10 +228,10 @@ export class NewsController {
           success: true,
           data,
           pagination: {
-            total: localNews.length,
+            total: localTotal,
             limit: resolvedLimit,
             offset: resolvedOffset,
-            hasMore: localNews.length >= resolvedLimit, // Si devolvió el límite completo, puede haber más
+            hasMore: resolvedOffset + localNews.length < localTotal,
           },
           meta: {
             location: city,
