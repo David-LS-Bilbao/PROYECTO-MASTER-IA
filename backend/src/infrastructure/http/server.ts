@@ -31,18 +31,7 @@ export function createServer(): Application {
   // Security middleware
   app.use(helmet());
 
-  // Rate limiting - prevent abuse
-  // 🔧 Sprint 16 FIX: Relajar rate limit en desarrollo
-  const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: process.env.NODE_ENV === 'production' ? 100 : 10000, // 10k en dev, 100 en prod
-    message: { error: 'Too many requests, please try again later.' },
-    standardHeaders: true,
-    legacyHeaders: false,
-  });
-  app.use('/api/', limiter);
-
-  // CORS configuration - Allow frontend origins with explicit methods
+  // CORS configuration - ANTES del rate limiter para que las respuestas 429 incluyan headers CORS
   const defaultOrigins = ['http://localhost:3001', 'http://localhost:5173'];
   const envOrigins = process.env.CORS_ORIGIN
     ? process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean)
@@ -57,10 +46,19 @@ export function createServer(): Application {
     },
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: true,
-    // 🔍 Sprint 15 - Paso 3: Allow Sentry trace headers for distributed tracing
     allowedHeaders: ['Content-Type', 'Authorization', 'sentry-trace', 'baggage', 'x-cron-secret'],
     exposedHeaders: ['sentry-trace'],
   }));
+
+  // Rate limiting - prevent abuse (DESPUÉS de CORS para que 429 tenga headers CORS)
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: process.env.NODE_ENV === 'production' ? 300 : 10000, // 300 en prod, 10k en dev
+    message: { error: 'Too many requests, please try again later.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+  app.use('/api/', limiter);
 
   // Body parser
   app.use(express.json());
