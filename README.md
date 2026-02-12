@@ -616,6 +616,12 @@ LEVEL 3: Reactive Ingestion (trigger ingesta y re-query)
 - Query: "¿Quién es el alcalde de Móstoles?"
 - Respuesta: Información actualizada del LLM sin restricciones
 
+**🔒 Restricción PREMIUM (Sprint 30)**:
+- Chat endpoints requieren autenticación
+- **FREE**: 7 días de prueba desde el registro → Bloqueado después
+- **PREMIUM**: Acceso completo ilimitado
+- UI muestra CTA "Actualizar a Premium" cuando trial expira
+
 **Beneficio**: Los usuarios pueden verificar claims de noticias conversando con la IA.
 
 ---
@@ -638,29 +644,45 @@ LEVEL 3: Reactive Ingestion (trigger ingesta y re-query)
 
 ---
 
-### 6. Modelo Freemium con Suscripciones (Sprint 27)
+### 6. Modelo Freemium con Suscripciones (Sprint 27 & 30)
 
-**Descripción**: Sistema de cuotas de uso con upgrade a plan PREMIUM.
+**Descripción**: Sistema de cuotas de uso con upgrade a plan PREMIUM y periodo de prueba de 7 días.
 
 **Planes**:
 
-| Plan | Análisis/día | Chats/día | Búsquedas/día | Precio |
-|------|--------------|-----------|---------------|--------|
-| **FREE** | 5 | 10 | 20 | Gratis |
-| **PREMIUM** | Ilimitado | Ilimitado | Ilimitado | 9.99€/mes |
+| Plan | Análisis/mes | Chat (Trial) | Búsquedas/mes | Precio |
+|------|--------------|--------------|---------------|--------|
+| **FREE** | 500 | ✅ 7 días | 20 | Gratis |
+| **PREMIUM** | Ilimitado | ✅ Ilimitado | Ilimitado | 9.99€/mes |
+
+**Nuevo: Periodo de Prueba de Chat (Sprint 30)**:
+
+Los usuarios FREE tienen acceso completo al Chat durante **7 días** desde su registro:
+- ✨ **Día 1-7**: Chat habilitado (trial activo)
+- 🔒 **Día 8+**: Chat bloqueado → CTA "Actualizar a Premium"
+- 👑 **PREMIUM**: Acceso ilimitado permanente
+
+**Implementación Técnica**:
+- `QuotaService.canAccessChat()`: Verifica elegibilidad calculando días desde `User.createdAt`
+- `FeatureLockedError` (HTTP 403): Devuelto cuando trial expirado
+- Hook `useCanAccessChat()`: Frontend verifica estado del trial
+- CTA Premium: Gradiente púrpura-azul con redirección a `/pricing`
 
 **Features**:
 - **Códigos promo**: Sistema de canje de códigos (ej: `VERITY_ADMIN`)
 - **Auto-reset**: Cuotas se resetean diariamente a las 00:00 UTC
 - **Token Taximeter**: Monitoreo en tiempo real de costes de Gemini
 - **Billing Dashboard**: Usuario ve uso actual vs límite
+- **Trial Tracking**: Dashboard muestra días restantes de prueba
 
 **Tecnología**:
 - `User.subscriptionPlan`: Enum (FREE/PREMIUM)
-- `QuotaService`: Middleware que verifica límites antes de cada operación
+- `User.createdAt`: Timestamp para cálculo de trial
+- `QuotaService`: Middleware que verifica límites y trial period
 - `node-cron`: Jobs programados para reset diario/mensual
+- Constante `TRIAL_PERIOD_DAYS = 7` en `constants.ts`
 
-**Beneficio**: Sostenibilidad del proyecto mediante modelo freemium.
+**Beneficio**: Sostenibilidad del proyecto mediante modelo freemium con conversión de usuarios FREE → PREMIUM incentivada por trial period.
 
 ---
 
@@ -1397,14 +1419,14 @@ Para reportar bugs o sugerir features:
 
 ---
 
-**🚀 Proyecto completado - Sprint 28**
+**🚀 Proyecto completado - Sprint 30**
 
 **Estado**: En producción y funcional
 **Última actualización**: 12 de febrero de 2026
-**Líneas de código**: ~31,000 (sin dependencias)
+**Líneas de código**: ~31,500 (sin dependencias)
 **Tests**: 328 (95% coverage)
 **Tiempo de desarrollo**: 6 semanas
-**Commits**: 500+
+**Commits**: 530+
 
 ---
 
