@@ -51,6 +51,14 @@ const LOCAL_INGEST_TTL =
   Number.isFinite(parsedLocalIngestTtlMinutes) && parsedLocalIngestTtlMinutes > 0
     ? parsedLocalIngestTtlMinutes * 60 * 1000
     : DEFAULT_LOCAL_INGEST_TTL_MINUTES * 60 * 1000;
+const DEFAULT_LOCAL_INGEST_TIMEOUT_MS = 6000;
+const parsedLocalIngestTimeoutMs = Number(
+  process.env.LOCAL_INGEST_TIMEOUT_MS ?? DEFAULT_LOCAL_INGEST_TIMEOUT_MS
+);
+const LOCAL_INGEST_TIMEOUT_MS =
+  Number.isFinite(parsedLocalIngestTimeoutMs) && parsedLocalIngestTimeoutMs > 0
+    ? parsedLocalIngestTimeoutMs
+    : DEFAULT_LOCAL_INGEST_TIMEOUT_MS;
 const localIngestCache = new Map<string, number>();
 
 const newsQuerySchema = z.object({
@@ -185,22 +193,35 @@ export class NewsController {
         });
 
         const requestedCity = location || user?.location;
-        const city = requestedCity ? normalizeCityInput(requestedCity) : 'Madrid';
+        const normalizedCity = requestedCity ? normalizeCityInput(requestedCity) : '';
+        const city = normalizedCity || 'Madrid';
 
         // Sprint 24: Active Local Ingestion - fetch fresh news about the city via Google News RSS
         if (shouldIngestLocal(city)) {
-          try {
-            await this.ingestNewsUseCase.execute({
-              category: 'local',
-              topicSlug: 'local',
-              query: city,
-              pageSize: 20,
-              language: 'es',
-            });
-            markLocalIngested(city);
-          } catch (ingestionError) {
+          const ingestionPromise = this.ingestNewsUseCase.execute({
+            category: 'local',
+            topicSlug: 'local',
+            query: city,
+            pageSize: 20,
+            language: 'es',
+          }).catch((ingestionError) => {
             console.error(`[NewsController.getNews] ❌ Local ingestion failed for "${city}":`, ingestionError);
+            return null;
+          });
+
+          const timeoutPromise = new Promise<'timeout'>((resolve) => {
+            setTimeout(() => resolve('timeout'), LOCAL_INGEST_TIMEOUT_MS);
+          });
+
+          const ingestionResult = await Promise.race([ingestionPromise, timeoutPromise]);
+          if (ingestionResult === 'timeout') {
+            console.warn(
+              `[NewsController.getNews] ⏱️ Local ingestion timeout after ${LOCAL_INGEST_TIMEOUT_MS}ms for "${city}". Returning cached DB data.`
+            );
           }
+
+          // Avoid repeated blocking attempts during TTL window.
+          markLocalIngested(city);
         }
 
         // Sprint 28 BUG #1 FIX: Use searchLocalArticles (category='local' + city filter)
