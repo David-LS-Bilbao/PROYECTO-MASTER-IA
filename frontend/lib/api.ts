@@ -62,6 +62,26 @@ export interface NewsResponse {
     offset: number;
     hasMore: boolean;
   };
+  meta?: {
+    location?: string;
+    message?: string;
+    refresh?: {
+      forced: boolean;
+      attempted: boolean;
+      status: 'skipped_ttl' | 'completed' | 'timeout' | 'error';
+      timeoutMs: number;
+      durationMs: number;
+      pending: boolean;
+      ingest: null | {
+        totalFetched: number;
+        newArticles: number;
+        duplicates: number;
+        errors: number;
+        source: string;
+        timestamp: string;
+      };
+    };
+  };
 }
 
 export interface BiasDistribution {

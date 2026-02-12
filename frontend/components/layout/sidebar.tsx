@@ -94,10 +94,15 @@ export function Sidebar({
     setIsRefreshing(true);
 
     // Toast de inicio
-    toast.info('Iniciando actualización global de fuentes...', {
-      description: 'Esto puede tardar unos segundos',
-      duration: 3000,
-    });
+    toast.info(
+      currentTopic === 'local'
+        ? 'Recargando noticias locales...'
+        : 'Iniciando actualización global de fuentes...',
+      {
+        description: 'Esto puede tardar unos segundos',
+        duration: 3000,
+      }
+    );
 
     try {
       // Local refresh path: force refresh local feed (bypasses backend local TTL).
@@ -107,20 +112,51 @@ export function Sidebar({
           throw new Error('Debes iniciar sesión para recargar noticias locales');
         }
 
-        await refreshLocalNews(token, 20, 0);
+        const refreshResult = await refreshLocalNews(token, 20, 0);
+        const localQueryUserKey = user?.uid ?? 'anon';
 
-        await queryClient.invalidateQueries({
-          predicate: (query) => {
-            const [base] = query.queryKey;
-            return base === 'news' || base === 'news-infinite';
-          },
-          refetchType: 'active',
-        });
+        // Update visible caches directly with the refresh response to avoid an extra immediate fetch.
+        queryClient.setQueryData(
+          ['news-infinite', 'local', 20, localQueryUserKey],
+          { pages: [refreshResult], pageParams: [0] }
+        );
+        queryClient.setQueryData(
+          ['news', 'local', 20, 0, localQueryUserKey],
+          refreshResult
+        );
 
-        toast.success('Noticias locales actualizadas', {
-          description: 'Se han solicitado noticias frescas para tu ciudad.',
-          duration: 5000,
-        });
+        const refresh = refreshResult.meta?.refresh;
+        if (refresh?.status === 'timeout') {
+          toast.info('Ingesta local en curso', {
+            description: `Timeout a los ${Math.round(refresh.timeoutMs / 1000)}s. Se mostraran nuevos articulos al terminar.`,
+            duration: 6000,
+          });
+
+          // Trigger a delayed refetch because ingestion may still be running in background.
+          setTimeout(() => {
+            queryClient.invalidateQueries({
+              queryKey: ['news-infinite', 'local', 20, localQueryUserKey],
+              refetchType: 'active',
+            });
+          }, Math.max(refresh.timeoutMs, 7000));
+
+          return;
+        }
+
+        if (refresh?.ingest) {
+          toast.success('Noticias locales actualizadas', {
+            description:
+              refresh.ingest.newArticles > 0
+                ? `${refresh.ingest.newArticles} noticias nuevas encontradas en RSS.`
+                : 'No hay noticias nuevas en RSS en este momento.',
+            duration: 5000,
+          });
+        } else {
+          toast.success('Noticias locales actualizadas', {
+            description: 'Recarga completada.',
+            duration: 5000,
+          });
+        }
         return;
       }
 

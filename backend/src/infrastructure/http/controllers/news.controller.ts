@@ -59,6 +59,14 @@ const LOCAL_INGEST_TIMEOUT_MS =
   Number.isFinite(parsedLocalIngestTimeoutMs) && parsedLocalIngestTimeoutMs > 0
     ? parsedLocalIngestTimeoutMs
     : DEFAULT_LOCAL_INGEST_TIMEOUT_MS;
+const DEFAULT_LOCAL_FORCE_REFRESH_TIMEOUT_MS = 15000;
+const parsedLocalForceRefreshTimeoutMs = Number(
+  process.env.LOCAL_FORCE_REFRESH_TIMEOUT_MS ?? DEFAULT_LOCAL_FORCE_REFRESH_TIMEOUT_MS
+);
+const LOCAL_FORCE_REFRESH_TIMEOUT_MS =
+  Number.isFinite(parsedLocalForceRefreshTimeoutMs) && parsedLocalForceRefreshTimeoutMs > 0
+    ? parsedLocalForceRefreshTimeoutMs
+    : DEFAULT_LOCAL_FORCE_REFRESH_TIMEOUT_MS;
 const localIngestCache = new Map<string, number>();
 
 const newsQuerySchema = z.object({
@@ -93,6 +101,12 @@ function normalizeCityInput(input: string): string {
   // Common format from user profiles: "City, Region"
   const [firstToken] = trimmed.split(',');
   return (firstToken ?? trimmed).trim();
+}
+
+function setOptionalHeader(res: Response, name: string, value: string): void {
+  if (typeof res.setHeader === 'function') {
+    res.setHeader(name, value);
+  }
 }
 
 /**
@@ -197,28 +211,85 @@ export class NewsController {
         const requestedCity = location || user?.location;
         const normalizedCity = requestedCity ? normalizeCityInput(requestedCity) : '';
         const city = normalizedCity || 'Madrid';
+        const refreshMeta: {
+          forced: boolean;
+          attempted: boolean;
+          status: 'skipped_ttl' | 'completed' | 'timeout' | 'error';
+          timeoutMs: number;
+          durationMs: number;
+          pending: boolean;
+          ingest: null | {
+            totalFetched: number;
+            newArticles: number;
+            duplicates: number;
+            errors: number;
+            source: string;
+            timestamp: string;
+          };
+        } = {
+          forced: forceRefresh,
+          attempted: false,
+          status: 'skipped_ttl',
+          timeoutMs: forceRefresh ? LOCAL_FORCE_REFRESH_TIMEOUT_MS : LOCAL_INGEST_TIMEOUT_MS,
+          durationMs: 0,
+          pending: false,
+          ingest: null,
+        };
 
         // Sprint 24: Active Local Ingestion - fetch fresh news about the city via Google News RSS
         if (forceRefresh || shouldIngestLocal(city)) {
+          refreshMeta.attempted = true;
+          const ingestStartedAt = Date.now();
+
           const ingestionPromise = this.ingestNewsUseCase.execute({
             category: 'local',
             topicSlug: 'local',
             query: city,
             pageSize: 20,
             language: 'es',
-          }).catch((ingestionError) => {
-            console.error(`[NewsController.getNews] ❌ Local ingestion failed for "${city}":`, ingestionError);
-            return null;
-          });
+          })
+            .then((result) => ({ kind: 'completed' as const, result }))
+            .catch((ingestionError) => ({ kind: 'error' as const, error: ingestionError }));
 
-          const timeoutPromise = new Promise<'timeout'>((resolve) => {
-            setTimeout(() => resolve('timeout'), LOCAL_INGEST_TIMEOUT_MS);
+          const timeoutPromise = new Promise<{ kind: 'timeout' }>((resolve) => {
+            setTimeout(() => resolve({ kind: 'timeout' }), refreshMeta.timeoutMs);
           });
 
           const ingestionResult = await Promise.race([ingestionPromise, timeoutPromise]);
-          if (ingestionResult === 'timeout') {
+          refreshMeta.durationMs = Date.now() - ingestStartedAt;
+
+          if (ingestionResult.kind === 'timeout') {
+            refreshMeta.status = 'timeout';
+            refreshMeta.pending = true;
             console.warn(
-              `[NewsController.getNews] ⏱️ Local ingestion timeout after ${LOCAL_INGEST_TIMEOUT_MS}ms for "${city}". Returning cached DB data.`
+              `[NewsController.getNews] ⏱️ Local ingestion timeout after ${refreshMeta.timeoutMs}ms for "${city}". Returning cached DB data.`
+            );
+          } else if (ingestionResult.kind === 'error') {
+            refreshMeta.status = 'error';
+            console.error(`[NewsController.getNews] ❌ Local ingestion failed for "${city}":`, ingestionResult.error);
+          } else {
+            refreshMeta.status = 'completed';
+            const result = ingestionResult.result as Partial<{
+              totalFetched: number;
+              newArticles: number;
+              duplicates: number;
+              errors: number;
+              source: string;
+              timestamp: Date;
+            }>;
+            refreshMeta.ingest = {
+              totalFetched: result.totalFetched ?? 0,
+              newArticles: result.newArticles ?? 0,
+              duplicates: result.duplicates ?? 0,
+              errors: result.errors ?? 0,
+              source: result.source ?? 'local',
+              timestamp:
+                result.timestamp instanceof Date
+                  ? result.timestamp.toISOString()
+                  : new Date().toISOString(),
+            };
+            console.log(
+              `[NewsController.getNews] ✅ Local ingestion "${city}": fetched=${refreshMeta.ingest.totalFetched}, new=${refreshMeta.ingest.newArticles}, duplicates=${refreshMeta.ingest.duplicates}, errors=${refreshMeta.ingest.errors}`
             );
           }
 
@@ -233,12 +304,19 @@ export class NewsController {
 
         // If no results, suggest fallback
         if (localNews.length === 0) {
+          setOptionalHeader(res, 'x-local-refresh-status', refreshMeta.status);
+          setOptionalHeader(res, 'x-local-refresh-forced', String(refreshMeta.forced));
+          setOptionalHeader(res, 'x-local-refresh-attempted', String(refreshMeta.attempted));
+          if (refreshMeta.ingest) {
+            setOptionalHeader(res, 'x-local-refresh-new-articles', String(refreshMeta.ingest.newArticles));
+          }
           res.json({
             success: true,
             data: [],
             pagination: { total: localTotal, limit: resolvedLimit, offset: resolvedOffset, hasMore: false },
             meta: {
               message: `No hay noticias recientes sobre ${city}. Intenta con una búsqueda manual.`,
+              refresh: refreshMeta,
             },
           });
           return;
@@ -254,6 +332,12 @@ export class NewsController {
           return toHttpResponse(article, shouldMask);
         });
 
+        setOptionalHeader(res, 'x-local-refresh-status', refreshMeta.status);
+        setOptionalHeader(res, 'x-local-refresh-forced', String(refreshMeta.forced));
+        setOptionalHeader(res, 'x-local-refresh-attempted', String(refreshMeta.attempted));
+        if (refreshMeta.ingest) {
+          setOptionalHeader(res, 'x-local-refresh-new-articles', String(refreshMeta.ingest.newArticles));
+        }
         res.json({
           success: true,
           data,
@@ -266,6 +350,7 @@ export class NewsController {
           meta: {
             location: city,
             message: `Noticias locales para ${city}`,
+            refresh: refreshMeta,
           },
         });
         return;
