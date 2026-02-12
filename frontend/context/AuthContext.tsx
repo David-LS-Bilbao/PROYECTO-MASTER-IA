@@ -85,22 +85,29 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   useEffect(() => {
     console.log('🔐 Inicializando AuthProvider...');
+    console.log('⏳ Verificando sesión persistente en localStorage...');
 
     // =========================================================================
     // LISTENER: onAuthStateChanged
-    // Se ejecuta cuando cambia el estado de autenticación (login/logout)
+    // - Se ejecuta cuando cambia el estado de autenticación (login/logout)
+    // - Firebase verifica automáticamente si hay un token en localStorage
+    // - Si encuentra un token válido, currentUser se setea automáticamente
+    // - Este proceso tarda ~100-300ms, por eso `loading` debe estar en true
     // =========================================================================
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       if (currentUser) {
-        console.log('✅ Usuario autenticado:', currentUser.email);
+        console.log('✅ Usuario autenticado desde sesión persistente:', currentUser.email);
+        console.log('🔑 UID:', currentUser.uid);
         setUser(currentUser);
       } else {
-        console.log('⚠️ Usuario no autenticado');
+        console.log('⚠️ No hay sesión persistente. Usuario no autenticado.');
         setUser(null);
       }
 
-      // Marcar como cargado después de verificar el estado inicial
+      // CRÍTICO: Marcar como cargado SOLO después de verificar localStorage
+      // Esto previene redirecciones prematuras a /login cuando hay token guardado
       setLoading(false);
+      console.log('✅ AuthProvider inicializado. Loading = false');
     });
 
     // Cleanup: desuscribirse cuando el componente se desmonte
