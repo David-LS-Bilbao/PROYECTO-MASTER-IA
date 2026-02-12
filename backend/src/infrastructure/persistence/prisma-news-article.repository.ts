@@ -563,6 +563,44 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
     return where;
   }
 
+  /**
+   * Interleave articles by source using round-robin and then apply pagination.
+   * This keeps source variety while preserving chronological order per source.
+   */
+  private interleaveBySource<T extends { source: string }>(
+    articles: T[],
+    limit: number,
+    offset: number
+  ): T[] {
+    if (articles.length === 0 || limit <= 0) {
+      return [];
+    }
+
+    const targetSize = offset + limit;
+    const sourceGroups = new Map<string, T[]>();
+
+    for (const article of articles) {
+      if (!sourceGroups.has(article.source)) {
+        sourceGroups.set(article.source, []);
+      }
+      sourceGroups.get(article.source)!.push(article);
+    }
+
+    const interleaved: T[] = [];
+    const sourceIterators = Array.from(sourceGroups.values());
+
+    while (interleaved.length < targetSize && sourceIterators.some(group => group.length > 0)) {
+      for (const group of sourceIterators) {
+        if (interleaved.length >= targetSize) break;
+        if (group.length > 0) {
+          interleaved.push(group.shift()!);
+        }
+      }
+    }
+
+    return interleaved.slice(offset, targetSize);
+  }
+
   // =========================================================================
   // SEARCH (Sprint 19: Waterfall Search Engine)
   // =========================================================================
@@ -757,48 +795,45 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
         }))
       );
 
-      // Query: category='local' AND (city mentioned in any text field)
-      const articles = await this.prisma.article.findMany({
-        where: {
-          AND: [
-            // Filter: only articles in the 'local' category
-            {
-              category: {
-                equals: 'local',
-                mode: 'insensitive',
-              },
-            },
-            // Filter: city name appears in any text field
-            { OR: cityConditions },
-          ],
+      const localCategoryFilter: Prisma.ArticleWhereInput = {
+        category: {
+          equals: 'local',
+          mode: 'insensitive',
         },
+      };
+      const localCityFilter: Prisma.ArticleWhereInput = {
+        AND: [
+          localCategoryFilter,
+          { OR: cityConditions },
+        ],
+      };
+      const bufferSize = Math.max((offset + limit) * 3, 60);
+
+      // Query: category='local' AND (city mentioned in any text field)
+      const localCandidates = await this.prisma.article.findMany({
+        where: localCityFilter,
         orderBy: {
           publishedAt: 'desc',
         },
-        take: limit,
-        skip: offset,
+        take: bufferSize,
       });
 
-      console.log(`[Repository.searchLocalArticles] ✅ Found ${articles.length} local articles for "${trimmedCity}"`);
+      console.log(`[Repository.searchLocalArticles] ✅ Found ${localCandidates.length} candidate local articles for "${trimmedCity}"`);
 
-      if (articles.length === 0) {
+      if (localCandidates.length === 0) {
         // Fallback: return all local articles (without city filter) so user sees something
         console.log(`[Repository.searchLocalArticles] 🔄 Fallback: returning all local articles`);
-        const fallbackArticles = await this.prisma.article.findMany({
-          where: {
-            category: {
-              equals: 'local',
-              mode: 'insensitive',
-            },
-          },
+        const fallbackCandidates = await this.prisma.article.findMany({
+          where: localCategoryFilter,
           orderBy: {
             publishedAt: 'desc',
           },
-          take: limit,
-          skip: offset,
+          take: bufferSize,
         });
 
-        if (fallbackArticles.length === 0) return [];
+        if (fallbackCandidates.length === 0) return [];
+
+        const fallbackArticles = this.interleaveBySource(fallbackCandidates, limit, offset);
 
         let domainArticles = fallbackArticles.map(a => this.mapper.toDomain(a));
         if (userId && domainArticles.length > 0) {
@@ -810,6 +845,8 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
         }
         return domainArticles;
       }
+
+      const articles = this.interleaveBySource(localCandidates, limit, offset);
 
       // Convert to domain entities
       let domainArticles = articles.map(a => this.mapper.toDomain(a));

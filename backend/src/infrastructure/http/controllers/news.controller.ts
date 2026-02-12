@@ -77,6 +77,15 @@ function markLocalIngested(city: string): void {
   localIngestCache.set(city.toLowerCase().trim(), Date.now());
 }
 
+function normalizeCityInput(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return '';
+
+  // Common format from user profiles: "City, Region"
+  const [firstToken] = trimmed.split(',');
+  return (firstToken ?? trimmed).trim();
+}
+
 /**
  * Transform domain article to HTTP response format
  * Parses the analysis JSON string into an object for frontend consumption
@@ -175,10 +184,8 @@ export class NewsController {
           select: { location: true },
         });
 
-        let city = location || user?.location;
-        if (!city) {
-          city = 'Madrid';
-        }
+        const requestedCity = location || user?.location;
+        const city = requestedCity ? normalizeCityInput(requestedCity) : 'Madrid';
 
         // Sprint 24: Active Local Ingestion - fetch fresh news about the city via Google News RSS
         if (shouldIngestLocal(city)) {

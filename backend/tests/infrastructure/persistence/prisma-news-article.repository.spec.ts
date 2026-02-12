@@ -391,6 +391,35 @@ describe('PrismaNewsArticleRepository', () => {
     expect(result[0].isFavorite).toBe(true);
   });
 
+  it('searchLocalArticles interleavea fuentes y respeta offset', async () => {
+    prisma.article.findMany.mockResolvedValueOnce([
+      makePrismaArticle({ id: 'a1', source: 'DEIA', category: 'local', url: 'https://example.com/a1' }),
+      makePrismaArticle({ id: 'a2', source: 'DEIA', category: 'local', url: 'https://example.com/a2' }),
+      makePrismaArticle({ id: 'a3', source: 'DEIA', category: 'local', url: 'https://example.com/a3' }),
+      makePrismaArticle({ id: 'b1', source: 'Google News', category: 'local', url: 'https://example.com/b1' }),
+    ]);
+
+    const result = await repository.searchLocalArticles('Bilbao', 2, 1);
+
+    expect(result.map(article => article.id)).toEqual(['b1', 'a2']);
+    expect(prisma.article.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('searchLocalArticles usa fallback local cuando no hay coincidencias de ciudad', async () => {
+    prisma.article.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        makePrismaArticle({ id: 'f1', source: 'DEIA', category: 'local', url: 'https://example.com/f1' }),
+        makePrismaArticle({ id: 'f2', source: 'DEIA', category: 'local', url: 'https://example.com/f2' }),
+        makePrismaArticle({ id: 'f3', source: '20 minutos', category: 'local', url: 'https://example.com/f3' }),
+      ]);
+
+    const result = await repository.searchLocalArticles('Bilbao', 2, 0);
+
+    expect(result.map(article => article.id)).toEqual(['f1', 'f3']);
+    expect(prisma.article.findMany).toHaveBeenCalledTimes(2);
+  });
+
   it('save lanza DatabaseError si falla', async () => {
     prisma.article.upsert.mockRejectedValueOnce(new Error('DB error'));
 
