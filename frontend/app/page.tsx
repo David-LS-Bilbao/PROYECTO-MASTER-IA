@@ -20,15 +20,8 @@ import { useInvalidateNews } from '@/hooks/useNews';
 import { useDashboardStats } from '@/hooks/useDashboardStats';
 import { groupArticlesByDate } from '@/lib/date-utils';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 const INFINITE_PAGE_SIZE = 20;
-const INGEST_PAGE_SIZE = 50;
 const INFINITE_SCROLL_ROOT_MARGIN = '100px';
-const HEALTH_CHECK_TIMEOUT_MS = 2000;
-const INGEST_TIMEOUT_MS = 5000;
-const AUTO_INGEST_TTL_MS = 60 * 60 * 1000;
-const AUTO_INGEST_DEBOUNCE_MS = 300;
-const AUTO_INGEST_INITIAL_DELAY_MS = 500;
 const SKELETON_CARD_COUNT = 6;
 
 
@@ -142,12 +135,6 @@ function HomeContent() {
   const [isChangingTopic, setIsChangingTopic] = useState(false);
   const previousTopicRef = useRef<string>(topic);
 
-  // Sprint 16: Track si es la primera carga para evitar ingesta innecesaria
-  const isFirstMount = useRef(true);
-
-  // Sprint 16: Track si el backend está disponible para auto-ingesta
-  const [isBackendAvailable, setIsBackendAvailable] = useState(true);
-
   // =========================================================================
   // REACT QUERY: Infinite Scroll con useInfiniteQuery
   // Sprint 20: Eliminamos paginación estática y usamos carga bajo demanda
@@ -232,217 +219,20 @@ function HomeContent() {
   }, [urlTopic, topic]);
 
   // =========================================================================
-  // SPRINT 16: Health Check del Backend (una sola vez al montar)
-  // Verifica si el backend está disponible para habilitar auto-ingesta
+  // Invalidar caché de React Query al cambiar de topic
+  // El backend auto-fill se encarga de ingestar si la categoría está vacía
   // =========================================================================
+  const isFirstMount = useRef(true);
   useEffect(() => {
-    const checkBackendHealth = async () => {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), HEALTH_CHECK_TIMEOUT_MS);
-
-        const response = await fetch(`${API_BASE_URL}/health/check`, {
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (response.ok) {
-          setIsBackendAvailable(true);
-        } else {
-          console.warn('⚠️ [HEALTH CHECK] Backend respondió con error:', response.status);
-          setIsBackendAvailable(false);
-        }
-      } catch (error) {
-        console.warn('🔌 [HEALTH CHECK] Backend no disponible - Auto-ingesta deshabilitada');
-        setIsBackendAvailable(false);
-      }
-    };
-
-    checkBackendHealth();
-  }, []); // Solo ejecutar una vez al montar
-
-  // =========================================================================
-  // FIX: Auto-Ingesta al RECARGAR página (F5) con TTL de 1 hora
-  // Solo se ejecuta una vez al montar, usa localStorage para TTL
-  // Sprint 22: Actualizado para usar 'topic' en lugar de 'category'
-  // =========================================================================
-  useEffect(() => {
-    // Solo ejecutar en primera carga (cuando isFirstMount es true)
-    if (!isFirstMount.current) return;
-
-    // Skip favoritos - no necesitan ingesta RSS
-    if (topic === 'favorites') {
-      return;
-    }
-
-    // Skip si backend no disponible
-    if (!isBackendAvailable) {
-      return;
-    }
-
-    // Verificar TTL con localStorage
-    const autoIngestWithTTL = async () => {
-      const storageKey = `last-ingest-${topic}`;
-      const lastIngestStr = localStorage.getItem(storageKey);
-      const now = Date.now();
-
-      // Si existe timestamp y no ha pasado 1 hora, saltar
-      if (lastIngestStr) {
-        const lastIngest = parseInt(lastIngestStr, 10);
-        const timeSinceIngest = now - lastIngest;
-
-        if (timeSinceIngest < AUTO_INGEST_TTL_MS) {
-          return;
-        }
-      }
-
-      // Skip ingestion for special topics that don't have RSS feeds
-      if (topic === 'local' || topic === 'favorites') {
-        return; // Exit early, these topics use search/favorites, not RSS
-      }
-
-      try {
-        const requestBody: { pageSize: number; category: string } = {
-          pageSize: INGEST_PAGE_SIZE,
-          category: topic, // Backend espera 'category', pero le pasamos el topic
-        };
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), INGEST_TIMEOUT_MS);
-
-        const response = await fetch(`${API_BASE_URL}/api/ingest/news`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestBody),
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (response.ok) {
-          const data = await response.json();
-
-          // Guardar timestamp de última ingesta
-          localStorage.setItem(storageKey, now.toString());
-
-          // Invalidar cache para mostrar datos actualizados
-          invalidateNews(topic);
-        } else {
-          console.warn('⚠️ [AUTO-RELOAD] Error en ingesta:', response.status);
-        }
-      } catch (error) {
-        console.error('❌ [AUTO-RELOAD] Error:', error);
-      }
-    };
-
-    // Delay de 500ms para que el health check termine primero
-    const timeoutId = setTimeout(() => {
-      autoIngestWithTTL();
-    }, AUTO_INGEST_INITIAL_DELAY_MS);
-
-    return () => clearTimeout(timeoutId);
-  }, [topic, isBackendAvailable, invalidateNews]); // Ejecutar cuando cambie el topic inicial
-
-  // =========================================================================
-  // SPRINT 16: Auto-Ingesta al cambiar de topic
-  // Dispara ingesta RSS + invalidación + refetch (como botón "Últimas noticias")
-  // Solo se ejecuta en cambios de topic, NO en primera carga
-  // Sprint 22: Actualizado para usar 'topic' en lugar de 'category'
-  // =========================================================================
-  useEffect(() => {
-    // Skip primera carga - solo queremos ingesta en cambios de topic
+    // Skip primera carga - useNewsInfinite ya hace el fetch inicial
     if (isFirstMount.current) {
       isFirstMount.current = false;
       return;
     }
 
-    // Skip favoritos - no necesitan ingesta RSS, solo invalidar para refetch
-    if (topic === 'favorites') {
-      invalidateNews(topic);
-      return;
-    }
-
-    // Skip si backend no está disponible - solo hacer refetch de BD
-    if (!isBackendAvailable) {
-      invalidateNews(topic);
-      return;
-    }
-
-    // Debounce: Esperar 300ms para evitar múltiples ingestas rápidas al cambiar topics
-    const timeoutId = setTimeout(async () => {
-      // =========================================================================
-      // SMART INGESTION: Verificar TTL de 1 hora antes de disparar ingesta
-      // Optimización de costes - Solo ingestar si no hay datos o son antiguos
-      // =========================================================================
-      const latestArticle = newsData?.data?.[0]; // Artículo más reciente (ordenado por fecha desc)
-      const lastUpdate = latestArticle?.publishedAt
-        ? new Date(latestArticle.publishedAt).getTime()
-        : 0;
-      const now = Date.now();
-
-      const shouldAutoRefresh = !latestArticle || (now - lastUpdate > AUTO_INGEST_TTL_MS);
-
-      if (!shouldAutoRefresh) {
-        // Solo invalidar caché para refetch de BD, sin ingesta RSS
-        invalidateNews(topic);
-        return;
-      }
-
-      try {
-        const requestBody: { pageSize: number; category: string } = {
-          pageSize: INGEST_PAGE_SIZE, // Aumentado de 20 a 50 para mejor cobertura y más artículos frescos
-          category: topic, // Backend espera 'category', pero le pasamos el topic
-        };
-
-        // ✅ CAMBIO: 'general' ahora es un topic INDEPENDIENTE (no un agregador)
-        // Se envía explícitamente para que backend filtre solo noticias de fuentes de portada
-
-        // Fetch con timeout de 5 segundos para evitar hangs
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), INGEST_TIMEOUT_MS);
-
-        const response = await fetch(`${API_BASE_URL}/api/ingest/news`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestBody),
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (response.ok) {
-          // CRÍTICO: Invalidar TODOS los topics, no solo el actual
-          // Razón: Una noticia puede aparecer en múltiples feeds RSS y actualizarse
-          // Ejemplo: Noticia de inflación aparece en "general" y "economia"
-          invalidateNews(topic, true); // true = invalidateAll
-        } else {
-          console.warn(`⚠️ [AUTO-INGESTA] Error HTTP ${response.status}:`, response.statusText);
-          // Aún así, invalidar todos los topics por si hay cambios previos
-          invalidateNews(topic, true);
-        }
-      } catch (error) {
-        // Manejo de errores más específico
-        if (error instanceof Error) {
-          if (error.name === 'AbortError') {
-            console.warn('⏱️ [AUTO-INGESTA] Timeout (5s) - Backend puede estar lento o no disponible');
-          } else if (error.message.includes('fetch')) {
-            console.warn('🔌 [AUTO-INGESTA] Backend no disponible - Mostrando datos de BD actual');
-          } else {
-            console.warn('❌ [AUTO-INGESTA] Error:', error.message);
-          }
-        } else {
-          console.warn('❌ [AUTO-INGESTA] Error desconocido:', error);
-        }
-
-        // Siempre invalidar TODOS los topics, incluso si falla ingesta
-        // Esto asegura refetch de BD con los últimos datos disponibles
-        invalidateNews(topic, true);
-      }
-    }, AUTO_INGEST_DEBOUNCE_MS); // Debounce para evitar cambios rápidos
-
-    return () => clearTimeout(timeoutId);
-  }, [topic, invalidateNews, isBackendAvailable]); // Ejecutar cada vez que cambia el topic o disponibilidad del backend
+    // Invalidar caché para que React Query re-fetch con el nuevo topic
+    invalidateNews(topic);
+  }, [topic, invalidateNews]);
 
   // =========================================================================
   // Sprint 22: Ya no necesitamos handleCategoryChange - el Sidebar usa Links directos
