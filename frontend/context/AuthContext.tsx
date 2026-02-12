@@ -15,7 +15,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged, signOut } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { auth, authReady } from '@/lib/firebase';
 
 /**
  * Interfaz del contexto de autenticación
@@ -85,35 +85,49 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   useEffect(() => {
     console.log('🔐 Inicializando AuthProvider...');
-    console.log('⏳ Verificando sesión persistente en localStorage...');
+    console.log('⏳ Esperando configuración de persistencia...');
+
+    let unsubscribe: (() => void) | undefined;
 
     // =========================================================================
-    // LISTENER: onAuthStateChanged
-    // - Se ejecuta cuando cambia el estado de autenticación (login/logout)
-    // - Firebase verifica automáticamente si hay un token en localStorage
-    // - Si encuentra un token válido, currentUser se setea automáticamente
-    // - Este proceso tarda ~100-300ms, por eso `loading` debe estar en true
+    // PASO 1: Esperar a que setPersistence complete antes de registrar listener
+    // Sprint 29 Fix: Evita race condition donde onAuthStateChanged se registra
+    // antes de que la persistencia esté configurada, causando que Firebase
+    // no detecte la sesión almacenada en IndexedDB.
     // =========================================================================
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (currentUser) {
-        console.log('✅ Usuario autenticado desde sesión persistente:', currentUser.email);
-        console.log('🔑 UID:', currentUser.uid);
-        setUser(currentUser);
-      } else {
-        console.log('⚠️ No hay sesión persistente. Usuario no autenticado.');
-        setUser(null);
-      }
+    authReady.then(() => {
+      console.log('✅ Persistencia configurada. Registrando listener de auth...');
 
-      // CRÍTICO: Marcar como cargado SOLO después de verificar localStorage
-      // Esto previene redirecciones prematuras a /login cuando hay token guardado
-      setLoading(false);
-      console.log('✅ AuthProvider inicializado. Loading = false');
+      // =====================================================================
+      // PASO 2: LISTENER onAuthStateChanged
+      // - Se ejecuta cuando cambia el estado de autenticación (login/logout)
+      // - Firebase verifica IndexedDB para encontrar sesión persistente
+      // - Si encuentra un token válido, currentUser se setea automáticamente
+      // - Este proceso tarda ~100-300ms, por eso `loading` debe estar en true
+      // =====================================================================
+      unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+        if (currentUser) {
+          console.log('✅ Usuario autenticado desde sesión persistente:', currentUser.email);
+          console.log('🔑 UID:', currentUser.uid);
+          setUser(currentUser);
+        } else {
+          console.log('⚠️ No hay sesión persistente. Usuario no autenticado.');
+          setUser(null);
+        }
+
+        // CRÍTICO: Marcar como cargado SOLO después de verificar IndexedDB
+        // Esto previene redirecciones prematuras a /login cuando hay token guardado
+        setLoading(false);
+        console.log('✅ AuthProvider inicializado. Loading = false');
+      });
     });
 
     // Cleanup: desuscribirse cuando el componente se desmonte
     return () => {
       console.log('🔐 Desuscribiendo AuthProvider...');
-      unsubscribe();
+      if (unsubscribe) {
+        unsubscribe();
+      }
     };
   }, []);
 

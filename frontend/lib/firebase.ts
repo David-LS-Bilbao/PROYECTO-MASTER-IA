@@ -123,8 +123,11 @@ export const auth = getAuth(firebaseApp);
 
 // =========================================================================
 // PERSISTENCIA: Configurar sesiones persistentes (Keep Me Logged In)
+// Sprint 29 Fix: Exportar promesa para que AuthContext espere antes de
+// registrar onAuthStateChanged. Evita race condition donde el listener
+// se registra antes de que la persistencia esté lista.
 // =========================================================================
-setPersistence(auth, browserLocalPersistence)
+export const authReady: Promise<void> = setPersistence(auth, browserLocalPersistence)
   .then(() => {
     console.log('✅ Firebase Auth: Persistencia LOCAL activada (sesiones permanentes)');
   })

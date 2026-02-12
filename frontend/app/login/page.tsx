@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { auth } from '@/lib/firebase';
-import { 
-  signInWithEmailAndPassword, 
+import { useAuth } from '@/context/AuthContext';
+import {
+  signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInWithPopup,
   GoogleAuthProvider
@@ -12,11 +13,19 @@ import {
 
 export default function LoginPage() {
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Sprint 29 Fix: Si el usuario ya tiene sesión persistente, redirigir a /
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.push('/');
+    }
+  }, [authLoading, user, router]);
 
   const getFirebaseErrorCode = (err: unknown) => {
     if (err && typeof err === 'object' && 'code' in err) {
