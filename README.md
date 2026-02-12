@@ -664,21 +664,28 @@ LEVEL 3: Reactive Ingestion (trigger ingesta y re-query)
 
 ---
 
-### 7. Geolocalización y Noticias Locales (Sprint 20)
+### 7. Geolocalización y Noticias Locales (Sprint 20 + 28)
 
-**Descripción**: Categoría "Local" personalizada según ubicación del usuario.
+**Descripción**: Categoría "Local" personalizada según ubicación del usuario, con detección automática por GPS.
 
 **Funcionamiento**:
-1. Usuario configura `location` en su perfil (ej: "Móstoles, Madrid")
-2. Sistema ingesta noticias locales via Google News RSS con query de ciudad
-3. Dashboard muestra noticias específicas de su localidad
+1. Usuario configura `location` con un clic en el botón "Detectar" (geolocalización automática)
+2. El componente `LocationButton` usa `navigator.geolocation` + Nominatim para obtener "Ciudad, Provincia"
+3. Sistema ingesta noticias locales via Google News RSS con query `"noticias locales {ciudad}"`
+4. Dashboard muestra noticias específicas de su localidad, filtradas por `category='local'`
 
 **Tecnología**:
 - Campo `User.location` en BD
-- `GoogleNewsRssClient` con query dinámico
+- `LocationButton` component: geolocalización browser + Nominatim reverse geocoding
+- `GoogleNewsRssClient` con query dinámico y prefijo geográfico
+- `searchLocalArticles()`: búsqueda filtrada por `category='local'` + texto de ciudad
 - Fallback a "Madrid" si `location` está vacío
 
-**Beneficio**: Los usuarios pueden estar informados de noticias de su entorno cercano.
+**Integración**:
+- **Perfil**: Botón "Detectar" al lado del input de ubicación
+- **Sidebar**: Botón de geolocalización junto al item "Local" (detecta, guarda y navega)
+
+**Beneficio**: Los usuarios configuran su feed local con un solo clic, sin escribir manualmente.
 
 ---
 
@@ -1390,10 +1397,10 @@ Para reportar bugs o sugerir features:
 
 ---
 
-**🚀 Proyecto completado - Sprint 27.3**
+**🚀 Proyecto completado - Sprint 28**
 
 **Estado**: En producción y funcional
-**Última actualización**: 11 de febrero de 2026
+**Última actualización**: 12 de febrero de 2026
 **Líneas de código**: ~31,000 (sin dependencias)
 **Tests**: 328 (95% coverage)
 **Tiempo de desarrollo**: 6 semanas

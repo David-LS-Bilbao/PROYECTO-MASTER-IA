@@ -101,6 +101,7 @@ describe('NewsController', () => {
       countFiltered: vi.fn(),
       findById: vi.fn(),
       searchArticles: vi.fn(),
+      searchLocalArticles: vi.fn(),
       getUserUnlockedArticleIds: vi.fn(),
       getUserFavoriteArticleIds: vi.fn(),
     };
@@ -133,15 +134,21 @@ describe('NewsController', () => {
       expect(statusMock).toHaveBeenCalledWith(401);
     });
 
-    it('400 si local sin ubicacion', async () => {
-      const { res, statusMock } = createRes();
+    it('fallback a Madrid si local sin ubicacion', async () => {
+      const { res, jsonMock } = createRes();
       const req = { query: { category: 'local' }, user: { uid: 'user-1' } } as Request;
 
       mockUserFindUnique.mockResolvedValueOnce({ location: null });
+      repository.searchLocalArticles.mockResolvedValueOnce([]);
+      ingestNewsUseCase.execute.mockResolvedValueOnce({ newArticles: 0 });
 
       await controller.getNews(req, res as Response);
 
-      expect(statusMock).toHaveBeenCalledWith(400);
+      // Should use fallback city 'Madrid' and return 200 with empty data + message
+      const payload = jsonMock.mock.calls[0][0];
+      expect(payload.success).toBe(true);
+      expect(payload.data).toEqual([]);
+      expect(payload.meta.message).toContain('Madrid');
     });
 
     it('200 en caso normal con usuario y analisis desbloqueado', async () => {

@@ -26,10 +26,12 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { LocationButton } from '@/components/ui/location-button';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useGlobalRefresh } from '@/hooks/useNews';
 import { toast } from 'sonner';
+import { updateUserProfile } from '@/lib/profile.api';
 
 interface SidebarProps {
   onOpenDashboard?: () => void;
@@ -51,11 +53,26 @@ export function Sidebar({
   const isMobileOpen = typeof isMobileOpenProp === 'boolean' ? isMobileOpenProp : isMobileOpenInternal;
   const setIsMobileOpen = onMobileOpenChange ?? setIsMobileOpenInternal;
   const [isRefreshing, setIsRefreshing] = useState(false); // Global refresh loading state
-  const { user, logout } = useAuth();
+  const { user, logout, getToken } = useAuth();
   const router = useRouter();
   const globalRefresh = useGlobalRefresh();
   const cronSecret = process.env.NEXT_PUBLIC_CRON_SECRET;
   const canGlobalRefresh = !!cronSecret;
+
+  // Sprint 28: Save detected location to backend and navigate to local news
+  const handleLocationDetected = async (location: string) => {
+    try {
+      const token = await getToken();
+      if (!token) {
+        toast.error('Inicia sesión para guardar tu ubicación');
+        return;
+      }
+      await updateUserProfile(token, { location });
+      router.push('/?topic=local');
+    } catch {
+      toast.error('Error al guardar la ubicación');
+    }
+  };
 
   // Handler para actualización global de TODAS las categorías
   const handleGlobalRefresh = async () => {
@@ -200,20 +217,31 @@ export function Sidebar({
             <div className="space-y-1">
               {topicItems.map((item, index) => {
                 const Icon = item.icon;
+                const isLocal = item.label === 'Local';
                 return (
-                  <Link
-                    key={index}
-                    href={item.href}
-                    onClick={() => setIsMobileOpen(false)}
-                    className={cn(
-                      'w-full h-10 rounded-lg transition-colors flex items-center gap-3 px-3',
-                      'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100',
-                      'dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-900'
+                  <div key={index} className="flex items-center gap-1">
+                    <Link
+                      href={item.href}
+                      onClick={() => setIsMobileOpen(false)}
+                      className={cn(
+                        'flex-1 h-10 rounded-lg transition-colors flex items-center gap-3 px-3',
+                        'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100',
+                        'dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-900'
+                      )}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" />
+                      <span className="text-sm">{item.label}</span>
+                    </Link>
+                    {isLocal && user && (
+                      <LocationButton
+                        onLocationFound={handleLocationDetected}
+                        variant="ghost"
+                        size="icon"
+                        showLabel={false}
+                        className="h-8 w-8 shrink-0 text-zinc-400 hover:text-blue-600"
+                      />
                     )}
-                  >
-                    <Icon className="h-4 w-4 shrink-0" />
-                    <span className="text-sm">{item.label}</span>
-                  </Link>
+                  </div>
                 );
               })}
             </div>
@@ -381,20 +409,31 @@ export function Sidebar({
           <div className="space-y-1">
             {topicItems.map((item, index) => {
               const Icon = item.icon;
+              const isLocal = item.label === 'Local';
               return (
-                <Link
-                  key={index}
-                  href={item.href}
-                  className={cn(
-                    'w-full h-10 rounded-lg transition-colors flex items-center gap-3 px-3',
-                    'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100',
-                    'dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-900'
+                <div key={index} className="flex items-center gap-1">
+                  <Link
+                    href={item.href}
+                    className={cn(
+                      'flex-1 h-10 rounded-lg transition-colors flex items-center gap-3 px-3',
+                      'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100',
+                      'dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-900'
+                    )}
+                    title={!isOpen ? item.label : undefined}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    {isOpen && <span className="text-sm">{item.label}</span>}
+                  </Link>
+                  {isLocal && isOpen && user && (
+                    <LocationButton
+                      onLocationFound={handleLocationDetected}
+                      variant="ghost"
+                      size="icon"
+                      showLabel={false}
+                      className="h-8 w-8 shrink-0 text-zinc-400 hover:text-blue-600"
+                    />
                   )}
-                  title={!isOpen ? item.label : undefined}
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  {isOpen && <span className="text-sm">{item.label}</span>}
-                </Link>
+                </div>
               );
             })}
           </div>

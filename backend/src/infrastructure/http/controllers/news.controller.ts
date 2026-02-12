@@ -189,8 +189,9 @@ export class NewsController {
           }
         }
 
-        // Search DB for articles mentioning the location
-        const localNews = await this.repository.searchArticles(city, resolvedLimit, userId);
+        // Sprint 28 BUG #1 FIX: Use searchLocalArticles (category='local' + city filter)
+        // Previously used searchArticles(city) which searched ALL categories
+        const localNews = await this.repository.searchLocalArticles(city, resolvedLimit, userId);
 
         // If no results, suggest fallback
         if (localNews.length === 0) {

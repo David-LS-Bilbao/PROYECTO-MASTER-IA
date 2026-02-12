@@ -725,4 +725,109 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
     }
   }
 
+  // =========================================================================
+  // SPRINT 28: LOCAL NEWS SEARCH (Category-filtered + City text search)
+  // =========================================================================
+
+  /**
+   * Search articles in the 'local' category that mention a specific city.
+   *
+   * BUG FIX: Previously used searchArticles(city) which searched ALL categories,
+   * returning international/national articles that happened to mention the city.
+   * Now properly filters to category='local' first, then searches by city name.
+   */
+  async searchLocalArticles(city: string, limit: number, userId?: string): Promise<NewsArticle[]> {
+    try {
+      if (!city || city.trim().length === 0) {
+        return [];
+      }
+
+      const trimmedCity = city.trim();
+      const normalizedCity = this.normalizeText(trimmedCity);
+      const cityVariants = this.generateAccentVariants(normalizedCity);
+
+      console.log(`[Repository.searchLocalArticles] 📍 City: "${trimmedCity}"`);
+      console.log(`[Repository.searchLocalArticles]    🔤 Variants: ${cityVariants.slice(0, 5).join(', ')}...`);
+
+      // Build city text search conditions across title, description, summary, content
+      const searchFields = ['title', 'description', 'summary', 'content'] as const;
+      const cityConditions = searchFields.flatMap(field =>
+        cityVariants.map(variant => ({
+          [field]: { contains: variant, mode: 'insensitive' as const }
+        }))
+      );
+
+      // Query: category='local' AND (city mentioned in any text field)
+      const articles = await this.prisma.article.findMany({
+        where: {
+          AND: [
+            // Filter: only articles in the 'local' category
+            {
+              category: {
+                equals: 'local',
+                mode: 'insensitive',
+              },
+            },
+            // Filter: city name appears in any text field
+            { OR: cityConditions },
+          ],
+        },
+        orderBy: {
+          publishedAt: 'desc',
+        },
+        take: limit,
+      });
+
+      console.log(`[Repository.searchLocalArticles] ✅ Found ${articles.length} local articles for "${trimmedCity}"`);
+
+      if (articles.length === 0) {
+        // Fallback: return all local articles (without city filter) so user sees something
+        console.log(`[Repository.searchLocalArticles] 🔄 Fallback: returning all local articles`);
+        const fallbackArticles = await this.prisma.article.findMany({
+          where: {
+            category: {
+              equals: 'local',
+              mode: 'insensitive',
+            },
+          },
+          orderBy: {
+            publishedAt: 'desc',
+          },
+          take: limit,
+        });
+
+        if (fallbackArticles.length === 0) return [];
+
+        let domainArticles = fallbackArticles.map(a => this.mapper.toDomain(a));
+        if (userId && domainArticles.length > 0) {
+          domainArticles = await this.enrichWithUserFavorites(domainArticles, userId);
+        } else {
+          domainArticles = domainArticles.map(a =>
+            NewsArticle.reconstitute({ ...a.toJSON(), isFavorite: false })
+          );
+        }
+        return domainArticles;
+      }
+
+      // Convert to domain entities
+      let domainArticles = articles.map(a => this.mapper.toDomain(a));
+
+      // Enrich with per-user favorite status
+      if (userId && domainArticles.length > 0) {
+        domainArticles = await this.enrichWithUserFavorites(domainArticles, userId);
+      } else {
+        domainArticles = domainArticles.map(a =>
+          NewsArticle.reconstitute({ ...a.toJSON(), isFavorite: false })
+        );
+      }
+
+      return domainArticles;
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to search local articles: ${(error as Error).message}`,
+        error as Error
+      );
+    }
+  }
+
 }

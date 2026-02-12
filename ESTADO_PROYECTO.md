@@ -1,7 +1,7 @@
 # Estado del Proyecto - Verity News
 
-> **Última actualización**: Sprint 27.3 (2026-02-11) - Hotfix Producción + Responsive Móvil
-> **Stack**: Next.js + Express + PostgreSQL + Prisma + Gemini AI + ChromaDB
+> **Última actualización**: Sprint 28 (2026-02-12) - Geolocalización Automática + Local News Fix
+> **Stack**: Next.js + Express + PostgreSQL + Prisma + Gemini AI + pgvector
 > **Arquitectura**: Clean Architecture (Hexagonal) + DDD
 
 ---
@@ -15,18 +15,19 @@
 | **Base de Datos** | PostgreSQL 17 + Prisma ORM | ✅ Producción | Full-Text Search, Migrations |
 | **Autenticación** | Firebase Auth + JWT | ✅ Producción | Middleware authenticate/optionalAuth |
 | **AI/LLM** | Google Gemini 2.0 Flash | ✅ Producción | Análisis de sesgo, XAI |
-| **RAG/Vector DB** | ChromaDB + Gemini Embeddings | ✅ Producción | Búsqueda semántica |
+| **RAG/Vector DB** | pgvector + Gemini Embeddings | ✅ Producción | Búsqueda semántica |
 | **RSS Ingestion** | RSS Parser + Directos | ✅ Producción | 8 fuentes españolas |
 | **Observabilidad** | Sentry + Pino Logger | ✅ Producción | Distributed tracing |
 | **Testing** | Vitest + Playwright | ✅ QA | Backend blindado, E2E |
 | **Accesibilidad** | WCAG 2.1 AA + UNE-EN 301549 | ✅ Parcial | Sprint 19.8 |
-| **Geolocalización** | User.location + Topics | 🔄 Fase 1 | Sprint 20 (BD ready) |
+| **Geolocalización** | User.location + GPS + Nominatim | ✅ Producción | Sprint 28 (auto-detect + local fix) |
 
 ---
 
 ## 🗂️ Índice de Sprints
 
 ### Producción (✅ Completados)
+- [Sprint 28](#sprint-28) - Geolocalización Automática + Local News Fix (2026-02-12)
 - [Sprint 27.3](#sprint-273) - Hotfix Producción + Responsive Móvil (2026-02-11)
 - [Sprint 27.2](#sprint-272) - Fix Entretenimiento y Calidad de Ingesta (2026-02-10)
 - [Sprint 27.1](#sprint-271) - Security Remediation e Ingest Hardening (2026-02-10)

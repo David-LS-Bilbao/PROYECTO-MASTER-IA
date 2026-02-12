@@ -153,4 +153,14 @@ export interface INewsArticleRepository {
    * @returns Articles matching the search query, ordered by relevance
    */
   searchArticles(query: string, limit: number, userId?: string): Promise<NewsArticle[]>;
+
+  /**
+   * Search LOCAL articles by city name (Sprint 28: Local News Fix)
+   * Combines category='local' filter with city text search.
+   * Only returns articles stored as local news that mention the city.
+   * @param city City name to search for
+   * @param limit Maximum number of results
+   * @param userId Optional user ID for favorite enrichment
+   */
+  searchLocalArticles(city: string, limit: number, userId?: string): Promise<NewsArticle[]>;
 }
