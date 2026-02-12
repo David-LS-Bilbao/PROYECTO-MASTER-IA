@@ -103,6 +103,18 @@ function normalizeCityInput(input: string): string {
   return (firstToken ?? trimmed).trim();
 }
 
+function buildLocalIngestQuery(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return '';
+
+  // Expand "City, Region" into "City Region" to broaden RSS matching.
+  return trimmed
+    .split(',')
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
 function setOptionalHeader(res: Response, name: string, value: string): void {
   if (typeof res.setHeader === 'function') {
     res.setHeader(name, value);
@@ -211,6 +223,7 @@ export class NewsController {
         const requestedCity = location || user?.location;
         const normalizedCity = requestedCity ? normalizeCityInput(requestedCity) : '';
         const city = normalizedCity || 'Madrid';
+        const ingestQuery = requestedCity ? buildLocalIngestQuery(requestedCity) : city;
         const refreshMeta: {
           forced: boolean;
           attempted: boolean;
@@ -218,6 +231,7 @@ export class NewsController {
           timeoutMs: number;
           durationMs: number;
           pending: boolean;
+          queryUsed: string;
           ingest: null | {
             totalFetched: number;
             newArticles: number;
@@ -233,6 +247,7 @@ export class NewsController {
           timeoutMs: forceRefresh ? LOCAL_FORCE_REFRESH_TIMEOUT_MS : LOCAL_INGEST_TIMEOUT_MS,
           durationMs: 0,
           pending: false,
+          queryUsed: ingestQuery,
           ingest: null,
         };
 
@@ -244,7 +259,7 @@ export class NewsController {
           const ingestionPromise = this.ingestNewsUseCase.execute({
             category: 'local',
             topicSlug: 'local',
-            query: city,
+            query: ingestQuery,
             pageSize: 20,
             language: 'es',
           })
@@ -289,7 +304,7 @@ export class NewsController {
                   : new Date().toISOString(),
             };
             console.log(
-              `[NewsController.getNews] ✅ Local ingestion "${city}": fetched=${refreshMeta.ingest.totalFetched}, new=${refreshMeta.ingest.newArticles}, duplicates=${refreshMeta.ingest.duplicates}, errors=${refreshMeta.ingest.errors}`
+              `[NewsController.getNews] ✅ Local ingestion "${city}" (query="${ingestQuery}"): fetched=${refreshMeta.ingest.totalFetched}, new=${refreshMeta.ingest.newArticles}, duplicates=${refreshMeta.ingest.duplicates}, errors=${refreshMeta.ingest.errors}`
             );
           }
 

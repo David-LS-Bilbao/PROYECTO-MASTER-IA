@@ -72,6 +72,7 @@ export interface NewsResponse {
       timeoutMs: number;
       durationMs: number;
       pending: boolean;
+      queryUsed?: string;
       ingest: null | {
         totalFetched: number;
         newArticles: number;
