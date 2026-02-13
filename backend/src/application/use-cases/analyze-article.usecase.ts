@@ -85,6 +85,7 @@ interface AnalysisNormalizationContext {
   usedFallback: boolean;
   analyzedText: string;
   analysisModeUsed: AnalysisMode;
+  articleCategory: string | null;
 }
 
 export class AnalyzeArticleUseCase {
@@ -153,6 +154,7 @@ export class AnalyzeArticleUseCase {
             usedFallback: false,
             analyzedText: article.content || '',
             analysisModeUsed: this.normalizeAnalysisMode(existingAnalysis.analysisModeUsed),
+            articleCategory: article.category,
           });
           console.log(`   [CACHE GLOBAL] Analisis ya existe en BD (analizado: ${article.analyzedAt?.toLocaleString('es-ES')})`);
           console.log(`   Serving cached analysis -> Gemini NO llamado -> Ahorro de ~1500 tokens`);
@@ -287,6 +289,7 @@ export class AnalyzeArticleUseCase {
         usedFallback,
         analyzedText: contentToAnalyze || '',
         analysisModeUsed: effectiveAnalysisMode,
+        articleCategory: article.category,
       });
       console.log(`   ✅ Gemini OK. Score: ${analysis.biasScore} | Summary: ${analysis.summary.substring(0, 30)}...`);
     } catch (error) {
@@ -442,6 +445,7 @@ export class AnalyzeArticleUseCase {
     const claims = Array.isArray(analysis.factCheck?.claims)
       ? analysis.factCheck.claims.slice(0, 5)
       : [];
+    const clickbaitScore = this.clampNumber(analysis.clickbaitScore, 0, 100, 0);
     const inferredEscalation =
       traceabilityScore <= 25 &&
       reliabilityScore <= 45 &&
@@ -453,10 +457,23 @@ export class AnalyzeArticleUseCase {
       summary: analysis.summary,
       analyzedText: context?.analyzedText ?? '',
     });
-    const shouldEscalate =
+    const baseEscalation =
       (typeof analysis.should_escalate === 'boolean'
         ? analysis.should_escalate
         : inferredEscalation) || lowCostEscalation;
+    const shouldEscalate = this.applyCategoryEscalationPolicy({
+      currentValue: baseEscalation,
+      category: context?.articleCategory ?? analysis.category,
+      clickbaitScore,
+      claims,
+      summary: analysis.summary,
+      reliabilityScore,
+      traceabilityScore,
+    });
+    const forceInsufficientEvidenceVerdict = this.shouldForceInsufficientVerdict({
+      scrapedContentLength,
+      usedFallback: context?.usedFallback === true,
+    });
     const explanation =
       biasRaw === 0 && biasIndicators.length === 0
         ? 'No se detectaron senales suficientes de sesgo con evidencia citada.'
@@ -480,13 +497,13 @@ export class AnalyzeArticleUseCase {
       reliabilityComment,
       explanation,
       analysisModeUsed,
-      clickbaitScore: this.clampNumber(analysis.clickbaitScore, 0, 100, 0),
+      clickbaitScore,
       factCheck: {
         claims,
         verdict:
-          claims.length === 0
+          forceInsufficientEvidenceVerdict || claims.length === 0
             ? 'InsufficientEvidenceInArticle'
-            : (analysis.factCheck?.verdict ?? 'InsufficientEvidenceInArticle'),
+            : this.normalizeFactCheckVerdict(analysis.factCheck?.verdict),
         reasoning:
           typeof analysis.factCheck?.reasoning === 'string'
             ? analysis.factCheck.reasoning
@@ -591,7 +608,7 @@ export class AnalyzeArticleUseCase {
   }): string {
     if (params.shouldForceIndeterminateBias) {
       return this.normalizeUiComment(
-        'No hay suficientes senales citadas para inferir una tendencia ideologica y, con este nivel de evidencia interna, el sesgo se mantiene indeterminado'
+        'No hay suficientes señales citadas para inferir una tendencia ideológica y, con este nivel de evidencia interna, el sesgo se mantiene indeterminado'
       );
     }
 
@@ -601,9 +618,9 @@ export class AnalyzeArticleUseCase {
       .join('; ');
     const leaningText =
       params.articleLeaning === 'indeterminada'
-        ? 'sin tendencia ideologica concluyente'
+        ? 'sin tendencia ideológica concluyente'
         : `con tendencia ${params.articleLeaning}`;
-    const generated = `El encuadre refleja ${leaningText} segun senales citadas (${citedSignals}), evaluadas solo desde el texto disponible y sin inferir hechos externos`;
+    const generated = `El encuadre refleja ${leaningText} según señales citadas (${citedSignals}), evaluadas solo desde el texto disponible y sin inferir hechos externos`;
 
     return this.normalizeUiComment(generated);
   }
@@ -621,25 +638,63 @@ export class AnalyzeArticleUseCase {
           ? 'alta'
           : params.reliabilityScore >= 50
             ? 'media'
-            : params.reliabilityScore >= 30
+          : params.reliabilityScore >= 30
               ? 'baja'
               : 'muy baja';
     const traceabilityText =
       params.traceabilityScore >= 70
-        ? 'hay buena trazabilidad de citas, fuentes y contexto'
+        ? 'hay trazabilidad clara de citas, fuentes y contexto'
         : params.traceabilityScore >= 40
-          ? 'la trazabilidad es parcial y con atribuciones limitadas'
-          : 'la trazabilidad interna es debil por falta de atribuciones claras';
-    const missingEvidence = params.evidenceNeeded.slice(0, 2);
-    const missingEvidenceText =
-      missingEvidence.length > 0 ? `; faltan ${missingEvidence.join(' y ')}` : '';
-    const factualityText =
-      params.factualityStatus === 'no_determinable'
-        ? '; no verificable con fuentes internas'
-        : '';
-    const generated = `La fiabilidad interna es ${reliabilityBand} porque ${traceabilityText}${factualityText}${missingEvidenceText}, considerando solo citas, datos y atribuciones presentes en el articulo`;
+          ? 'la trazabilidad es parcial y la atribución es limitada'
+          : 'la trazabilidad interna es débil por falta de atribuciones claras';
+    const summarizedEvidence = this.summarizeEvidenceNeeded(params.evidenceNeeded);
+    const noteParts: string[] = [];
+    if (params.factualityStatus === 'no_determinable') {
+      noteParts.push('no verificable con fuentes internas');
+    }
+    if (summarizedEvidence.length > 0) {
+      noteParts.push(`faltan ${this.joinAsNaturalList(summarizedEvidence)}`);
+    }
 
-    return this.normalizeUiComment(generated);
+    const sentenceOne = `La fiabilidad interna es ${reliabilityBand} porque ${traceabilityText}.`;
+    const sentenceTwo =
+      noteParts.length > 0 ? `Nota: ${noteParts.join('; ')}.` : '';
+    const generated = sentenceTwo ? `${sentenceOne} ${sentenceTwo}` : sentenceOne;
+    if (generated.length <= 220) {
+      return generated;
+    }
+
+    const compactSentenceOne =
+      params.traceabilityScore >= 70
+        ? `Fiabilidad interna ${reliabilityBand} por citas y atribuciones claras.`
+        : params.traceabilityScore >= 40
+          ? `Fiabilidad interna ${reliabilityBand} por atribución parcial.`
+          : `Fiabilidad interna ${reliabilityBand} por atribución débil.`;
+    const compactNoteParts: string[] = [];
+    if (params.factualityStatus === 'no_determinable') {
+      compactNoteParts.push('no verificable con fuentes internas');
+    }
+    if (summarizedEvidence.length > 0) {
+      compactNoteParts.push(`faltan ${this.joinAsNaturalList(summarizedEvidence)}`);
+    }
+    const compactSentenceTwo =
+      compactNoteParts.length > 0
+        ? `Nota: ${compactNoteParts.join('; ')}.`
+        : '';
+    const compactComment = compactSentenceTwo
+      ? `${compactSentenceOne} ${compactSentenceTwo}`
+      : compactSentenceOne;
+    if (compactComment.length <= 220) {
+      return compactComment;
+    }
+
+    if (params.factualityStatus === 'no_determinable') {
+      return 'Fiabilidad interna limitada; no verificable con fuentes internas.';
+    }
+
+    return compactSentenceOne.length <= 220
+      ? compactSentenceOne
+      : 'Fiabilidad interna limitada por evidencia textual insuficiente.';
   }
 
   private summarizeIndicator(indicator: string): string {
@@ -670,6 +725,142 @@ export class AnalyzeArticleUseCase {
     }
 
     return `${withMinimumLength}.`;
+  }
+
+  private summarizeEvidenceNeeded(evidenceNeeded: string[]): string[] {
+    const summarized: string[] = [];
+    const seen = new Set<string>();
+
+    for (const rawItem of evidenceNeeded.slice(0, 2)) {
+      const normalized = rawItem
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/[;:,.]+$/g, '')
+        .replace(/[()[\]{}]/g, '');
+      if (!normalized) {
+        continue;
+      }
+
+      const words = normalized.split(' ').filter(Boolean);
+      const compact =
+        words.length <= 4 && normalized.length <= 44
+          ? normalized
+          : words.slice(0, 4).join(' ');
+      const dedupeKey = compact.toLowerCase();
+      if (seen.has(dedupeKey)) {
+        continue;
+      }
+      seen.add(dedupeKey);
+      summarized.push(compact);
+    }
+
+    return summarized;
+  }
+
+  private joinAsNaturalList(items: string[]): string {
+    if (items.length === 0) {
+      return '';
+    }
+    if (items.length === 1) {
+      return items[0];
+    }
+    return `${items[0]} y ${items[1]}`;
+  }
+
+  private shouldForceInsufficientVerdict(params: {
+    scrapedContentLength: number;
+    usedFallback: boolean;
+  }): boolean {
+    return (
+      params.usedFallback ||
+      params.scrapedContentLength === 0 ||
+      params.scrapedContentLength < 300
+    );
+  }
+
+  private normalizeFactCheckVerdict(
+    verdict: ArticleAnalysis['factCheck']['verdict'] | undefined
+  ): 'SupportedByArticle' | 'NotSupportedByArticle' | 'InsufficientEvidenceInArticle' {
+    if (
+      verdict === 'SupportedByArticle' ||
+      verdict === 'NotSupportedByArticle' ||
+      verdict === 'InsufficientEvidenceInArticle'
+    ) {
+      return verdict;
+    }
+    return 'InsufficientEvidenceInArticle';
+  }
+
+  private applyCategoryEscalationPolicy(params: {
+    currentValue: boolean;
+    category?: string | null;
+    clickbaitScore: number;
+    claims: string[];
+    summary: string;
+    reliabilityScore: number;
+    traceabilityScore: number;
+  }): boolean {
+    const normalizedCategory = this.normalizeCategoryForEscalation(params.category);
+    const claimsCorpus = [...params.claims, params.summary].join(' ');
+    const hasHighRiskClaim = this.hasHighRiskClaim(claimsCorpus);
+    const hasStrongClaim = this.hasStrongClaim(claimsCorpus) || hasHighRiskClaim;
+
+    if (
+      this.isLowRiskCategory(normalizedCategory) &&
+      params.clickbaitScore < 30 &&
+      !hasHighRiskClaim
+    ) {
+      return false;
+    }
+
+    if (
+      this.isHighRiskCategory(normalizedCategory) &&
+      params.traceabilityScore <= 40 &&
+      params.reliabilityScore <= 55 &&
+      hasStrongClaim
+    ) {
+      return true;
+    }
+
+    return params.currentValue;
+  }
+
+  private normalizeCategoryForEscalation(category?: string | null): string {
+    if (!category) {
+      return '';
+    }
+
+    return category
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+  }
+
+  private isLowRiskCategory(category: string): boolean {
+    return category === 'deportes' || category === 'cultura';
+  }
+
+  private isHighRiskCategory(category: string): boolean {
+    return (
+      category === 'politica' ||
+      category === 'economia' ||
+      category === 'sociedad' ||
+      category === 'mundo' ||
+      category === 'internacional'
+    );
+  }
+
+  private hasStrongClaim(text: string): boolean {
+    return /\b(siempre|nunca|todo esta|todo está|demuestra|100%|sin duda|definitivo|inminente)\b/i.test(
+      text
+    );
+  }
+
+  private hasHighRiskClaim(text: string): boolean {
+    return /\b(cura|tratamiento definitivo|fraude electoral|colapso bancario|quiebra|ataque terrorista|amenaza inminente|murio|murieron|fallecio|fallecieron|guerra|violencia)\b/i.test(
+      text
+    );
   }
 
   private shouldEscalateLowCostStrongClaims(params: {

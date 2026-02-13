@@ -84,6 +84,7 @@ export default function NewsDetailPage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [lastAnalyzeTime, setLastAnalyzeTime] = useState<number>(0);
+  const [lastScrapedContentLength, setLastScrapedContentLength] = useState<number | null>(null);
 
   // =========================================================================
   // SPRINT 18.3: ARTIFICIAL REVEAL STATE - UX Enhancement
@@ -150,7 +151,8 @@ export default function NewsDetailPage() {
         return;
       }
 
-      await analyzeArticleWithMode(article.id, token, analysisMode);
+      const analyzeResponse = await analyzeArticleWithMode(article.id, token, analysisMode);
+      setLastScrapedContentLength(analyzeResponse.data.scrapedContentLength);
 
       // Invalidate caches to refetch article and update dashboard buttons
       queryClient.invalidateQueries({ queryKey: ['article', id] });
@@ -251,6 +253,9 @@ export default function NewsDetailPage() {
   // Show skeleton if: analyzing OR revealing (artificial delay)
   const showAnalysisSkeleton = isAnalyzing || isRevealing;
   const showAnalysisContent = isAnalyzed && !showAnalysisSkeleton;
+  const hasPreliminaryContentWarning =
+    showAnalysisContent &&
+    (lastScrapedContentLength === 0 || !article.content || article.content.trim().length === 0);
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
@@ -432,6 +437,11 @@ export default function NewsDetailPage() {
                   <>
                     {/* Bias Score */}
                     <div className="space-y-3">
+                      {hasPreliminaryContentWarning && (
+                        <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
+                          Contenido insuficiente: análisis preliminar
+                        </p>
+                      )}
                       <div className="flex justify-between items-center">
                         <span className="text-sm font-medium">Nivel de Sesgo</span>
                         <span className={`text-sm font-semibold px-2 py-1 rounded ${biasInfo.bg} ${biasInfo.color}`}>
