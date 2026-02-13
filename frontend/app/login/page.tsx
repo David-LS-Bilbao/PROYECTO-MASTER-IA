@@ -21,11 +21,25 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   // Sprint 29 Fix: Si el usuario ya tiene sesión persistente, redirigir a /
+  // replace() evita que el usuario pueda volver atrás con el botón "back"
   useEffect(() => {
     if (!authLoading && user) {
-      router.push('/');
+      router.replace('/');
     }
   }, [authLoading, user, router]);
+
+  // Sprint 31 Fix: Mientras Firebase verifica la sesión, mostrar loader
+  // Esto evita el "flash" del formulario de login en móvil cuando hay sesión persistente
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-linear-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center px-4">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-lg font-semibold text-gray-700">Verificando sesión...</p>
+        </div>
+      </div>
+    );
+  }
 
   const getFirebaseErrorCode = (err: unknown) => {
     if (err && typeof err === 'object' && 'code' in err) {
@@ -48,8 +62,8 @@ export default function LoginPage() {
         await createUserWithEmailAndPassword(auth, email, password);
       }
       
-      // Redirigir a la página principal
-      router.push('/');
+      // Redirigir a la página principal (replace para limpiar historial)
+      router.replace('/');
     } catch (err: unknown) {
       // Manejo de errores de Firebase
       const errorCode = getFirebaseErrorCode(err);
@@ -79,8 +93,8 @@ export default function LoginPage() {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
       
-      // Redirigir a la página principal
-      router.push('/');
+      // Redirigir a la página principal (replace para limpiar historial)
+      router.replace('/');
     } catch (err: unknown) {
       const errorCode = getFirebaseErrorCode(err);
       const errorMessages: Record<string, string> = {

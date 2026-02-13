@@ -201,7 +201,7 @@ function HomeContent() {
   // =========================================================================
   useEffect(() => {
     if (!authLoading && !user) {
-      router.push('/login');
+      router.replace('/login');
     }
   }, [authLoading, user, router]);
 

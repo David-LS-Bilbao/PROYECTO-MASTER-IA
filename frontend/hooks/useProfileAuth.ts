@@ -26,7 +26,7 @@ export function useProfileAuth() {
     // No redirigir hasta que loading=false, para dar tiempo a restaurar sesión
     if (!loading && !user) {
       console.log('⚠️ useProfileAuth: Usuario no autenticado → redirigiendo a /login');
-      router.push('/login');
+      router.replace('/login');
     } else if (!loading && user) {
       console.log('✅ useProfileAuth: Usuario autenticado:', user.email);
     }
