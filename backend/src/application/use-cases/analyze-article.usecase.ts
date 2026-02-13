@@ -128,6 +128,7 @@ export class AnalyzeArticleUseCase {
     if (article.isAnalyzed) {
       const existingAnalysis = article.getParsedAnalysis();
       if (existingAnalysis) {
+        const normalizedAnalysis = this.normalizeAnalysis(existingAnalysis);
         console.log(`   [CACHE GLOBAL] Analisis ya existe en BD (analizado: ${article.analyzedAt?.toLocaleString('es-ES')})`);
         console.log(`   Serving cached analysis -> Gemini NO llamado -> Ahorro de ~1500 tokens`);
         console.log(`   Score: ${article.biasScore} | Summary: ${article.summary?.substring(0, 50)}...`);
@@ -144,9 +145,9 @@ export class AnalyzeArticleUseCase {
 
         return {
           articleId: article.id,
-          summary: article.summary!,
-          biasScore: article.biasScore!,
-          analysis: existingAnalysis,
+          summary: article.summary ?? normalizedAnalysis.summary,
+          biasScore: normalizedAnalysis.biasScoreNormalized,
+          analysis: normalizedAnalysis,
           scrapedContentLength: article.content?.length || 0,
         };
       }
@@ -244,6 +245,7 @@ export class AnalyzeArticleUseCase {
         source: article.source,
         language: article.language,
       });
+      analysis = this.normalizeAnalysis(analysis);
       console.log(`   ✅ Gemini OK. Score: ${analysis.biasScore} | Summary: ${analysis.summary.substring(0, 30)}...`);
     } catch (error) {
       // Map Gemini errors for observability (AI_RULES.md compliance)
@@ -306,10 +308,74 @@ export class AnalyzeArticleUseCase {
     return {
       articleId: article.id,
       summary: analysis.summary,
-      biasScore: analysis.biasScore,
+      biasScore: analysis.biasScoreNormalized,
       analysis,
       scrapedContentLength,
     };
+  }
+
+  private normalizeAnalysis(analysis: ArticleAnalysis): ArticleAnalysis {
+    const rawCandidate =
+      typeof analysis.biasRaw === 'number'
+        ? analysis.biasRaw
+        : typeof analysis.biasScore === 'number' && Math.abs(analysis.biasScore) > 1
+          ? analysis.biasScore
+          : 0;
+    const biasRaw = this.clampNumber(rawCandidate, -10, 10, 0);
+    const biasScoreNormalized =
+      typeof analysis.biasScoreNormalized === 'number'
+        ? this.clampNumber(analysis.biasScoreNormalized, 0, 1, Math.abs(biasRaw) / 10)
+        : Math.abs(biasRaw) / 10;
+    const reliabilityScore = this.clampNumber(analysis.reliabilityScore, 0, 100, 50);
+    const traceabilityScore = this.clampNumber(
+      analysis.traceabilityScore,
+      0,
+      100,
+      reliabilityScore
+    );
+
+    const claims = Array.isArray(analysis.factCheck?.claims) ? analysis.factCheck.claims : [];
+    const inferredEscalation =
+      traceabilityScore <= 25 &&
+      reliabilityScore <= 45 &&
+      claims.some((claim) => /\b(todo|siempre|nunca|100%|definitivo)\b/i.test(claim));
+
+    return {
+      ...analysis,
+      biasRaw,
+      biasScore: biasScoreNormalized,
+      biasScoreNormalized,
+      reliabilityScore,
+      traceabilityScore,
+      factualityStatus: analysis.factualityStatus ?? 'no_determinable',
+      evidence_needed: Array.isArray(analysis.evidence_needed) ? analysis.evidence_needed : [],
+      should_escalate:
+        typeof analysis.should_escalate === 'boolean'
+          ? analysis.should_escalate
+          : inferredEscalation,
+      biasIndicators: Array.isArray(analysis.biasIndicators) ? analysis.biasIndicators : [],
+      clickbaitScore: this.clampNumber(analysis.clickbaitScore, 0, 100, 0),
+      factCheck: {
+        claims,
+        verdict: analysis.factCheck?.verdict ?? 'Unproven',
+        reasoning:
+          typeof analysis.factCheck?.reasoning === 'string'
+            ? analysis.factCheck.reasoning
+            : 'Sin informacion suficiente para verificar',
+      },
+    };
+  }
+
+  private clampNumber(
+    value: number | undefined,
+    min: number,
+    max: number,
+    fallback: number
+  ): number {
+    if (typeof value !== 'number' || Number.isNaN(value)) {
+      return fallback;
+    }
+    return Math.max(min, Math.min(max, value));
   }
 
   /**

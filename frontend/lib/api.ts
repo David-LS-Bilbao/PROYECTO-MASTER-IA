@@ -10,11 +10,17 @@ export interface ArticleAnalysis {
   biasScore: number;
   // biasRaw: -10 (Extrema Izquierda) a +10 (Extrema Derecha)
   biasRaw: number;
+  // biasScoreNormalized explicito para UI (vNext)
+  biasScoreNormalized?: number;
   biasIndicators: string[];
   // clickbaitScore: 0 (Serio) a 100 (Clickbait extremo)
   clickbaitScore: number;
-  // reliabilityScore: 0 (Bulo/Falso) a 100 (Altamente Contrastado)
+  // reliabilityScore: fiabilidad basada en evidencia interna del texto (NO veracidad externa)
   reliabilityScore: number;
+  traceabilityScore?: number;
+  factualityStatus?: 'no_determinable' | 'plausible_but_unverified';
+  evidence_needed?: string[];
+  should_escalate?: boolean;
   sentiment: 'positive' | 'negative' | 'neutral';
   mainTopics: string[];
   factCheck: {

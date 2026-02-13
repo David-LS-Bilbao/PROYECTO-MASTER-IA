@@ -56,21 +56,32 @@ export interface ArticleAnalysis {
   internal_reasoning?: string; // Chain-of-Thought (XAI auditing only, excluded from client response)
   summary: string;
   category?: string; // AI-suggested category for the article
-  // biasScore: -10 (Extrema Izquierda) a +10 (Extrema Derecha), 0 es Neutral
-  // Stored normalized to 0-1 for UI compatibility (abs(biasScore)/10)
+
+  // Legacy normalized score alias (0-1), kept for compatibility
   biasScore: number;
-  // Raw bias score from -10 to +10 for detailed display
-  biasRaw: number;
-  biasType?: string; // Tipo de sesgo: encuadre|omisión|lenguaje|selección|ninguno
+
+  // vNext scoring contract
+  biasRaw: number; // -10..+10
+  biasScoreNormalized: number; // abs(biasRaw)/10
+
+  biasType?: string; // Tipo de sesgo: encuadre|omision|lenguaje|seleccion|ninguno
   biasIndicators: string[];
-  // clickbaitScore: 0 (Serio) a 100 (Clickbait extremo)
-  clickbaitScore: number;
-  // reliabilityScore: 0 (Bulo/Falso) a 100 (Altamente Contrastado/Oficial)
+  clickbaitScore: number; // 0..100
+
+  // reliabilityScore: fiabilidad basada SOLO en evidencia interna del texto (0-100)
   reliabilityScore: number;
+  // traceabilityScore: trazabilidad interna de fuentes/citas/contexto (0-100)
+  traceabilityScore: number;
+
+  factualityStatus: 'no_determinable' | 'plausible_but_unverified';
+  evidence_needed: string[];
+  should_escalate: boolean;
+
   sentiment: 'positive' | 'negative' | 'neutral';
   mainTopics: string[];
   factCheck: FactCheck;
-  explanation?: string; // Transparencia AI Act: por qué se asignaron estos scores
+  explanation?: string; // Transparencia AI Act: por que se asignaron estos scores
+
   // Token Taximeter: Cost tracking (Sprint 8.2)
   usage?: TokenUsage;
 }
@@ -210,7 +221,7 @@ export class NewsArticle {
     return NewsArticle.reconstitute({
       ...this.props,
       summary: analysis.summary,
-      biasScore: analysis.biasScore,
+      biasScore: analysis.biasScoreNormalized,
       analysis: JSON.stringify(analysis),
       analyzedAt: new Date(),
       internalReasoning: analysis.internal_reasoning || null, // Store for XAI auditing

@@ -54,12 +54,17 @@ const createTestArticle = (overrides: Partial<{
 const mockAnalysis: ArticleAnalysis = {
   summary: 'This is a test summary of the article.',
   biasScore: 0.3,
-  biasRaw: 0,
+  biasRaw: 3,
+  biasScoreNormalized: 0.3,
   biasIndicators: ['slight emotional language'],
   sentiment: 'neutral',
   mainTopics: ['technology', 'innovation'],
   clickbaitScore: 20,
   reliabilityScore: 80,
+  traceabilityScore: 80,
+  factualityStatus: 'no_determinable',
+  evidence_needed: [],
+  should_escalate: false,
   factCheck: {
     claims: ['Main claim from the article'],
     verdict: 'Verified',
