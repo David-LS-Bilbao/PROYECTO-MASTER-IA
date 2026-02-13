@@ -200,6 +200,30 @@ describe('GeminiClient parseAnalysisResponse', () => {
     expect(result.should_escalate).toBe(false);
   });
 
+  it('fuerza should_escalate en modo low-cost cuando hay claims fuertes sin atribucion', () => {
+    const parse = (client as any).parseAnalysisResponse.bind(client);
+    const text = JSON.stringify({
+      summary: 'Asegura que el tratamiento cura siempre al 100% sin prueba documental.',
+      biasRaw: 0,
+      reliabilityScore: 60,
+      traceabilityScore: 60,
+      should_escalate: false,
+      factCheck: {
+        claims: ['Este tratamiento cura siempre al 100% de los casos.'],
+        verdict: 'InsufficientEvidenceInArticle',
+      },
+    });
+
+    const result = parse(
+      text,
+      undefined,
+      'Texto breve con afirmaciones absolutas pero sin enlaces ni atribuciones.',
+      true
+    );
+
+    expect(result.should_escalate).toBe(true);
+  });
+
   it('lanza error si summary es invalido', () => {
     const parse = (client as any).parseAnalysisResponse.bind(client);
     const text = JSON.stringify({ summary: 123 });

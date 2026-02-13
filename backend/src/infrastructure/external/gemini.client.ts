@@ -33,6 +33,7 @@ import {
 } from './schemas/analysis-response.schema';
 import {
   ANALYSIS_PROMPT,
+  ANALYSIS_PROMPT_LOW_COST,
   MAX_ARTICLE_CONTENT_LENGTH,
   buildRagChatPrompt,
   buildGroundingChatPrompt,
@@ -94,6 +95,7 @@ const MAX_EMBEDDING_TEXT_LENGTH = 6000;
 const ANALYSIS_HEAD_CHARS = 3000;
 const ANALYSIS_TAIL_CHARS = 2000;
 const ANALYSIS_QUOTES_DATA_CHARS = 2000;
+const AUTO_LOW_COST_CONTENT_THRESHOLD = 800;
 
 const PROMPT_INJECTION_PATTERNS: RegExp[] = [
   /ignore\s+(all\s+)?previous\s+instructions?/gi,
@@ -220,9 +222,13 @@ export class GeminiClient implements IGeminiClient {
     const sanitizedContent = this.sanitizeInput(content);
     const sanitizedSource = this.sanitizeInput(source);
     const selectedContent = this.selectContentForAnalysis(sanitizedContent);
+    const useLowCostPrompt = this.shouldUseLowCostPrompt(sanitizedContent);
 
     // COST OPTIMIZATION: Seleccion inteligente de contenido para reducir tokens.
-    const prompt = ANALYSIS_PROMPT.replace('{title}', sanitizedTitle)
+    const analysisPromptTemplate = useLowCostPrompt
+      ? ANALYSIS_PROMPT_LOW_COST
+      : ANALYSIS_PROMPT;
+    const prompt = analysisPromptTemplate.replace('{title}', sanitizedTitle)
       .replace('{source}', sanitizedSource)
       .replace('{content}', selectedContent);
 
@@ -232,6 +238,7 @@ export class GeminiClient implements IGeminiClient {
         {
           originalContentLength: sanitizedContent.length,
           selectedContentLength: selectedContent.length,
+          promptProfile: useLowCostPrompt ? 'low-cost' : 'standard',
         },
         'Starting article analysis'
       );
@@ -291,7 +298,12 @@ export class GeminiClient implements IGeminiClient {
         logger.debug('Article analysis completed without token metadata');
       }
 
-      return this.parseAnalysisResponse(text, tokenUsage, sanitizedContent);
+      return this.parseAnalysisResponse(
+        text,
+        tokenUsage,
+        sanitizedContent,
+        useLowCostPrompt
+      );
     }, 3, 1000); // 3 reintentos, 1s delay inicial
   }
 
@@ -656,7 +668,8 @@ export class GeminiClient implements IGeminiClient {
   private parseAnalysisResponse(
     text: string,
     tokenUsage?: TokenUsage,
-    analyzedContent: string = ''
+    analyzedContent: string = '',
+    usedLowCostPrompt: boolean = false
   ): ArticleAnalysis {
     const cleanText = text
       .replace(/```json\n?/g, '')
@@ -753,6 +766,13 @@ export class GeminiClient implements IGeminiClient {
             traceabilityScore,
             clickbaitScore,
           });
+      const forcedLowCostEscalation =
+        usedLowCostPrompt &&
+        this.hasStrongClaimsWithoutAttribution({
+          claims,
+          summary: parsed.summary,
+          content: analyzedContent,
+        });
 
       return {
         internal_reasoning,
@@ -768,7 +788,7 @@ export class GeminiClient implements IGeminiClient {
         traceabilityScore,
         factualityStatus,
         evidence_needed,
-        should_escalate,
+        should_escalate: should_escalate || forcedLowCostEscalation,
         sentiment,
         mainTopics,
         factCheck,
@@ -898,6 +918,14 @@ export class GeminiClient implements IGeminiClient {
     return indicators.slice(0, 3).every((indicator) => citationPattern.test(indicator));
   }
 
+  private shouldUseLowCostPrompt(content: string): boolean {
+    if (content.length < AUTO_LOW_COST_CONTENT_THRESHOLD) {
+      return true;
+    }
+
+    return /no\s+se\s+pudo\s+acceder\s+al\s+art[ií]culo\s+completo/i.test(content);
+  }
+
   private selectContentForAnalysis(content: string): string {
     if (content.length <= MAX_ARTICLE_CONTENT_LENGTH) {
       return content;
@@ -987,6 +1015,30 @@ export class GeminiClient implements IGeminiClient {
       extremeClickbait ||
       (veryLowTraceability && (hasStrongClaim || hasAnyClaim))
     );
+  }
+
+  private hasStrongClaimsWithoutAttribution(params: {
+    claims: string[];
+    summary: string;
+    content: string;
+  }): boolean {
+    const claimsText = [...params.claims, params.summary].join(' ');
+    const hasHighRiskClaim = HIGH_RISK_CLAIM_PATTERNS.some((pattern) =>
+      pattern.test(claimsText)
+    );
+    const hasStrongClaim =
+      hasHighRiskClaim ||
+      /\b(siempre|nunca|todo esta|todo está|demuestra|100%|sin duda|definitivo|urgente|esc[áa]ndalo|bomba|inminente)\b/i.test(
+        claimsText
+      );
+    if (!hasStrongClaim) {
+      return false;
+    }
+
+    const hasAttribution = /\b(seg[uú]n|according to|de acuerdo con|afirm[oó]|inform[oó]|report[oó]|ministerio|universidad|instituto|documento|informe)\b|https?:\/\/\S+|www\.\S+/i.test(
+      params.content
+    );
+    return !hasAttribution;
   }
 
   /**

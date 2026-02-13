@@ -81,7 +81,10 @@ function createMockArticle(overrides?: Partial<any>): NewsArticle {
     publishedAt: new Date('2026-02-01T10:00:00Z'),
     source: 'Test Source',
     author: 'Test Author',
-    content: 'This is a test article with enough content to pass validation requirements. It has more than 100 characters to ensure it can be analyzed properly.',
+    content:
+      'This is a test article with enough content to pass validation requirements. It has more than 100 characters to ensure it can be analyzed properly. '.repeat(
+        12
+      ),
     category: 'technology',
     language: 'es',
     embedding: null,

@@ -783,6 +783,79 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
     });
   });
 
+  describe('🧭 Selección automática de prompt de análisis', () => {
+    it('usa prompt low-cost cuando el contenido es corto (<800 chars)', async () => {
+      mockGenerateContent.mockResolvedValueOnce({
+        response: {
+          text: () => JSON.stringify({ summary: 'Resumen breve' }),
+          usageMetadata: {
+            promptTokenCount: 100,
+            candidatesTokenCount: 50,
+            totalTokenCount: 150,
+          },
+        },
+      });
+
+      await geminiClient.analyzeArticle({
+        title: 'Articulo corto',
+        content: 'Contenido breve sin demasiada longitud para activar modo economico. '.repeat(4),
+        source: 'Fuente test',
+        language: 'es',
+      });
+
+      const promptUsed = mockGenerateContent.mock.calls[0][0] as string;
+      expect(promptUsed).toContain('Analiza SOLO el texto dado en <ARTICLE>');
+    });
+
+    it('usa prompt estándar cuando el contenido supera 800 chars y no es fallback', async () => {
+      mockGenerateContent.mockResolvedValueOnce({
+        response: {
+          text: () => JSON.stringify({ summary: 'Resumen largo' }),
+          usageMetadata: {
+            promptTokenCount: 120,
+            candidatesTokenCount: 60,
+            totalTokenCount: 180,
+          },
+        },
+      });
+
+      await geminiClient.analyzeArticle({
+        title: 'Articulo largo',
+        content: 'Contenido largo con trazabilidad potencial. '.repeat(30),
+        source: 'Fuente test',
+        language: 'es',
+      });
+
+      const promptUsed = mockGenerateContent.mock.calls[0][0] as string;
+      expect(promptUsed).toContain('Actua como auditor OSINT');
+    });
+
+    it('usa prompt low-cost cuando detecta fallback title+description aunque el contenido sea largo', async () => {
+      mockGenerateContent.mockResolvedValueOnce({
+        response: {
+          text: () => JSON.stringify({ summary: 'Resumen fallback' }),
+          usageMetadata: {
+            promptTokenCount: 130,
+            candidatesTokenCount: 70,
+            totalTokenCount: 200,
+          },
+        },
+      });
+
+      const fallbackContent = `ADVERTENCIA: No se pudo acceder al artículo completo. Realiza el análisis basándote ÚNICAMENTE en el título y el resumen disponibles. Indica explícitamente en tu respuesta que el análisis es preliminar por falta de acceso a la fuente original.\n\n${'Texto sin atribuciones directas. '.repeat(45)}`;
+
+      await geminiClient.analyzeArticle({
+        title: 'Articulo fallback',
+        content: fallbackContent,
+        source: 'Fuente test',
+        language: 'es',
+      });
+
+      const promptUsed = mockGenerateContent.mock.calls[0][0] as string;
+      expect(promptUsed).toContain('Analiza SOLO el texto dado en <ARTICLE>');
+    });
+  });
+
   // ==========================================================================
   // BLOQUEANTE #2: DEPENDENCY INJECTION (debe FALLAR hasta refactor)
   // ==========================================================================
