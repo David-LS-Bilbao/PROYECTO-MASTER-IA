@@ -449,8 +449,8 @@ describe('AnalyzeArticleUseCase', () => {
       expect(result.analysis.reliabilityComment).toContain(
         'no verificable con fuentes internas'
       );
-      expect(result.analysis.reliabilityComment).toContain('fuente primaria');
-      expect(result.analysis.reliabilityComment).toContain('documento oficial');
+      expect(result.analysis.reliabilityComment).toContain('citas');
+      expect(result.analysis.reliabilityComment).toContain('documento');
       expect(result.analysis.reliabilityComment).not.toContain('metodologia completa');
     });
 
@@ -485,6 +485,101 @@ describe('AnalyzeArticleUseCase', () => {
         .map((fragment) => fragment.trim())
         .filter((fragment) => fragment.length > 0).length;
       expect(sentenceCount).toBeLessThanOrEqual(2);
+      expect(comment).not.toContain('Nota:');
+    });
+
+    it('should force factualityStatus no_determinable when rssSnippetDetected', async () => {
+      const rssSnippet = `
+        <p>Resumen breve de la noticia para portada.</p>
+        Leer <a href="https://example.com/noticia-completa">la noticia completa</a>
+      `;
+      const article = createTestArticle({
+        content: `${rssSnippet} ${rssSnippet} ${rssSnippet} ${rssSnippet} ${rssSnippet}`.repeat(4),
+      });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        factualityStatus: 'plausible_but_unverified',
+      });
+
+      const result = await useCase.execute({ articleId: article.id });
+
+      expect(result.scrapedContentLength).toBeGreaterThan(300);
+      expect(result.analysis.factualityStatus).toBe('no_determinable');
+    });
+
+    it('should enforce verdict and reasoning consistency rules', async () => {
+      const article = createTestArticle({
+        content: 'Contenido analitico con afirmaciones directas y contexto parcial. '.repeat(25),
+      });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        factCheck: {
+          claims: ['La medida tiene respaldo textual en el artículo.'],
+          verdict: 'SupportedByArticle',
+          reasoning: 'Hay soporte interno',
+        },
+      });
+
+      const supportedResult = await useCase.execute({ articleId: article.id });
+      expect(supportedResult.analysis.factCheck.verdict).toBe('SupportedByArticle');
+      expect(supportedResult.analysis.factCheck.reasoning).toBe(
+        'Aparece explícitamente en el texto (soportado por el artículo), no verificado externamente.'
+      );
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        factCheck: {
+          claims: ['Afirmación sin soporte suficiente.'],
+          verdict: 'SupportedByArticle',
+          reasoning: 'No hay evidencia suficiente en el texto para verificar.',
+        },
+      });
+
+      const insufficientResult = await useCase.execute({
+        articleId: article.id,
+        analysisMode: 'standard',
+      });
+      expect(insufficientResult.analysis.factCheck.verdict).toBe(
+        'InsufficientEvidenceInArticle'
+      );
+    });
+
+    it('should clean HTML entities before analysis and preserve a title-based biasIndicator', async () => {
+      const article = createTestArticle({
+        title: '¡Política en tensión! Gobierno y oposición en choque total',
+        content:
+          '<p>El Gobierno anunci&oacute; medidas urgentes.</p><p>Seg&uacute;n el ministerio, el impacto ser&aacute; inmediato.</p>'.repeat(
+            10
+          ),
+      });
+      mockRepository.setArticle(article);
+
+      const geminiSpy = vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        biasRaw: 4,
+        biasScore: 0.4,
+        biasScoreNormalized: 0.4,
+        biasIndicators: [
+          'Carga de certeza: "impacto inmediato"',
+          'Enfoque unilateral: "medidas urgentes"',
+        ],
+      });
+
+      const result = await useCase.execute({ articleId: article.id, analysisMode: 'standard' });
+
+      const analyzedContent = geminiSpy.mock.calls[0]?.[0]?.content ?? '';
+      expect(analyzedContent).not.toContain('<p>');
+      expect(analyzedContent).toContain('anunció');
+      expect(analyzedContent.toLowerCase()).toContain('según');
+      expect(result.analysis.biasIndicators.length).toBeGreaterThanOrEqual(3);
+      expect(result.analysis.biasIndicators.some((indicator) => indicator.includes('Titular:'))).toBe(
+        true
+      );
+      expect(result.analysis.biasRaw).toBe(4);
     });
 
     it('should force factCheck verdict to InsufficientEvidenceInArticle when claims are empty', async () => {
