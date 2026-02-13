@@ -224,6 +224,27 @@ describe('GeminiClient parseAnalysisResponse', () => {
     expect(result.should_escalate).toBe(true);
   });
 
+  it('repara respuestas sin summary generando uno provisional', () => {
+    const parse = (client as any).parseAnalysisResponse.bind(client);
+    const text = JSON.stringify({
+      biasRaw: 0,
+      reliabilityScore: 55,
+      traceabilityScore: 52,
+      factCheck: {
+        verdict: 'InsufficientEvidenceInArticle',
+      },
+    });
+
+    const result = parse(
+      text,
+      undefined,
+      'El articulo describe medidas economicas y cita que la inflacion mensual fue del 2.1% segun estimaciones internas.'
+    );
+
+    expect(result.summary).toContain('Resumen provisional basado en contenido interno');
+    expect(result.summary.length).toBeGreaterThan(30);
+  });
+
   it('lanza error si summary es invalido', () => {
     const parse = (client as any).parseAnalysisResponse.bind(client);
     const text = JSON.stringify({ summary: 123 });

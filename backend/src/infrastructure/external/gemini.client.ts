@@ -682,8 +682,10 @@ export class GeminiClient implements IGeminiClient {
     }
 
     try {
+      const rawPayload = JSON.parse(jsonMatch[0]);
+      const repairedPayload = this.repairAnalysisPayload(rawPayload, analyzedContent);
       const parsed = analysisResponseSchema.parse(
-        JSON.parse(jsonMatch[0])
+        repairedPayload
       ) as AnalysisResponsePayload;
 
       const internal_reasoning = typeof parsed.internal_reasoning === 'string'
@@ -802,6 +804,50 @@ export class GeminiClient implements IGeminiClient {
         500
       );
     }
+  }
+
+  private repairAnalysisPayload(
+    payload: unknown,
+    analyzedContent: string
+  ): Record<string, unknown> {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return {
+        summary: this.buildFallbackSummary(analyzedContent),
+      };
+    }
+
+    const candidate = { ...(payload as Record<string, unknown>) };
+    const hasMissingSummary =
+      typeof candidate.summary === 'undefined' ||
+      (typeof candidate.summary === 'string' && candidate.summary.trim().length === 0);
+
+    if (hasMissingSummary) {
+      candidate.summary = this.buildFallbackSummary(analyzedContent);
+      logger.warn(
+        {
+          reason: 'missing_summary',
+          contentLength: analyzedContent.length,
+        },
+        'Gemini response repaired before schema validation'
+      );
+    }
+
+    return candidate;
+  }
+
+  private buildFallbackSummary(content: string): string {
+    const withoutFallbackHeader = content.replace(
+      /^ADVERTENCIA:[\s\S]*?\n\n/i,
+      ''
+    );
+    const compact = withoutFallbackHeader.replace(/\s+/g, ' ').trim();
+    if (!compact) {
+      return 'Resumen no disponible: respuesta incompleta del modelo.';
+    }
+
+    const snippet = compact.slice(0, 220).trim();
+    const suffix = compact.length > 220 ? '...' : '';
+    return `Resumen provisional basado en contenido interno: ${snippet}${suffix}`;
   }
 
   private clampScore(
