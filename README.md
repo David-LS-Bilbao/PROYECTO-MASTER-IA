@@ -19,10 +19,11 @@
 3. [Instalación y Ejecución](#instalación-y-ejecución)
 4. [Estructura del Proyecto](#estructura-del-proyecto)
 5. [Funcionalidades Principales](#funcionalidades-principales)
-6. [Arquitectura](#arquitectura-del-proyecto)
-7. [Testing](#testing)
-8. [Deployment](#deployment)
-9. [Documentación Técnica](#documentación-técnica)
+6. [Cómo interpretar el análisis de Verity AI](#interpretacion-analisis-verity-ai)
+7. [Arquitectura](#arquitectura-del-proyecto)
+8. [Testing](#testing)
+9. [Deployment](#deployment)
+10. [Documentación Técnica](#documentación-técnica)
 
 ---
 
@@ -451,6 +452,11 @@ Verity-News/
 │   │   ├── architecture_hexagonal.md
 │   │   ├── database_er.md
 │   │   └── sequence_analysis.md
+│   ├── architecture/               # Diseño técnico e integraciones core
+│   ├── incidents/                  # Incidencias, fixes y validaciones
+│   ├── runbooks/                   # Guías operativas/manuales
+│   ├── audits/                     # Auditorías técnicas y de seguridad
+│   ├── archive/                    # Backups e histórico
 │   └── sprints/                    # Documentación de sprints (27+)
 │       ├── Sprint-27.3-Production-Responsive-Hotfixes.md
 │       ├── Sprint-27-ENTREGABLES.md
@@ -462,9 +468,9 @@ Verity-News/
 │       └── latency-test.js         # Medición de p95, p99
 │
 ├── docker-compose.yml              # Orquestación de PostgreSQL
-├── ESTADO_PROYECTO.md              # Estado actual y progreso (Sprint 27.3)
-├── PROJECT_CONTEXT.md              # Contexto para GitHub Copilot
-├── AI_RULES.md                     # Reglas de desarrollo asistido por IA
+├── docs/ESTADO_PROYECTO.md         # Estado actual y progreso (Sprint 27.3)
+├── docs/PROJECT_CONTEXT.md         # Contexto para GitHub Copilot
+├── docs/AI_RULES.md                # Reglas de desarrollo asistido por IA
 └── README.md                       # Este archivo
 ```
 
@@ -755,6 +761,32 @@ Los usuarios FREE tienen acceso completo al Chat durante **7 días** desde su re
 - **Responsive design**: Escalado hasta 200% sin pérdida de funcionalidad
 
 **Beneficio**: Aplicación usable para personas con discapacidades visuales, motoras o cognitivas.
+
+---
+
+<a id="interpretacion-analisis-verity-ai"></a>
+
+## 🧠 Cómo interpretar el análisis de Verity AI
+
+Verity AI ofrece dos métricas principales: **Sesgo** y **Fiabilidad**, basadas en el contenido disponible del artículo.
+
+### Sesgo (0–100%)
+
+El **Sesgo** indica si el texto utiliza encuadre, selección de hechos o lenguaje que orienta al lector hacia una interpretación concreta. Además, Verity AI estima una tendencia ideológica del artículo: `progresista`, `conservadora`, `extremista`, `neutral` o `indeterminada`.
+
+Si el sistema no encuentra señales suficientes citadas (por ejemplo, porque el artículo es muy corto o incompleto), la tendencia se marca como **indeterminada** para evitar conclusiones erróneas.
+
+### Fiabilidad (0–100)
+
+La **Fiabilidad** mide la trazabilidad interna del texto: presencia de citas, datos, atribuciones claras y contexto.
+
+Cuando aparece **“No verificable con fuentes internas”**, significa que el contenido disponible no aporta evidencia suficiente dentro del propio texto (por ejemplo, snippets RSS o artículos con acceso limitado).
+
+Esta etiqueta **no implica que sea falso**; indica que, sin fuentes externas o el artículo completo, no se puede confirmar la información con rigor.
+
+### FactCheck
+
+En el apartado FactCheck, el veredicto **`SupportedByArticle`** significa que las afirmaciones están expresadas explícitamente en el artículo (soportadas por el texto), aunque no estén verificadas externamente.
 
 ---
 
@@ -1189,20 +1221,24 @@ jobs:
 
 ### Documentos Principales
 
-1. [📋 Memoria del TFM](docs/MemoriaTFM.md)
+1. [📚 Índice de documentación](docs/README.md)
+   - Estructura de carpetas en `docs/`
+   - Criterios de organización documental
+
+2. [📋 Memoria del TFM](docs/MemoriaTFM.md)
    - Memoria académica completa del proyecto
    - Justificación de decisiones técnicas
    - Análisis de resultados
 
-2. [🗺️ Estructura del Proyecto](docs/ESTRUCTURA_PROYECTO.md)
+3. [🗺️ Estructura del Proyecto](docs/ESTRUCTURA_PROYECTO.md)
    - Mapa completo de archivos y carpetas
    - Descripción de cada módulo
 
-3. [✅ Estándares de Calidad](docs/CALIDAD.md)
+4. [✅ Estándares de Calidad](docs/CALIDAD.md)
    - Reglas de coverage (100/80/0)
    - Guías de testing
 
-4. [📊 Estado del Proyecto](ESTADO_PROYECTO.md)
+5. [📊 Estado del Proyecto](docs/ESTADO_PROYECTO.md)
    - Estado actual (Sprint 27.3)
    - Métricas y progreso
 
@@ -1224,8 +1260,8 @@ Cada sprint tiene documentación detallada en `docs/sprints/`:
 
 ### Guías de Desarrollo
 
-- [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md): Contexto para GitHub Copilot
-- [AI_RULES.md](AI_RULES.md): Reglas de desarrollo asistido por IA
+- [PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md): Contexto para GitHub Copilot
+- [AI_RULES.md](docs/AI_RULES.md): Reglas de desarrollo asistido por IA
 
 ---
 

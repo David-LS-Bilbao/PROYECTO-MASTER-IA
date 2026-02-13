@@ -238,7 +238,7 @@ Verificar que invalidar una categoría NO afecta otras categorías.
 2. Presionar botón "Noticias" manualmente
 
 **Fix Futuro:**
-Implementar auto-ingesta con TTL de 1 hora (ver ANALISIS-REFRESH-BUG.md)
+Implementar auto-ingesta con TTL de 1 hora (ver [ANALISIS-REFRESH-BUG.md](./ANALISIS-REFRESH-BUG.md))
 
 ---
 
@@ -259,7 +259,7 @@ Antes de dar el fix por completado:
 
 ## 🔗 Referencias
 
-- ANALISIS-REFRESH-BUG.md - Diagnóstico completo
+- [ANALISIS-REFRESH-BUG.md](./ANALISIS-REFRESH-BUG.md) - Diagnóstico completo
 - frontend/components/layout/sidebar.tsx - Código del botón
 - frontend/hooks/useNewsInfinite.ts - Hook de datos
 - frontend/components/providers/query-provider.tsx - Config React Query

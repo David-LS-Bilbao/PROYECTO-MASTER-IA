@@ -782,13 +782,13 @@ PostgreSQL 17
 - [ER Base de Datos](docs/diagrams/database_er.md)
 
 ### Guías Técnicas
-- [Estructura del Proyecto](docs/ESTRUCTURA_PROYECTO.md)
-- [API Interceptor](docs/API_INTERCEPTOR.md)
-- [Smart Ingestion](docs/SMART_INGESTION.md)
-- [Calidad y Testing](docs/CALIDAD.md)
+- [Estructura del Proyecto](./ESTRUCTURA_PROYECTO.md)
+- [API Interceptor](./architecture/API_INTERCEPTOR.md)
+- [Smart Ingestion](./architecture/SMART_INGESTION.md)
+- [Calidad y Testing](./CALIDAD.md)
 
 ### Memoria TFM
-- [MemoriaTFM.md](docs/MemoriaTFM.md) - Documento completo del proyecto
+- [MemoriaTFM.md](./MemoriaTFM.md) - Documento completo del proyecto
 
 ---
 

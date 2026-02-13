@@ -320,10 +320,13 @@ docs/
 ├── 📄 VALIDACION_RSS_DIRECTOS_FINAL.md    # Validación final RSS
 │
 ├── 📄 REFACTORIZACION_GOOGLE_NEWS_RSS.md  # Refactorización Google News
-├── 📄 METADATA_EXTRACTOR_IMPLEMENTATION.md # Implementación extractor metadatos
+├── 📁 architecture/                        # Documentación de arquitectura técnica
+│   ├── 📄 METADATA_EXTRACTOR_IMPLEMENTATION.md # Implementación extractor metadatos
+│   ├── 📄 API_INTERCEPTOR.md               # Implementación interceptor API
+│   └── 📄 SMART_INGESTION.md               # Diseño de ingesta inteligente
 ├── 📄 MEJORA_UI_IMAGENES.md               # Mejoras UI de imágenes
-├── 📄 API_INTERCEPTOR.md                  # Implementación interceptor API
-├── 📄 INSTRUCCIONES_REANALISIS_MANUAL.md  # Guía de re-análisis manual
+├── 📁 runbooks/                            # Procedimientos operativos
+│   └── 📄 INSTRUCCIONES_REANALISIS_MANUAL.md  # Guía de re-análisis manual
 │
 ├── 📄 STRESS_TEST_RESULTS.md              # Resultados tests de estrés
 └── 📄 TEST_END_TO_END_GOOGLE_NEWS_RSS.md  # Tests E2E Google News
