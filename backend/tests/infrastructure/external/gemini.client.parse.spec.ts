@@ -5,7 +5,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GeminiClient } from '../../../src/infrastructure/external/gemini.client';
 import { TokenTaximeter } from '../../../src/infrastructure/monitoring/token-taximeter';
-import { ExternalAPIError } from '../../../src/domain/errors/infrastructure.error';
 
 vi.mock('@google/generative-ai', () => {
   class MockGoogleGenerativeAI {
@@ -119,6 +118,35 @@ describe('GeminiClient parseAnalysisResponse', () => {
 
     const result = parse(text);
     expect(result.factCheck.verdict).toBe('SupportedByArticle');
+  });
+
+  it('coerciona arrays con objetos en biasIndicators y factCheck.claims', () => {
+    const parse = (client as any).parseAnalysisResponse.bind(client);
+    const text = JSON.stringify({
+      summary: { text: 'Resumen generado en formato objeto' },
+      biasRaw: 4,
+      biasIndicators: [
+        { indicator: 'Lenguaje absoluto: "siempre"' },
+        { quote: 'Foco parcial: "solo esto"' },
+        { text: 'Afirmacion rotunda: "sin duda"' },
+      ],
+      factCheck: {
+        claims: [
+          { claim: 'Primer claim textual' },
+          { text: 'Segundo claim textual' },
+          { statement: 'Tercer claim textual' },
+        ],
+        verdict: 'InsufficientEvidenceInArticle',
+      },
+    });
+
+    const result = parse(text);
+
+    expect(result.summary).toBe('Resumen generado en formato objeto');
+    expect(result.biasIndicators).toHaveLength(3);
+    expect(result.biasIndicators[0]).toContain('Lenguaje absoluto');
+    expect(result.factCheck.claims).toHaveLength(3);
+    expect(result.factCheck.claims[0]).toBe('Primer claim textual');
   });
 
   it('si no hay 3 biasIndicators con cita, fuerza sesgo neutral', () => {
@@ -286,11 +314,12 @@ describe('GeminiClient parseAnalysisResponse', () => {
     expect(result.summary.length).toBeGreaterThan(30);
   });
 
-  it('lanza error si summary es invalido', () => {
+  it('coerciona summary no string cuando es posible', () => {
     const parse = (client as any).parseAnalysisResponse.bind(client);
     const text = JSON.stringify({ summary: 123 });
 
-    expect(() => parse(text)).toThrow(ExternalAPIError);
+    const result = parse(text);
+    expect(result.summary).toBe('123');
   });
 
   it('neutraliza patrones de inyeccion sin alterar llaves', () => {

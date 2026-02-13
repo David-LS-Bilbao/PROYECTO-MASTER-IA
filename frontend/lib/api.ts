@@ -6,6 +6,34 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
 export type AnalysisMode = 'low_cost' | 'moderate' | 'standard';
 
+function extractApiErrorMessage(errorData: any, fallback: string): string {
+  if (!errorData || typeof errorData !== 'object') {
+    return fallback;
+  }
+
+  if (typeof errorData.message === 'string' && errorData.message.trim().length > 0) {
+    return errorData.message;
+  }
+
+  if (typeof errorData.error === 'string' && errorData.error.trim().length > 0) {
+    return errorData.error;
+  }
+
+  if (errorData.error && typeof errorData.error === 'object') {
+    const nestedMessage = errorData.error.message;
+    if (typeof nestedMessage === 'string' && nestedMessage.trim().length > 0) {
+      return nestedMessage;
+    }
+
+    const originalMessage = errorData.error?.details?.originalMessage;
+    if (typeof originalMessage === 'string' && originalMessage.trim().length > 0) {
+      return originalMessage;
+    }
+  }
+
+  return fallback;
+}
+
 export interface ArticleAnalysis {
   summary: string;
   analysisModeUsed?: AnalysisMode;
@@ -200,7 +228,9 @@ export async function analyzeArticle(articleId: string, token: string): Promise<
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.message || errorData.error || `Failed to analyze article: ${res.status}`);
+    throw new Error(
+      extractApiErrorMessage(errorData, `Failed to analyze article: ${res.status}`)
+    );
   }
 
   return res.json();
@@ -228,7 +258,9 @@ export async function analyzeArticleWithMode(
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.message || errorData.error || `Failed to analyze article: ${res.status}`);
+    throw new Error(
+      extractApiErrorMessage(errorData, `Failed to analyze article: ${res.status}`)
+    );
   }
 
   return res.json();

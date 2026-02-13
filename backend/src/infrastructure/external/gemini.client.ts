@@ -840,9 +840,12 @@ export class GeminiClient implements IGeminiClient {
     }
 
     const candidate = { ...(payload as Record<string, unknown>) };
-    const hasMissingSummary =
-      typeof candidate.summary === 'undefined' ||
-      (typeof candidate.summary === 'string' && candidate.summary.trim().length === 0);
+    const repairedSummary = this.coerceValueToString(candidate.summary, [
+      'summary',
+      'text',
+      'content',
+    ]);
+    const hasMissingSummary = !repairedSummary;
 
     if (hasMissingSummary) {
       candidate.summary = this.buildFallbackSummary(analyzedContent);
@@ -853,6 +856,45 @@ export class GeminiClient implements IGeminiClient {
         },
         'Gemini response repaired before schema validation'
       );
+    } else {
+      candidate.summary = repairedSummary;
+    }
+
+    candidate.biasIndicators = this.coerceStringArray(
+      candidate.biasIndicators,
+      ['indicator', 'text', 'quote', 'citation', 'evidence'],
+      5
+    );
+    candidate.evidence_needed = this.coerceStringArray(
+      candidate.evidence_needed,
+      ['evidence', 'need', 'text', 'item', 'value'],
+      4
+    );
+
+    const factCheckRaw = candidate.factCheck;
+    if (factCheckRaw && typeof factCheckRaw === 'object' && !Array.isArray(factCheckRaw)) {
+      const factCheckCandidate = {
+        ...(factCheckRaw as Record<string, unknown>),
+      };
+      factCheckCandidate.claims = this.coerceStringArray(
+        factCheckCandidate.claims,
+        ['claim', 'text', 'statement', 'quote', 'value'],
+        5
+      );
+
+      if (typeof factCheckCandidate.reasoning !== 'string') {
+        const coercedReasoning = this.coerceValueToString(factCheckCandidate.reasoning, [
+          'reasoning',
+          'text',
+          'explanation',
+          'details',
+        ]);
+        if (coercedReasoning) {
+          factCheckCandidate.reasoning = coercedReasoning;
+        }
+      }
+
+      candidate.factCheck = factCheckCandidate;
     }
 
     for (const boundedField of ['biasComment', 'reliabilityComment'] as const) {
@@ -878,6 +920,76 @@ export class GeminiClient implements IGeminiClient {
     const snippet = compact.slice(0, 220).trim();
     const suffix = compact.length > 220 ? '...' : '';
     return `Resumen provisional basado en contenido interno: ${snippet}${suffix}`;
+  }
+
+  private coerceStringArray(
+    value: unknown,
+    preferredKeys: string[] = [],
+    maxItems: number = Number.POSITIVE_INFINITY
+  ): string[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    const normalizedItems: string[] = [];
+
+    for (const entry of value) {
+      const coerced = this.coerceValueToString(entry, preferredKeys);
+      if (!coerced) {
+        continue;
+      }
+
+      normalizedItems.push(coerced);
+      if (normalizedItems.length >= maxItems) {
+        break;
+      }
+    }
+
+    return normalizedItems;
+  }
+
+  private coerceValueToString(
+    value: unknown,
+    preferredKeys: string[] = []
+  ): string | undefined {
+    if (typeof value === 'string') {
+      const normalized = value.replace(/\s+/g, ' ').trim();
+      return normalized.length > 0 ? normalized : undefined;
+    }
+
+    if (typeof value === 'number' || typeof value === 'boolean') {
+      return String(value);
+    }
+
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return undefined;
+    }
+
+    const record = value as Record<string, unknown>;
+    for (const key of preferredKeys) {
+      const nested = record[key];
+      if (typeof nested === 'string' && nested.trim().length > 0) {
+        return nested.replace(/\s+/g, ' ').trim();
+      }
+    }
+
+    for (const nested of Object.values(record)) {
+      if (typeof nested === 'string' && nested.trim().length > 0) {
+        return nested.replace(/\s+/g, ' ').trim();
+      }
+    }
+
+    try {
+      const serialized = JSON.stringify(value);
+      if (!serialized) {
+        return undefined;
+      }
+      return serialized.length <= 280
+        ? serialized
+        : `${serialized.slice(0, 277).trimEnd()}...`;
+    } catch {
+      return undefined;
+    }
   }
 
   private clampScore(
