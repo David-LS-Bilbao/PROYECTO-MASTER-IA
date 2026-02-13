@@ -45,43 +45,36 @@ describe('formatRelativeDate', () => {
 });
 
 describe('groupArticlesByDate', () => {
+  const createMockArticle = (
+    id: string,
+    title: string,
+    publishedAt: string,
+    url: string,
+    source: string
+  ): NewsArticle => ({
+    id,
+    title,
+    description: null,
+    content: null,
+    url,
+    urlToImage: null,
+    source,
+    author: null,
+    publishedAt,
+    category: 'general',
+    language: 'es',
+    summary: null,
+    biasScore: null,
+    analysis: null,
+    analyzedAt: null,
+    isFavorite: false,
+  });
+
   const mockArticles: NewsArticle[] = [
-    {
-      id: '1',
-      title: 'Article 1',
-      publishedAt: '2024-02-06T10:00:00Z',
-      url: 'https://example.com/1',
-      source: 'Source 1',
-      category: 'general',
-      isFavorite: false,
-    },
-    {
-      id: '2',
-      title: 'Article 2',
-      publishedAt: '2024-02-06T14:00:00Z',
-      url: 'https://example.com/2',
-      source: 'Source 2',
-      category: 'general',
-      isFavorite: false,
-    },
-    {
-      id: '3',
-      title: 'Article 3',
-      publishedAt: '2024-02-05T10:00:00Z',
-      url: 'https://example.com/3',
-      source: 'Source 3',
-      category: 'general',
-      isFavorite: false,
-    },
-    {
-      id: '4',
-      title: 'Article 4',
-      publishedAt: '2024-02-04T10:00:00Z',
-      url: 'https://example.com/4',
-      source: 'Source 4',
-      category: 'general',
-      isFavorite: false,
-    },
+    createMockArticle('1', 'Article 1', '2024-02-06T10:00:00Z', 'https://example.com/1', 'Source 1'),
+    createMockArticle('2', 'Article 2', '2024-02-06T14:00:00Z', 'https://example.com/2', 'Source 2'),
+    createMockArticle('3', 'Article 3', '2024-02-05T10:00:00Z', 'https://example.com/3', 'Source 3'),
+    createMockArticle('4', 'Article 4', '2024-02-04T10:00:00Z', 'https://example.com/4', 'Source 4'),
   ];
 
   beforeEach(() => {

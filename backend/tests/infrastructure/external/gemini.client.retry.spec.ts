@@ -1,4 +1,4 @@
-/**
+﻿/**
  * GeminiClient Retry Logic Tests - ZONA CRÍTICA (Resiliencia)
  *
  * OBJETIVO: Validar que el patrón Retry with Exponential Backoff funciona correctamente
@@ -87,7 +87,7 @@ describe('GeminiClient - Retry Logic & Resilience', () => {
             mainTopics: ['technology', 'AI'],
             factCheck: {
               claims: ['AI is advancing rapidly'],
-              verdict: 'Verified',
+              verdict: 'SupportedByArticle',
               reasoning: 'Supported by multiple sources',
             },
           }),
@@ -160,7 +160,7 @@ describe('GeminiClient - Retry Logic & Resilience', () => {
             mainTopics: ['test'],
             factCheck: {
               claims: ['test claim'],
-              verdict: 'Verified',
+              verdict: 'SupportedByArticle',
               reasoning: 'test reasoning',
             },
           }),
@@ -206,7 +206,7 @@ describe('GeminiClient - Retry Logic & Resilience', () => {
             mainTopics: ['resilience'],
             factCheck: {
               claims: ['retry works'],
-              verdict: 'Verified',
+              verdict: 'SupportedByArticle',
               reasoning: 'tested successfully',
             },
           }),

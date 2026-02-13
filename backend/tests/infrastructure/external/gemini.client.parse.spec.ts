@@ -1,4 +1,4 @@
-/**
+﻿/**
  * GeminiClient parseAnalysisResponse Unit Tests
  */
 
@@ -34,7 +34,11 @@ describe('GeminiClient parseAnalysisResponse', () => {
       category: 'economia',
       biasRaw: 12,
       analysis: { biasType: 'political', explanation: 'exp' },
-      biasIndicators: ['neutral'],
+      biasIndicators: [
+        'Lenguaje absoluto: "siempre ocurre"',
+        'Generalizacion: "todos lo saben"',
+        'Enfoque parcial: "solo esta version"',
+      ],
       reliabilityScore: 110,
       traceabilityScore: 120,
       factualityStatus: 'plausible_but_unverified',
@@ -45,7 +49,7 @@ describe('GeminiClient parseAnalysisResponse', () => {
       suggestedTopics: ['t1', 't2'],
       factCheck: {
         claims: ['c1'],
-        verdict: 'Verified',
+        verdict: 'SupportedByArticle',
         reasoning: 'ok',
       },
     });
@@ -69,17 +73,16 @@ describe('GeminiClient parseAnalysisResponse', () => {
     expect(result.clickbaitScore).toBe(0);
     expect(result.sentiment).toBe('positive');
     expect(result.mainTopics).toEqual(['t1', 't2']);
-    expect(result.factCheck.verdict).toBe('Verified');
+    expect(result.factCheck.verdict).toBe('SupportedByArticle');
     expect(result.usage?.totalTokens).toBe(3);
   });
 
-  it('usa defaults vNext cuando faltan campos y verdict invalido', () => {
+  it('usa defaults vNext cuando faltan campos', () => {
     const parse = (client as any).parseAnalysisResponse.bind(client);
     const text = JSON.stringify({
       summary: 'Resumen',
       mainTopics: ['m1'],
       sentiment: 'invalid',
-      factCheck: { verdict: 'WRONG' },
     });
 
     const result = parse(text);
@@ -92,8 +95,41 @@ describe('GeminiClient parseAnalysisResponse', () => {
     expect(result.clickbaitScore).toBe(0);
     expect(result.sentiment).toBe('neutral');
     expect(result.mainTopics).toEqual(['m1']);
-    expect(result.factCheck.verdict).toBe('Unproven');
+    expect(result.factCheck.verdict).toBe('InsufficientEvidenceInArticle');
     expect(result.factCheck.reasoning).toContain('Sin');
+  });
+
+  it('normaliza verdict legacy al nuevo enum', () => {
+    const parse = (client as any).parseAnalysisResponse.bind(client);
+    const text = JSON.stringify({
+      summary: 'Resumen',
+      biasIndicators: [
+        'Lenguaje absoluto: "siempre"',
+        'Foco parcial: "solo esto"',
+        'Afirmacion rotunda: "sin duda"',
+      ],
+      factCheck: { verdict: 'Verified' },
+    });
+
+    const result = parse(text);
+    expect(result.factCheck.verdict).toBe('SupportedByArticle');
+  });
+
+  it('si no hay 3 biasIndicators con cita, fuerza sesgo neutral', () => {
+    const parse = (client as any).parseAnalysisResponse.bind(client);
+    const text = JSON.stringify({
+      summary: 'Resumen',
+      biasRaw: 7,
+      biasScoreNormalized: 0.7,
+      analysis: { biasType: 'lenguaje' },
+      biasIndicators: ['Indicador sin cita'],
+    });
+
+    const result = parse(text);
+    expect(result.biasRaw).toBe(0);
+    expect(result.biasScoreNormalized).toBe(0);
+    expect(result.biasScore).toBe(0);
+    expect(result.biasType).toBe('ninguno');
   });
 
   it('calibra a rango bajo un texto tipo clickbait sin atribuciones', () => {
@@ -117,7 +153,7 @@ describe('GeminiClient parseAnalysisResponse', () => {
         },
         factCheck: {
           claims: ['Todo está manipulado'],
-          verdict: 'Unproven',
+          verdict: 'InsufficientEvidenceInArticle',
           reasoning: 'Sin evidencia en el texto.',
         },
       }),
@@ -151,7 +187,7 @@ describe('GeminiClient parseAnalysisResponse', () => {
         },
         factCheck: {
           claims: ['La cobertura subió un 14%'],
-          verdict: 'Unproven',
+          verdict: 'InsufficientEvidenceInArticle',
           reasoning: 'Sin verificación externa en runtime.',
         },
       }),
@@ -179,5 +215,25 @@ describe('GeminiClient parseAnalysisResponse', () => {
 
     expect(result).toContain('{"a":1}');
     expect(result.toLowerCase()).not.toContain('ignore previous instructions');
+  });
+
+  it('usa seleccion inteligente para contenido largo (head/tail/quotes/meta)', () => {
+    const select = (client as any).selectContentForAnalysis.bind(client);
+    const head = `HEAD_START ${'A'.repeat(3200)}`;
+    const middle = `\n\nSegun el informe, "dato clave del estudio" y 42% en 2026. Fuente: https://example.org/doc.pdf.\n\n`;
+    const tail = `${'Z'.repeat(2400)} TAIL_END`;
+    const content = `${head}${'B'.repeat(7000)}${middle}${'C'.repeat(5000)}${tail}`;
+
+    const selected = select(content);
+
+    expect(selected.length).toBeLessThanOrEqual(8000);
+    expect(selected).toContain('[META]');
+    expect(selected).toContain('[HEAD]');
+    expect(selected).toContain('[TAIL]');
+    expect(selected).toContain('[QUOTES_DATA]');
+    expect(selected).toContain('HEAD_START');
+    expect(selected).toContain('TAIL_END');
+    expect(selected).toContain('"dato clave del estudio"');
+    expect(selected).toContain('42%');
   });
 });

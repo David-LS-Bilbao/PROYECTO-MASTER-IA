@@ -35,7 +35,10 @@ export interface NewsArticleProps {
  */
 export interface FactCheck {
   claims: string[];
-  verdict: 'Verified' | 'Mixed' | 'Unproven' | 'False';
+  verdict:
+    | 'SupportedByArticle'
+    | 'NotSupportedByArticle'
+    | 'InsufficientEvidenceInArticle';
   reasoning: string;
 }
 

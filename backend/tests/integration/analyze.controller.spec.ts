@@ -43,7 +43,7 @@ function createMockAnalysisOutput() {
       mainTopics: ['AI', 'technology', 'society'],
       factCheck: {
         claims: ['AI is advancing rapidly', 'Technology impacts society'],
-        verdict: 'Verified',
+        verdict: 'SupportedByArticle',
         reasoning: 'Based on recent research and industry reports',
       },
     },

@@ -6,6 +6,32 @@ export const factualityStatusSchema = z.enum([
 ]);
 export type FactualityStatus = z.infer<typeof factualityStatusSchema>;
 
+export const factCheckVerdictSchema = z.enum([
+  'SupportedByArticle',
+  'NotSupportedByArticle',
+  'InsufficientEvidenceInArticle',
+]);
+export type FactCheckVerdict = z.infer<typeof factCheckVerdictSchema>;
+
+const normalizeFactCheckVerdict = (value: unknown): unknown => {
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  const trimmed = value.trim();
+  switch (trimmed) {
+    case 'Verified':
+      return 'SupportedByArticle';
+    case 'False':
+      return 'NotSupportedByArticle';
+    case 'Mixed':
+    case 'Unproven':
+      return 'InsufficientEvidenceInArticle';
+    default:
+      return trimmed;
+  }
+};
+
 export const analysisResponseSchema = z
   .object({
     internal_reasoning: z.string().optional(),
@@ -40,7 +66,7 @@ export const analysisResponseSchema = z
     factCheck: z
       .object({
         claims: z.array(z.string()).optional(),
-        verdict: z.string().optional(),
+        verdict: z.preprocess(normalizeFactCheckVerdict, factCheckVerdictSchema).optional(),
         reasoning: z.string().optional(),
       })
       .optional(),

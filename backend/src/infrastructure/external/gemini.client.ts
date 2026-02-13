@@ -1,4 +1,4 @@
-/**
+﻿/**
  * GeminiClient Implementation (Infrastructure Layer)
  * Uses Google's Gemini API for article analysis
  *
@@ -28,6 +28,7 @@ import { Sentry } from '../monitoring/sentry'; // Sprint 15 - Paso 3: Custom Spa
 import {
   analysisResponseSchema,
   type AnalysisResponsePayload,
+  type FactCheckVerdict,
   type FactualityStatus,
 } from './schemas/analysis-response.schema';
 import {
@@ -90,6 +91,9 @@ const getErrorCode = (error: unknown): string | undefined => {
  * Evita enviar textos enormes que consumen tokens innecesarios.
  */
 const MAX_EMBEDDING_TEXT_LENGTH = 6000;
+const ANALYSIS_HEAD_CHARS = 3000;
+const ANALYSIS_TAIL_CHARS = 2000;
+const ANALYSIS_QUOTES_DATA_CHARS = 2000;
 
 const PROMPT_INJECTION_PATTERNS: RegExp[] = [
   /ignore\s+(all\s+)?previous\s+instructions?/gi,
@@ -215,16 +219,20 @@ export class GeminiClient implements IGeminiClient {
     const sanitizedTitle = this.sanitizeInput(title);
     const sanitizedContent = this.sanitizeInput(content);
     const sanitizedSource = this.sanitizeInput(source);
+    const selectedContent = this.selectContentForAnalysis(sanitizedContent);
 
-    // COST OPTIMIZATION: Limitar contenido para reducir tokens de entrada
+    // COST OPTIMIZATION: Seleccion inteligente de contenido para reducir tokens.
     const prompt = ANALYSIS_PROMPT.replace('{title}', sanitizedTitle)
       .replace('{source}', sanitizedSource)
-      .replace('{content}', sanitizedContent.substring(0, MAX_ARTICLE_CONTENT_LENGTH));
+      .replace('{content}', selectedContent);
 
     // RESILIENCIA: executeWithRetry maneja reintentos automÃ¡ticos
     return this.executeWithRetry(async () => {
       logger.info(
-        { contentLength: sanitizedContent.length },
+        {
+          originalContentLength: sanitizedContent.length,
+          selectedContentLength: selectedContent.length,
+        },
         'Starting article analysis'
       );
 
@@ -237,7 +245,7 @@ export class GeminiClient implements IGeminiClient {
           attributes: {
             'ai.model': 'gemini-2.5-flash',
             'ai.operation': 'article_analysis',
-            'input.content_length': sanitizedContent.length,
+            'input.content_length': selectedContent.length,
           },
         },
         async () => await this.model.generateContent(prompt)
@@ -673,17 +681,17 @@ export class GeminiClient implements IGeminiClient {
         ? parsed.category
         : undefined;
 
-      const biasRawCandidate = typeof parsed.biasRaw === 'number'
+      const parsedBiasRawCandidate = typeof parsed.biasRaw === 'number'
         ? parsed.biasRaw
         : typeof parsed.biasScore === 'number'
           ? parsed.biasScore
           : 0;
-      const biasRaw = this.clampScore(biasRawCandidate, -10, 10, 0);
-      const biasScoreNormalized = typeof parsed.biasScoreNormalized === 'number'
-        ? this.clampScore(parsed.biasScoreNormalized, 0, 1, Math.abs(biasRaw) / 10)
-        : Math.abs(biasRaw) / 10;
+      const parsedBiasRaw = this.clampScore(parsedBiasRawCandidate, -10, 10, 0);
+      const parsedBiasScoreNormalized = typeof parsed.biasScoreNormalized === 'number'
+        ? this.clampScore(parsed.biasScoreNormalized, 0, 1, Math.abs(parsedBiasRaw) / 10)
+        : Math.abs(parsedBiasRaw) / 10;
 
-      const biasType = typeof parsed.analysis?.biasType === 'string'
+      const parsedBiasType = typeof parsed.analysis?.biasType === 'string'
         ? parsed.analysis.biasType
         : undefined;
 
@@ -691,7 +699,12 @@ export class GeminiClient implements IGeminiClient {
         ? parsed.analysis.explanation
         : undefined;
 
-      const biasIndicators = this.normalizeStringArray(parsed.biasIndicators);
+      const parsedBiasIndicators = this.normalizeStringArray(parsed.biasIndicators).slice(0, 3);
+      const hasCalibratedBiasSignals = this.hasThreeQuotedBiasIndicators(parsedBiasIndicators);
+      const biasRaw = hasCalibratedBiasSignals ? parsedBiasRaw : 0;
+      const biasScoreNormalized = hasCalibratedBiasSignals ? parsedBiasScoreNormalized : 0;
+      const biasType = hasCalibratedBiasSignals ? (parsedBiasType ?? 'ninguno') : 'ninguno';
+      const biasIndicators = hasCalibratedBiasSignals ? parsedBiasIndicators : [];
 
       let reliabilityScore = this.clampScore(parsed.reliabilityScore, 0, 100, 50);
       let traceabilityScore = this.clampScore(
@@ -738,6 +751,7 @@ export class GeminiClient implements IGeminiClient {
             summary: parsed.summary,
             reliabilityScore,
             traceabilityScore,
+            clickbaitScore,
           });
 
       return {
@@ -875,11 +889,84 @@ export class GeminiClient implements IGeminiClient {
     };
   }
 
+  private hasThreeQuotedBiasIndicators(indicators: string[]): boolean {
+    if (indicators.length < 3) {
+      return false;
+    }
+
+    const citationPattern = /["'`][^"'`]{3,140}["'`]|\([^()]{3,120}\)|\[[^\[\]]{3,120}\]/;
+    return indicators.slice(0, 3).every((indicator) => citationPattern.test(indicator));
+  }
+
+  private selectContentForAnalysis(content: string): string {
+    if (content.length <= MAX_ARTICLE_CONTENT_LENGTH) {
+      return content;
+    }
+
+    const head = content.slice(0, ANALYSIS_HEAD_CHARS).trim();
+    const tail = content.slice(-ANALYSIS_TAIL_CHARS).trim();
+    const quotesAndData = this.extractQuoteAndDataSnippets(content, ANALYSIS_QUOTES_DATA_CHARS);
+
+    const selection = [
+      '[META]',
+      `original_length_chars=${content.length}`,
+      `selection=HEAD(${ANALYSIS_HEAD_CHARS})+TAIL(${ANALYSIS_TAIL_CHARS})+QUOTES_DATA(${ANALYSIS_QUOTES_DATA_CHARS})`,
+      '',
+      '[HEAD]',
+      head,
+      '',
+      '[TAIL]',
+      tail,
+      '',
+      '[QUOTES_DATA]',
+      quotesAndData,
+    ].join('\n');
+
+    return selection.substring(0, MAX_ARTICLE_CONTENT_LENGTH).trim();
+  }
+
+  private extractQuoteAndDataSnippets(content: string, maxChars: number): string {
+    const snippetPattern =
+      /(^|\n)([^.\n]{0,120}(?:"[^"\n]{3,120}"|'[^'\n]{3,120}'|\bhttps?:\/\/\S+|\b\d+(?:[.,]\d+)?\s?(?:%|USD|EUR|\$|millones|miles|years|anos|casos|personas|deaths?)\b)[^.\n]{0,120}(?:[.\n]|$))/gim;
+
+    const snippets: string[] = [];
+    const seen = new Set<string>();
+    let totalChars = 0;
+
+    for (const match of content.matchAll(snippetPattern)) {
+      const snippet = (match[2] ?? '').replace(/\s+/g, ' ').trim();
+      if (snippet.length < 20) {
+        continue;
+      }
+
+      const key = snippet.toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+
+      const projected = totalChars + snippet.length + 1;
+      if (projected > maxChars) {
+        break;
+      }
+
+      snippets.push(snippet);
+      seen.add(key);
+      totalChars = projected;
+    }
+
+    if (snippets.length === 0) {
+      return content.slice(0, Math.min(400, maxChars)).trim();
+    }
+
+    return snippets.join('\n');
+  }
+
   private computeEscalation(params: {
     claims: string[];
     summary: string;
     reliabilityScore: number;
     traceabilityScore: number;
+    clickbaitScore: number;
   }): boolean {
     const allClaims = [...params.claims, params.summary].join(' ');
     const hasHighRiskClaim = HIGH_RISK_CLAIM_PATTERNS.some((pattern) =>
@@ -893,19 +980,43 @@ export class GeminiClient implements IGeminiClient {
     const veryLowTraceability =
       params.traceabilityScore <= 35 && params.reliabilityScore <= 50;
     const hasAnyClaim = params.claims.length > 0;
+    const extremeClickbait = params.clickbaitScore >= 70;
 
-    return hasHighRiskClaim || (veryLowTraceability && (hasStrongClaim || hasAnyClaim));
+    return (
+      hasHighRiskClaim ||
+      extremeClickbait ||
+      (veryLowTraceability && (hasStrongClaim || hasAnyClaim))
+    );
   }
 
   /**
    * Validate and normalize factCheck verdict
    */
-  private validateVerdict(verdict: unknown): 'Verified' | 'Mixed' | 'Unproven' | 'False' {
-    const validVerdicts = ['Verified', 'Mixed', 'Unproven', 'False'];
-    if (typeof verdict === 'string' && validVerdicts.includes(verdict)) {
-      return verdict as 'Verified' | 'Mixed' | 'Unproven' | 'False';
+  private validateVerdict(verdict: unknown): FactCheckVerdict {
+    if (typeof verdict !== 'string') {
+      return 'InsufficientEvidenceInArticle';
     }
-    return 'Unproven'; // Default if invalid
+
+    const trimmed = verdict.trim();
+    const validVerdicts: FactCheckVerdict[] = [
+      'SupportedByArticle',
+      'NotSupportedByArticle',
+      'InsufficientEvidenceInArticle',
+    ];
+    if ((validVerdicts as string[]).includes(trimmed)) {
+      return trimmed as FactCheckVerdict;
+    }
+
+    switch (trimmed) {
+      case 'Verified':
+        return 'SupportedByArticle';
+      case 'False':
+        return 'NotSupportedByArticle';
+      case 'Mixed':
+      case 'Unproven':
+      default:
+        return 'InsufficientEvidenceInArticle';
+    }
   }
 
   /**

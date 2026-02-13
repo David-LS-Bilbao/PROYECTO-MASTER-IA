@@ -25,7 +25,10 @@ export interface ArticleAnalysis {
   mainTopics: string[];
   factCheck: {
     claims: string[];
-    verdict: 'Verified' | 'Mixed' | 'Unproven' | 'False';
+    verdict:
+      | 'SupportedByArticle'
+      | 'NotSupportedByArticle'
+      | 'InsufficientEvidenceInArticle';
     reasoning: string;
   };
   // Legacy field

@@ -442,6 +442,10 @@ export default function NewsDetailPage() {
                       <div className="p-4 border rounded-lg bg-white dark:bg-zinc-800">
                         <ReliabilityBadge
                           score={article.analysis.reliabilityScore}
+                          traceabilityScore={article.analysis.traceabilityScore}
+                          factualityStatus={article.analysis.factualityStatus}
+                          clickbaitScore={article.analysis.clickbaitScore}
+                          shouldEscalate={article.analysis.should_escalate}
                           reasoning={article.analysis.factCheck?.reasoning}
                         />
                       </div>

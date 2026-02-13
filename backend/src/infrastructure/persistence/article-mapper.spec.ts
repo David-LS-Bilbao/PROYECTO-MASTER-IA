@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+﻿import { describe, it, expect } from 'vitest';
 import { ArticleMapper } from './article-mapper';
 import { NewsArticle } from '../../domain/entities/news-article.entity';
 import type { Article as PrismaArticle } from '@prisma/client';
@@ -25,7 +25,7 @@ function createPrismaArticle(overrides: Partial<PrismaArticle> = {}): PrismaArti
     embedding: '[0.1, 0.2, 0.3]',
     summary: 'Resumen generado por IA',
     biasScore: 0.45,
-    analysis: '{"summary":"Resumen","biasScore":0.45,"biasRaw":4.5,"biasIndicators":["ind1"],"clickbaitScore":20,"reliabilityScore":80,"sentiment":"neutral","mainTopics":["tech"],"factCheck":{"claims":["c1"],"verdict":"Verified","reasoning":"ok"}}',
+    analysis: '{"summary":"Resumen","biasScore":0.45,"biasRaw":4.5,"biasIndicators":["ind1"],"clickbaitScore":20,"reliabilityScore":80,"sentiment":"neutral","mainTopics":["tech"],"factCheck":{"claims":["c1"],"verdict":"SupportedByArticle","reasoning":"ok"}}',
     analyzedAt: new Date('2026-01-16T08:00:00Z'),
     internalReasoning: 'CoT: paso1→paso2→conclusión',
     isFavorite: false,
@@ -324,7 +324,7 @@ describe('ArticleMapper', () => {
         reliabilityScore: 85,
         sentiment: 'neutral',
         mainTopics: ['economía', 'política'],
-        factCheck: { claims: ['claim1'], verdict: 'Verified', reasoning: 'Fuentes verificadas' },
+        factCheck: { claims: ['claim1'], verdict: 'SupportedByArticle', reasoning: 'Fuentes verificadas' },
         usage: { promptTokens: 500, completionTokens: 200, totalTokens: 700, costEstimated: 0.0021 },
       });
 

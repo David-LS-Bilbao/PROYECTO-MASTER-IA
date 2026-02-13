@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Tests for useArticleAnalysis Hook
  * 
  * Cobertura:
@@ -60,7 +60,7 @@ describe('useArticleAnalysis', () => {
             mainTopics: ['política', 'economía'],
             factCheck: {
               claims: ['Claim 1', 'Claim 2'],
-              verdict: 'Verified',
+              verdict: 'SupportedByArticle',
               reasoning: 'All claims verified',
             },
           },
@@ -150,7 +150,7 @@ describe('useArticleAnalysis', () => {
             mainTopics: ['test'],
             factCheck: {
               claims: [],
-              verdict: 'Unproven',
+              verdict: 'InsufficientEvidenceInArticle',
               reasoning: 'No data',
             },
           },
@@ -343,7 +343,7 @@ describe('useArticleAnalysis', () => {
             mainTopics: [],
             factCheck: {
               claims: [],
-              verdict: 'Verified',
+              verdict: 'SupportedByArticle',
               reasoning: '',
             },
           },
@@ -406,7 +406,7 @@ describe('useArticleAnalysis', () => {
             mainTopics: [],
             factCheck: {
               claims: [],
-              verdict: 'Verified',
+              verdict: 'SupportedByArticle',
               reasoning: '',
             },
           },
