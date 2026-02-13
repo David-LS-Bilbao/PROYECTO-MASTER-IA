@@ -79,7 +79,10 @@ const mockAnalysis: ArticleAnalysis = {
 // Mock scraped content
 const mockScrapedContent: ScrapedContent = {
   title: 'Test Article Title',
-  content: 'This is the full scraped content of the article. It contains enough text to be analyzed properly by the AI system.',
+  content:
+    'This is the full scraped content of the article. It contains enough text to be analyzed properly by the AI system. '.repeat(
+      12
+    ),
   description: 'Test description',
   author: 'Test Author',
   publishedDate: '2024-01-15',
@@ -294,6 +297,65 @@ describe('AnalyzeArticleUseCase', () => {
       await useCase.execute({ articleId: article.id });
 
       expect(scrapeSpy).toHaveBeenCalledWith(article.url);
+    });
+
+    it('should cap reliability/traceability when scrapedContentLength is below 800 chars', async () => {
+      const mediumLengthContent = 'Contenido con soporte parcial pero sin enlaces directos. '.repeat(11);
+      const article = createTestArticle({ content: mediumLengthContent });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        reliabilityScore: 92,
+        traceabilityScore: 87,
+      });
+
+      const result = await useCase.execute({ articleId: article.id });
+
+      expect(result.scrapedContentLength).toBe(mediumLengthContent.length);
+      expect(result.analysis.reliabilityScore).toBe(55);
+      expect(result.analysis.traceabilityScore).toBe(40);
+    });
+
+    it('should apply stricter caps when scrapedContentLength is below 300 chars', async () => {
+      const shortButValidContent = 'Texto breve sin documentos ni enlaces externos. '.repeat(5);
+      const article = createTestArticle({ content: shortButValidContent });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        reliabilityScore: 90,
+        traceabilityScore: 84,
+      });
+
+      const result = await useCase.execute({ articleId: article.id });
+
+      expect(result.scrapedContentLength).toBe(shortButValidContent.length);
+      expect(result.analysis.reliabilityScore).toBe(45);
+      expect(result.analysis.traceabilityScore).toBe(30);
+    });
+
+    it('should force escalation in low-cost context when strong claims lack attribution', async () => {
+      const shortContent = 'Asegura resultados absolutos sin citar fuentes, documentos o enlaces.';
+      const article = createTestArticle({ content: `${shortContent} ${shortContent}` });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        should_escalate: false,
+        summary:
+          'La nota afirma que el tratamiento cura siempre al 100% y que el resultado es definitivo.',
+        factCheck: {
+          ...mockAnalysis.factCheck,
+          claims: ['El tratamiento cura siempre al 100% de los casos.'],
+          verdict: 'InsufficientEvidenceInArticle',
+          reasoning: 'No hay atribuciones ni documentos verificables en el texto.',
+        },
+      });
+
+      const result = await useCase.execute({ articleId: article.id });
+
+      expect(result.analysis.should_escalate).toBe(true);
     });
 
     it('should return cached analysis for already analyzed article', async () => {
@@ -578,7 +640,7 @@ describe('AnalyzeArticleUseCase', () => {
         summary: 'Summary',
         biasScore: 0.5,
         analysis: 'invalid-json',
-        content: 'Long content for reanalysis. '.repeat(10),
+        content: 'Long content for reanalysis. '.repeat(50),
       });
       mockRepository.setArticle(article);
 
@@ -620,6 +682,7 @@ describe('AnalyzeArticleUseCase', () => {
         biasScoreNormalized: 0.6,
         biasType: 'lenguaje',
         biasIndicators: ['Loaded wording without citation'],
+        explanation: 'Explicacion original contradictoria.',
       };
       const article = createTestArticle({
         analyzedAt: new Date(),
@@ -635,6 +698,9 @@ describe('AnalyzeArticleUseCase', () => {
       expect(result.analysis.biasScore).toBe(0);
       expect(result.analysis.biasScoreNormalized).toBe(0);
       expect(result.analysis.biasType).toBe('ninguno');
+      expect(result.analysis.explanation).toBe(
+        'No se detectaron señales suficientes de sesgo con evidencia citada.'
+      );
     });
   });
 

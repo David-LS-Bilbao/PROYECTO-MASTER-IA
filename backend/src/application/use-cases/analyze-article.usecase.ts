@@ -78,6 +78,12 @@ export interface AnalyzeBatchOutput {
   }>;
 }
 
+interface AnalysisNormalizationContext {
+  scrapedContentLength: number;
+  usedFallback: boolean;
+  analyzedText: string;
+}
+
 export class AnalyzeArticleUseCase {
   constructor(
     private readonly articleRepository: INewsArticleRepository,
@@ -128,7 +134,11 @@ export class AnalyzeArticleUseCase {
     if (article.isAnalyzed) {
       const existingAnalysis = article.getParsedAnalysis();
       if (existingAnalysis) {
-        const normalizedAnalysis = this.normalizeAnalysis(existingAnalysis);
+        const normalizedAnalysis = this.normalizeAnalysis(existingAnalysis, {
+          scrapedContentLength: article.content?.length || 0,
+          usedFallback: false,
+          analyzedText: article.content || '',
+        });
         console.log(`   [CACHE GLOBAL] Analisis ya existe en BD (analizado: ${article.analyzedAt?.toLocaleString('es-ES')})`);
         console.log(`   Serving cached analysis -> Gemini NO llamado -> Ahorro de ~1500 tokens`);
         console.log(`   Score: ${article.biasScore} | Summary: ${article.summary?.substring(0, 50)}...`);
@@ -245,7 +255,11 @@ export class AnalyzeArticleUseCase {
         source: article.source,
         language: article.language,
       });
-      analysis = this.normalizeAnalysis(analysis);
+      analysis = this.normalizeAnalysis(analysis, {
+        scrapedContentLength,
+        usedFallback,
+        analyzedText: contentToAnalyze || '',
+      });
       console.log(`   ✅ Gemini OK. Score: ${analysis.biasScore} | Summary: ${analysis.summary.substring(0, 30)}...`);
     } catch (error) {
       // Map Gemini errors for observability (AI_RULES.md compliance)
@@ -314,7 +328,15 @@ export class AnalyzeArticleUseCase {
     };
   }
 
-  private normalizeAnalysis(analysis: ArticleAnalysis): ArticleAnalysis {
+  private normalizeAnalysis(
+    analysis: ArticleAnalysis,
+    context?: Partial<AnalysisNormalizationContext>
+  ): ArticleAnalysis {
+    const scrapedContentLength =
+      typeof context?.scrapedContentLength === 'number'
+        ? Math.max(0, context.scrapedContentLength)
+        : Number.POSITIVE_INFINITY;
+
     const rawCandidate =
       typeof analysis.biasRaw === 'number'
         ? analysis.biasRaw
@@ -336,19 +358,41 @@ export class AnalyzeArticleUseCase {
     const biasType = hasCalibratedBiasSignals ? analysis.biasType : 'ninguno';
     const biasIndicators = hasCalibratedBiasSignals ? rawBiasIndicators : [];
 
-    const reliabilityScore = this.clampNumber(analysis.reliabilityScore, 0, 100, 50);
-    const traceabilityScore = this.clampNumber(
+    let reliabilityScore = this.clampNumber(analysis.reliabilityScore, 0, 100, 50);
+    let traceabilityScore = this.clampNumber(
       analysis.traceabilityScore,
       0,
       100,
       reliabilityScore
     );
+    const lengthCappedScores = this.applyLengthScoreCaps(
+      scrapedContentLength,
+      reliabilityScore,
+      traceabilityScore
+    );
+    reliabilityScore = lengthCappedScores.reliabilityScore;
+    traceabilityScore = lengthCappedScores.traceabilityScore;
 
     const claims = Array.isArray(analysis.factCheck?.claims) ? analysis.factCheck.claims : [];
     const inferredEscalation =
       traceabilityScore <= 25 &&
       reliabilityScore <= 45 &&
       claims.some((claim) => /\b(todo|siempre|nunca|100%|definitivo)\b/i.test(claim));
+    const lowCostEscalation = this.shouldEscalateLowCostStrongClaims({
+      scrapedContentLength,
+      usedFallback: context?.usedFallback === true,
+      claims,
+      summary: analysis.summary,
+      analyzedText: context?.analyzedText ?? '',
+    });
+    const shouldEscalate =
+      (typeof analysis.should_escalate === 'boolean'
+        ? analysis.should_escalate
+        : inferredEscalation) || lowCostEscalation;
+    const explanation =
+      biasRaw === 0 && biasIndicators.length === 0
+        ? 'No se detectaron señales suficientes de sesgo con evidencia citada.'
+        : analysis.explanation;
 
     return {
       ...analysis,
@@ -360,11 +404,9 @@ export class AnalyzeArticleUseCase {
       traceabilityScore,
       factualityStatus: analysis.factualityStatus ?? 'no_determinable',
       evidence_needed: Array.isArray(analysis.evidence_needed) ? analysis.evidence_needed : [],
-      should_escalate:
-        typeof analysis.should_escalate === 'boolean'
-          ? analysis.should_escalate
-          : inferredEscalation,
+      should_escalate: shouldEscalate,
       biasIndicators,
+      explanation,
       clickbaitScore: this.clampNumber(analysis.clickbaitScore, 0, 100, 0),
       factCheck: {
         claims,
@@ -377,6 +419,31 @@ export class AnalyzeArticleUseCase {
     };
   }
 
+  private applyLengthScoreCaps(
+    scrapedContentLength: number,
+    reliabilityScore: number,
+    traceabilityScore: number
+  ): { reliabilityScore: number; traceabilityScore: number } {
+    if (scrapedContentLength < 300) {
+      return {
+        reliabilityScore: Math.min(reliabilityScore, 45),
+        traceabilityScore: Math.min(traceabilityScore, 30),
+      };
+    }
+
+    if (scrapedContentLength < 800) {
+      return {
+        reliabilityScore: Math.min(reliabilityScore, 55),
+        traceabilityScore: Math.min(traceabilityScore, 40),
+      };
+    }
+
+    return {
+      reliabilityScore,
+      traceabilityScore,
+    };
+  }
+
   private hasThreeQuotedBiasIndicators(indicators: string[]): boolean {
     if (indicators.length < 3) {
       return false;
@@ -384,6 +451,33 @@ export class AnalyzeArticleUseCase {
 
     const citationPattern = /["'`][^"'`]{3,140}["'`]|\([^()]{3,120}\)|\[[^\[\]]{3,120}\]/;
     return indicators.slice(0, 3).every((indicator) => citationPattern.test(indicator));
+  }
+
+  private shouldEscalateLowCostStrongClaims(params: {
+    scrapedContentLength: number;
+    usedFallback: boolean;
+    claims: string[];
+    summary: string;
+    analyzedText: string;
+  }): boolean {
+    const isLowCostContext =
+      params.usedFallback || params.scrapedContentLength < 800;
+    if (!isLowCostContext) {
+      return false;
+    }
+
+    const claimsText = [...params.claims, params.summary].join(' ');
+    const hasStrongClaim = /\b(siempre|nunca|todo esta|todo está|demuestra|100%|sin duda|definitivo|urgente|esc[áa]ndalo|bomba|inminente)\b/i.test(
+      claimsText
+    );
+    if (!hasStrongClaim) {
+      return false;
+    }
+
+    const hasAttribution = /\b(seg[uú]n|according to|de acuerdo con|afirm[oó]|inform[oó]|report[oó]|ministerio|universidad|instituto|documento|informe)\b|https?:\/\/\S+|www\.\S+/i.test(
+      params.analyzedText
+    );
+    return !hasAttribution;
   }
 
   private clampNumber(
