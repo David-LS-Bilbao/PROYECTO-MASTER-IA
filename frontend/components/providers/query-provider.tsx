@@ -1,35 +1,60 @@
 /**
- * Query Provider - TanStack Query v5
+ * Query Provider - TanStack Query v5 + Persistent Cache
  *
- * FRONTEND MODERNO (Sprint 13 - Fase C + Sprint 29 Performance):
+ * FRONTEND MODERNO (Sprint 13 - Fase C + Sprint 29 Performance + Sprint 31 Offline-First):
  * - Configuración global de React Query optimizada para VELOCIDAD PERCIBIDA
  * - Estrategia de "Speed Index" agresiva para navegación instantánea
  * - Caché inteligente con staleTime de 5 minutos (evita spinners redundantes)
  * - Reintentos conservadores para no saturar en errores de red
  * - DevTools habilitados en desarrollo
  *
- * CAMBIOS SPRINT 29 (Performance Optimization):
- * - staleTime: 30s → 5min (las noticias no cambian cada segundo, evita refetches)
- * - refetchOnWindowFocus: true → false (no molestar al cambiar de pestaña)
- * - refetchOnMount: 'always' → true (solo refetch si stale, no SIEMPRE)
- * - gcTime: 5min → 30min (mantener caché más tiempo para mejor UX)
- * - retry: 3 → 1 (un solo reintento para no saturar)
- *
- * OBJETIVO: App "snappy" donde el usuario casi nunca ve spinners de carga
+ * SPRINT 31 (Offline-First / Cold Start Masking):
+ * - PersistQueryClientProvider persiste la caché de React Query en localStorage
+ * - Al abrir la app, las noticias de la sesión anterior se muestran INSTANTÁNEAMENTE
+ * - Mientras tanto, el backend (Render free tier) despierta en segundo plano
+ * - Patrón: "Stale-While-Revalidate" con persistencia entre sesiones
+ * - maxAge: 24 horas (noticias del día anterior siguen siendo relevantes)
  */
 
 'use client';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
-import { useState } from 'react';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
+import { useState, useMemo } from 'react';
+
+// =============================================================================
+// PERSISTENCIA: Configuración del almacenamiento en localStorage
+// =============================================================================
+
+/** Tiempo máximo que la caché persistida es válida: 24 horas */
+const PERSIST_MAX_AGE = 1000 * 60 * 60 * 24; // 24h
+
+/** Prefijo para las claves en localStorage (evita colisiones) */
+const PERSIST_STORAGE_KEY = 'verity-news-query-cache';
 
 /**
- * QueryProvider - Wrapper para React Query
+ * Crea el persister de localStorage de forma segura para SSR.
+ * En el servidor (typeof window === 'undefined'), retorna undefined.
+ * Solo se instancia en el cliente.
+ */
+function createPersister() {
+  if (typeof window === 'undefined') return undefined;
+
+  return createSyncStoragePersister({
+    storage: window.localStorage,
+    key: PERSIST_STORAGE_KEY,
+  });
+}
+
+/**
+ * QueryProvider - Wrapper para React Query con Persistencia en localStorage
  *
  * Patrón Singleton para SSR:
  * - useState evita reinicializaciones en re-renders
  * - QueryClient se crea solo una vez por usuario
+ * - Persister se crea con useMemo (SSR-safe: solo en cliente)
  */
 export function QueryProvider({ children }: { children: React.ReactNode }) {
   // Inicialización lazy del QueryClient (solo una vez)
@@ -48,11 +73,12 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
             staleTime: 1000 * 60 * 5, // 5 minutos
 
             // =====================================================================
-            // GARBAGE COLLECTION TIME: 30 MINUTOS
+            // GARBAGE COLLECTION TIME: 24 HORAS (Sprint 31: alineado con persistencia)
             // =====================================================================
-            // RAZÓN: Mantén los datos en caché (memoria) durante media hora aunque
-            // no se estén usando activamente. Si el usuario vuelve, carga instantánea.
-            gcTime: 1000 * 60 * 30, // 30 minutos
+            // RAZÓN: La caché en memoria debe vivir al menos tanto como la caché
+            // persistida en localStorage. Si gcTime < maxAge del persister, los datos
+            // se restaurarían del disco pero se eliminarían inmediatamente de memoria.
+            gcTime: PERSIST_MAX_AGE, // 24 horas (antes: 30 min)
 
             // =====================================================================
             // RETRY: 1 reintento (reducido de 3)
@@ -65,29 +91,50 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
             // =====================================================================
             // REFETCH STRATEGY: Conservadora para velocidad percibida
             // =====================================================================
-            // ❌ refetchOnWindowFocus: false → No refetchear al cambiar de pestaña
-            //    (molesto para el usuario, solo refetch si los datos están stale)
-            // ✅ refetchOnMount: true → Solo refetch si datos stale (NO siempre)
-            // ✅ refetchOnReconnect: true → Al reconectar internet, actualizar
-            refetchOnWindowFocus: false, // CAMBIO: true → false (Sprint 29)
-            refetchOnMount: true,         // CAMBIO: 'always' → true (Sprint 29)
+            refetchOnWindowFocus: false,
+            refetchOnMount: true,
             refetchOnReconnect: true,
           },
           mutations: {
-            // Reintentos para mutaciones (POST/PUT/DELETE)
             retry: 1,
           },
         },
       })
   );
 
+  // Persister se crea solo en el cliente (SSR-safe)
+  const persister = useMemo(() => createPersister(), []);
+
+  // =========================================================================
+  // RENDER: PersistQueryClientProvider envuelve la app
+  // - Restaura la caché de localStorage al montar
+  // - Guarda la caché en localStorage al desmontar/actualizar
+  // - Si persister es undefined (SSR), se comporta como QueryClientProvider normal
+  // =========================================================================
+  if (!persister) {
+    // SSR fallback: sin persistencia (primer render en servidor)
+    // Esto no debería ocurrir en la práctica porque 'use client' lo previene,
+    // pero es un guard seguro que usa el provider estándar sin persistencia.
+    return (
+      <QueryClientProvider client={queryClient}>
+        {children}
+      </QueryClientProvider>
+    );
+  }
+
   return (
-    <QueryClientProvider client={queryClient}>
+    <PersistQueryClientProvider
+      client={queryClient}
+      persistOptions={{
+        persister,
+        maxAge: PERSIST_MAX_AGE,
+      }}
+    >
       {children}
       {/* DevTools: Solo visible en desarrollo */}
       {process.env.NODE_ENV === 'development' && (
         <ReactQueryDevtools initialIsOpen={false} position="bottom" />
       )}
-    </QueryClientProvider>
+    </PersistQueryClientProvider>
   );
 }
