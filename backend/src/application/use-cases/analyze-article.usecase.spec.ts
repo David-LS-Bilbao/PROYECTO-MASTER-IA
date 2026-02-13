@@ -71,6 +71,7 @@ const mockAnalysis: ArticleAnalysis = {
   should_escalate: false,
   biasComment:
     'El encuadre refleja una lectura parcial basada en senales textuales citadas y evaluadas solo con evidencia interna.',
+  articleLeaning: 'indeterminada',
   biasLeaning: 'indeterminada',
   reliabilityComment:
     'La fiabilidad interna es alta por trazabilidad de citas y atribuciones; no verificable con fuentes internas en ausencia de validacion externa.',
@@ -282,6 +283,7 @@ describe('AnalyzeArticleUseCase', () => {
           reliabilityScore: expect.any(Number),
           traceabilityScore: expect.any(Number),
           biasComment: expect.any(String),
+          articleLeaning: expect.any(String),
           biasLeaning: expect.any(String),
           reliabilityComment: expect.any(String),
         })
@@ -350,6 +352,38 @@ describe('AnalyzeArticleUseCase', () => {
       expect(result.analysis.traceabilityScore).toBe(30);
     });
 
+    it('should route moderate mode for long content in detail context', async () => {
+      const longContent = 'Contenido extenso con citas y datos verificables. '.repeat(30);
+      const article = createTestArticle({ content: longContent });
+      mockRepository.setArticle(article);
+
+      const geminiSpy = vi.spyOn(mockGemini, 'analyzeArticle');
+
+      await useCase.execute({ articleId: article.id, analysisMode: 'moderate' });
+
+      expect(geminiSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          analysisMode: 'moderate',
+        })
+      );
+    });
+
+    it('should force low_cost mode when content is short even if moderate is requested', async () => {
+      const shortContent = 'Texto breve sin soporte documental. '.repeat(10);
+      const article = createTestArticle({ content: shortContent });
+      mockRepository.setArticle(article);
+
+      const geminiSpy = vi.spyOn(mockGemini, 'analyzeArticle');
+
+      await useCase.execute({ articleId: article.id, analysisMode: 'moderate' });
+
+      expect(geminiSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          analysisMode: 'low_cost',
+        })
+      );
+    });
+
     it('should force escalation in low-cost context when strong claims lack attribution', async () => {
       const shortContent = 'Asegura resultados absolutos sin citar fuentes, documentos o enlaces.';
       const article = createTestArticle({ content: `${shortContent} ${shortContent}` });
@@ -373,7 +407,7 @@ describe('AnalyzeArticleUseCase', () => {
       expect(result.analysis.should_escalate).toBe(true);
     });
 
-    it('should force indeterminada biasLeaning and fallback biasComment in low-cost contexts', async () => {
+    it('should force indeterminada articleLeaning and fallback biasComment in low-cost contexts', async () => {
       const shortContent = 'Texto corto con framing parcial y afirmaciones politicas. '.repeat(6);
       const article = createTestArticle({ content: shortContent });
       mockRepository.setArticle(article);
@@ -383,6 +417,7 @@ describe('AnalyzeArticleUseCase', () => {
         biasRaw: 5,
         biasScore: 0.5,
         biasScoreNormalized: 0.5,
+        articleLeaning: 'progresista',
         biasLeaning: 'progresista',
         biasComment: 'Comentario del modelo que no debe usarse en low-cost.',
       });
@@ -390,7 +425,7 @@ describe('AnalyzeArticleUseCase', () => {
       const result = await useCase.execute({ articleId: article.id });
 
       expect(result.scrapedContentLength).toBeLessThan(800);
-      expect(result.analysis.biasLeaning).toBe('indeterminada');
+      expect(result.analysis.articleLeaning).toBe('indeterminada');
       expect(result.analysis.biasComment).toContain(
         'No hay suficientes senales citadas para inferir una tendencia ideologica'
       );
@@ -416,6 +451,26 @@ describe('AnalyzeArticleUseCase', () => {
       expect(result.analysis.reliabilityComment).toContain('fuente primaria');
       expect(result.analysis.reliabilityComment).toContain('documento oficial');
       expect(result.analysis.reliabilityComment).not.toContain('metodologia completa');
+    });
+
+    it('should force factCheck verdict to InsufficientEvidenceInArticle when claims are empty', async () => {
+      const article = createTestArticle({
+        content: 'Contenido con tono informativo pero sin afirmaciones verificables directas. '.repeat(20),
+      });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        factCheck: {
+          claims: [],
+          verdict: 'SupportedByArticle',
+          reasoning: 'No aplica',
+        },
+      });
+
+      const result = await useCase.execute({ articleId: article.id });
+      expect(result.analysis.factCheck.claims).toEqual([]);
+      expect(result.analysis.factCheck.verdict).toBe('InsufficientEvidenceInArticle');
     });
 
     it('should return cached analysis for already analyzed article', async () => {
@@ -731,12 +786,15 @@ describe('AnalyzeArticleUseCase', () => {
 
       await useCase.execute({ articleId: article.id });
 
-      expect(geminiSpy).toHaveBeenCalledWith({
-        title: 'Specific Test Title',
-        content: expect.any(String),
-        source: 'Specific Source',
-        language: 'en',
-      });
+      expect(geminiSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Specific Test Title',
+          content: expect.any(String),
+          source: 'Specific Source',
+          language: 'en',
+          analysisMode: 'low_cost',
+        })
+      );
     });
 
     it('should neutralize bias when cached analysis has fewer than 3 cited bias indicators', async () => {
@@ -764,7 +822,7 @@ describe('AnalyzeArticleUseCase', () => {
       expect(result.analysis.biasScoreNormalized).toBe(0);
       expect(result.analysis.biasType).toBe('ninguno');
       expect(result.analysis.explanation).toBe(
-        'No se detectaron señales suficientes de sesgo con evidencia citada.'
+        'No se detectaron senales suficientes de sesgo con evidencia citada.'
       );
     });
   });

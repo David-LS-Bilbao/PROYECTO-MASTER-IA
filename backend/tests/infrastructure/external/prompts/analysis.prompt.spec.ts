@@ -32,7 +32,7 @@ describe('ANALYSIS_PROMPT vNext.1', () => {
 
   it('incluye campos vNext de explicabilidad con limites de longitud', () => {
     expect(ANALYSIS_PROMPT).toContain('biasComment');
-    expect(ANALYSIS_PROMPT).toContain('biasLeaning');
+    expect(ANALYSIS_PROMPT).toContain('articleLeaning');
     expect(ANALYSIS_PROMPT).toContain('reliabilityComment');
     expect(ANALYSIS_PROMPT).toContain('max 220');
   });

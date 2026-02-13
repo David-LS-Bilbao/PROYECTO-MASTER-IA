@@ -807,7 +807,7 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
       expect(promptUsed).toContain('Analiza SOLO el texto dado en <ARTICLE>');
     });
 
-    it('usa prompt estándar cuando el contenido supera 800 chars y no es fallback', async () => {
+    it('usa low-cost por defecto cuando no se solicita modo explícito', async () => {
       mockGenerateContent.mockResolvedValueOnce({
         response: {
           text: () => JSON.stringify({ summary: 'Resumen largo' }),
@@ -827,7 +827,55 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
       });
 
       const promptUsed = mockGenerateContent.mock.calls[0][0] as string;
-      expect(promptUsed).toContain('Actua como auditor OSINT');
+      expect(promptUsed).toContain('Analiza SOLO el texto dado en <ARTICLE>');
+    });
+
+    it('usa prompt MODERATE cuando se solicita analysisMode=moderate', async () => {
+      mockGenerateContent.mockResolvedValueOnce({
+        response: {
+          text: () => JSON.stringify({ summary: 'Resumen moderate' }),
+          usageMetadata: {
+            promptTokenCount: 120,
+            candidatesTokenCount: 60,
+            totalTokenCount: 180,
+          },
+        },
+      });
+
+      await geminiClient.analyzeArticle({
+        title: 'Articulo moderate',
+        content: 'Contenido largo con trazabilidad potencial. '.repeat(30),
+        source: 'Fuente test',
+        language: 'es',
+        analysisMode: 'moderate',
+      });
+
+      const promptUsed = mockGenerateContent.mock.calls[0][0] as string;
+      expect(promptUsed).toContain('Actua como auditor OSINT de analisis textual.');
+    });
+
+    it('usa prompt STANDARD cuando se solicita analysisMode=standard', async () => {
+      mockGenerateContent.mockResolvedValueOnce({
+        response: {
+          text: () => JSON.stringify({ summary: 'Resumen standard' }),
+          usageMetadata: {
+            promptTokenCount: 120,
+            candidatesTokenCount: 60,
+            totalTokenCount: 180,
+          },
+        },
+      });
+
+      await geminiClient.analyzeArticle({
+        title: 'Articulo standard',
+        content: 'Contenido largo con trazabilidad potencial. '.repeat(30),
+        source: 'Fuente test',
+        language: 'es',
+        analysisMode: 'standard',
+      });
+
+      const promptUsed = mockGenerateContent.mock.calls[0][0] as string;
+      expect(promptUsed).toContain('FEW-SHOT 1');
     });
 
     it('usa prompt low-cost cuando detecta fallback title+description aunque el contenido sea largo', async () => {
@@ -849,6 +897,7 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
         content: fallbackContent,
         source: 'Fuente test',
         language: 'es',
+        analysisMode: 'moderate',
       });
 
       const promptUsed = mockGenerateContent.mock.calls[0][0] as string;

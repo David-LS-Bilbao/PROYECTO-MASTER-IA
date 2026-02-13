@@ -7,7 +7,7 @@ import Image from 'next/image';
 import DOMPurify from 'dompurify';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ExternalLink, Clock, User, Tag, Sparkles } from 'lucide-react';
-import { analyzeArticle, type NewsArticle, type AnalyzeResponse } from '@/lib/api';
+import { analyzeArticleWithMode, type AnalysisMode } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useArticle } from '@/hooks/useArticle';
 import { formatDate, getBiasInfo, getSentimentInfo, isValidUUID, isSafeUrl } from '@/lib/news-utils';
@@ -126,7 +126,7 @@ export default function NewsDetailPage() {
     });
   }, [article?.content]);
 
-  const handleAnalyze = async () => {
+  const handleAnalyze = async (analysisMode: AnalysisMode = 'moderate') => {
     if (!article) {
       return;
     }
@@ -150,7 +150,7 @@ export default function NewsDetailPage() {
         return;
       }
 
-      const result = await analyzeArticle(article.id, token);
+      await analyzeArticleWithMode(article.id, token, analysisMode);
 
       // Invalidate caches to refetch article and update dashboard buttons
       queryClient.invalidateQueries({ queryKey: ['article', id] });
@@ -234,13 +234,18 @@ export default function NewsDetailPage() {
   const isAnalyzed = article.analyzedAt !== null;
   const biasInfo = article.biasScore !== null ? getBiasInfo(article.biasScore) : null;
   const sentimentInfo = article.analysis?.sentiment ? getSentimentInfo(article.analysis.sentiment) : null;
-  const biasLeaningLabels: Record<'progresista' | 'conservadora' | 'neutral' | 'indeterminada' | 'otra', string> = {
+  const articleLeaningLabels: Record<'progresista' | 'conservadora' | 'extremista' | 'neutral' | 'indeterminada', string> = {
     progresista: 'Progresista',
     conservadora: 'Conservadora',
+    extremista: 'Extremista',
     neutral: 'Neutral',
     indeterminada: 'Indeterminada',
-    otra: 'Otra',
   };
+  const articleLeaning =
+    article.analysis?.articleLeaning ??
+    (article.analysis?.biasLeaning === 'otra'
+      ? 'indeterminada'
+      : article.analysis?.biasLeaning);
 
   // Determine if we should show analysis content or skeleton
   // Show skeleton if: analyzing OR revealing (artificial delay)
@@ -447,9 +452,9 @@ export default function NewsDetailPage() {
                           {article.analysis.biasComment}
                         </p>
                       )}
-                      {article.analysis?.biasLeaning && (
+                      {articleLeaning && (
                         <p className="text-xs text-muted-foreground">
-                          Tendencia estimada: {biasLeaningLabels[article.analysis.biasLeaning]}
+                          Tendencia estimada: {articleLeaningLabels[articleLeaning]}
                         </p>
                       )}
                     </div>
@@ -517,7 +522,7 @@ export default function NewsDetailPage() {
                     <Button
                       variant="outline"
                       className="w-full gap-2"
-                      onClick={handleAnalyze}
+                      onClick={() => handleAnalyze('moderate')}
                       disabled={isAnalyzing || isRevealing}
                     >
                       {isAnalyzing || isRevealing ? (
@@ -532,6 +537,15 @@ export default function NewsDetailPage() {
                         </>
                       )}
                     </Button>
+                    <Button
+                      variant="secondary"
+                      className="w-full gap-2"
+                      onClick={() => handleAnalyze('standard')}
+                      disabled={isAnalyzing || isRevealing}
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      Análisis profundo
+                    </Button>
                   </>
                 ) : (
                   <>
@@ -545,7 +559,7 @@ export default function NewsDetailPage() {
                       <Button
                         size="lg"
                         className="w-full gap-2"
-                        onClick={handleAnalyze}
+                        onClick={() => handleAnalyze('moderate')}
                         disabled={isAnalyzing || isRevealing}
                       >
                         {isAnalyzing || isRevealing ? (

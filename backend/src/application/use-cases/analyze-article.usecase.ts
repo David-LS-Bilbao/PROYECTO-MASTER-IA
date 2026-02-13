@@ -17,7 +17,7 @@
 
 import { ArticleAnalysis } from '../../domain/entities/news-article.entity';
 import { INewsArticleRepository } from '../../domain/repositories/news-article.repository';
-import { IGeminiClient } from '../../domain/services/gemini-client.interface';
+import { AnalysisMode, IGeminiClient } from '../../domain/services/gemini-client.interface';
 import { IJinaReaderClient } from '../../domain/services/jina-reader-client.interface';
 import { IVectorClient } from '../../domain/services/vector-client.interface';
 import { EntityNotFoundError, ValidationError } from '../../domain/errors/domain.error';
@@ -40,10 +40,12 @@ const MAX_BATCH_LIMIT = 100;
  * Contenido muy corto no justifica una llamada a Gemini.
  */
 const MIN_CONTENT_LENGTH = 100;
+const AUTO_LOW_COST_CONTENT_THRESHOLD = 800;
 
 
 export interface AnalyzeArticleInput {
   articleId: string;
+  analysisMode?: AnalysisMode;
   user?: {
     id: string;
     subscriptionPlan: 'FREE' | 'PREMIUM';
@@ -82,6 +84,7 @@ interface AnalysisNormalizationContext {
   scrapedContentLength: number;
   usedFallback: boolean;
   analyzedText: string;
+  analysisModeUsed: AnalysisMode;
 }
 
 export class AnalyzeArticleUseCase {
@@ -99,6 +102,7 @@ export class AnalyzeArticleUseCase {
    */
   async execute(input: AnalyzeArticleInput): Promise<AnalyzeArticleOutput> {
     const { articleId, user } = input;
+    const requestedAnalysisMode = this.normalizeAnalysisMode(input.analysisMode);
 
     // Validate input
     if (!articleId || articleId.trim() === '') {
@@ -134,32 +138,48 @@ export class AnalyzeArticleUseCase {
     if (article.isAnalyzed) {
       const existingAnalysis = article.getParsedAnalysis();
       if (existingAnalysis) {
-        const normalizedAnalysis = this.normalizeAnalysis(existingAnalysis, {
-          scrapedContentLength: article.content?.length || 0,
-          usedFallback: false,
-          analyzedText: article.content || '',
-        });
-        console.log(`   [CACHE GLOBAL] Analisis ya existe en BD (analizado: ${article.analyzedAt?.toLocaleString('es-ES')})`);
-        console.log(`   Serving cached analysis -> Gemini NO llamado -> Ahorro de ~1500 tokens`);
-        console.log(`   Score: ${article.biasScore} | Summary: ${article.summary?.substring(0, 50)}...`);
+        const cachedContentLength = article.content?.length || 0;
+        const requiredModeForCache = cachedContentLength < AUTO_LOW_COST_CONTENT_THRESHOLD
+          ? 'low_cost'
+          : requestedAnalysisMode;
+        const shouldUpgradeCachedAnalysis = this.requiresAnalysisUpgrade(
+          existingAnalysis,
+          requiredModeForCache
+        );
 
-        // Sprint 18.2: Auto-favorite WITH unlocked analysis (user requested it)
-        if (user?.id) {
-          try {
-            await this.articleRepository.addFavoriteForUser(user.id, article.id, true);
-          } catch (favError) {
-            // Non-blocking
-            console.warn(`   [Auto-favorito cache] Fallo (no critico): ${favError instanceof Error ? favError.message : 'Error'}`);
+        if (!shouldUpgradeCachedAnalysis) {
+          const normalizedAnalysis = this.normalizeAnalysis(existingAnalysis, {
+            scrapedContentLength: article.content?.length || 0,
+            usedFallback: false,
+            analyzedText: article.content || '',
+            analysisModeUsed: this.normalizeAnalysisMode(existingAnalysis.analysisModeUsed),
+          });
+          console.log(`   [CACHE GLOBAL] Analisis ya existe en BD (analizado: ${article.analyzedAt?.toLocaleString('es-ES')})`);
+          console.log(`   Serving cached analysis -> Gemini NO llamado -> Ahorro de ~1500 tokens`);
+          console.log(`   Score: ${article.biasScore} | Summary: ${article.summary?.substring(0, 50)}...`);
+
+          // Sprint 18.2: Auto-favorite WITH unlocked analysis (user requested it)
+          if (user?.id) {
+            try {
+              await this.articleRepository.addFavoriteForUser(user.id, article.id, true);
+            } catch (favError) {
+              // Non-blocking
+              console.warn(`   [Auto-favorito cache] Fallo (no critico): ${favError instanceof Error ? favError.message : 'Error'}`);
+            }
           }
+
+          return {
+            articleId: article.id,
+            summary: article.summary ?? normalizedAnalysis.summary,
+            biasScore: normalizedAnalysis.biasScoreNormalized,
+            analysis: normalizedAnalysis,
+            scrapedContentLength: article.content?.length || 0,
+          };
         }
 
-        return {
-          articleId: article.id,
-          summary: article.summary ?? normalizedAnalysis.summary,
-          biasScore: normalizedAnalysis.biasScoreNormalized,
-          analysis: normalizedAnalysis,
-          scrapedContentLength: article.content?.length || 0,
-        };
+        console.log(
+          `   [CACHE GLOBAL] Se fuerza re-analisis por upgrade de modo (${requiredModeForCache}).`
+        );
       }
     }
 
@@ -247,6 +267,12 @@ export class AnalyzeArticleUseCase {
       adjustedContent = `ADVERTENCIA: No se pudo acceder al artículo completo. Realiza el análisis basándote ÚNICAMENTE en el título y el resumen disponibles. Indica explícitamente en tu respuesta que el análisis es preliminar por falta de acceso a la fuente original.\n\n${contentToAnalyze || ''}`;
     }
     
+    const effectiveAnalysisMode = this.resolveEffectiveAnalysisMode({
+      requestedMode: requestedAnalysisMode,
+      scrapedContentLength,
+      usedFallback,
+    });
+
     let analysis: ArticleAnalysis;
     try {
       analysis = await this.geminiClient.analyzeArticle({
@@ -254,11 +280,13 @@ export class AnalyzeArticleUseCase {
         content: adjustedContent,
         source: article.source,
         language: article.language,
+        analysisMode: effectiveAnalysisMode,
       });
       analysis = this.normalizeAnalysis(analysis, {
         scrapedContentLength,
         usedFallback,
         analyzedText: contentToAnalyze || '',
+        analysisModeUsed: effectiveAnalysisMode,
       });
       console.log(`   ✅ Gemini OK. Score: ${analysis.biasScore} | Summary: ${analysis.summary.substring(0, 30)}...`);
     } catch (error) {
@@ -336,6 +364,15 @@ export class AnalyzeArticleUseCase {
       typeof context?.scrapedContentLength === 'number'
         ? Math.max(0, context.scrapedContentLength)
         : Number.POSITIVE_INFINITY;
+    const analysisModeUsed = this.resolveEffectiveAnalysisMode({
+      requestedMode: this.normalizeAnalysisMode(
+        context?.analysisModeUsed ?? analysis.analysisModeUsed
+      ),
+      scrapedContentLength: Number.isFinite(scrapedContentLength)
+        ? scrapedContentLength
+        : AUTO_LOW_COST_CONTENT_THRESHOLD,
+      usedFallback: context?.usedFallback === true,
+    });
 
     const rawCandidate =
       typeof analysis.biasRaw === 'number'
@@ -374,18 +411,26 @@ export class AnalyzeArticleUseCase {
     traceabilityScore = lengthCappedScores.traceabilityScore;
     const factualityStatus = analysis.factualityStatus ?? 'no_determinable';
     const evidenceNeeded = Array.isArray(analysis.evidence_needed)
-      ? analysis.evidence_needed
+      ? analysis.evidence_needed.slice(0, 4)
       : [];
-    const shouldForceIndeterminateBias =
-      !hasCalibratedBiasSignals || scrapedContentLength < 800;
-    const parsedBiasLeaning = this.normalizeBiasLeaning(analysis.biasLeaning);
-    const biasLeaning = shouldForceIndeterminateBias
-      ? 'indeterminada'
-      : (parsedBiasLeaning ?? 'indeterminada');
+    const hasIdeologicalEvidence =
+      hasCalibratedBiasSignals &&
+      scrapedContentLength >= 800 &&
+      biasIndicators.length >= 3 &&
+      traceabilityScore >= 40;
+    const parsedArticleLeaning = this.normalizeArticleLeaning(
+      analysis.articleLeaning ?? analysis.biasLeaning
+    );
+    const articleLeaning = hasIdeologicalEvidence
+      ? this.enforceExtremistRule(
+          parsedArticleLeaning ?? 'indeterminada',
+          biasIndicators
+        )
+      : 'indeterminada';
     const biasComment = this.buildBiasComment({
-      shouldForceIndeterminateBias,
+      shouldForceIndeterminateBias: !hasIdeologicalEvidence,
       biasIndicators,
-      biasLeaning,
+      articleLeaning,
     });
     const reliabilityComment = this.buildReliabilityComment({
       reliabilityScore,
@@ -394,7 +439,9 @@ export class AnalyzeArticleUseCase {
       evidenceNeeded,
     });
 
-    const claims = Array.isArray(analysis.factCheck?.claims) ? analysis.factCheck.claims : [];
+    const claims = Array.isArray(analysis.factCheck?.claims)
+      ? analysis.factCheck.claims.slice(0, 5)
+      : [];
     const inferredEscalation =
       traceabilityScore <= 25 &&
       reliabilityScore <= 45 &&
@@ -412,7 +459,7 @@ export class AnalyzeArticleUseCase {
         : inferredEscalation) || lowCostEscalation;
     const explanation =
       biasRaw === 0 && biasIndicators.length === 0
-        ? 'No se detectaron señales suficientes de sesgo con evidencia citada.'
+        ? 'No se detectaron senales suficientes de sesgo con evidencia citada.'
         : analysis.explanation;
 
     return {
@@ -428,13 +475,18 @@ export class AnalyzeArticleUseCase {
       should_escalate: shouldEscalate,
       biasIndicators,
       biasComment,
-      biasLeaning,
+      articleLeaning,
+      biasLeaning: this.toLegacyBiasLeaning(articleLeaning),
       reliabilityComment,
       explanation,
+      analysisModeUsed,
       clickbaitScore: this.clampNumber(analysis.clickbaitScore, 0, 100, 0),
       factCheck: {
         claims,
-        verdict: analysis.factCheck?.verdict ?? 'InsufficientEvidenceInArticle',
+        verdict:
+          claims.length === 0
+            ? 'InsufficientEvidenceInArticle'
+            : (analysis.factCheck?.verdict ?? 'InsufficientEvidenceInArticle'),
         reasoning:
           typeof analysis.factCheck?.reasoning === 'string'
             ? analysis.factCheck.reasoning
@@ -477,9 +529,9 @@ export class AnalyzeArticleUseCase {
     return indicators.slice(0, 3).every((indicator) => citationPattern.test(indicator));
   }
 
-  private normalizeBiasLeaning(
+  private normalizeArticleLeaning(
     value: unknown
-  ): 'progresista' | 'conservadora' | 'neutral' | 'indeterminada' | 'otra' | undefined {
+  ): 'progresista' | 'conservadora' | 'extremista' | 'neutral' | 'indeterminada' | undefined {
     if (typeof value !== 'string') {
       return undefined;
     }
@@ -488,22 +540,54 @@ export class AnalyzeArticleUseCase {
     const validValues = [
       'progresista',
       'conservadora',
+      'extremista',
       'neutral',
       'indeterminada',
-      'otra',
     ];
 
     if ((validValues as string[]).includes(normalized)) {
-      return normalized as 'progresista' | 'conservadora' | 'neutral' | 'indeterminada' | 'otra';
+      return normalized as 'progresista' | 'conservadora' | 'extremista' | 'neutral' | 'indeterminada';
+    }
+
+    if (normalized === 'otra') {
+      return 'indeterminada';
     }
 
     return undefined;
   }
 
+  private toLegacyBiasLeaning(
+    articleLeaning: 'progresista' | 'conservadora' | 'extremista' | 'neutral' | 'indeterminada'
+  ): 'progresista' | 'conservadora' | 'neutral' | 'indeterminada' | 'otra' {
+    if (articleLeaning === 'extremista') {
+      return 'otra';
+    }
+
+    return articleLeaning;
+  }
+
+  private enforceExtremistRule(
+    articleLeaning: 'progresista' | 'conservadora' | 'extremista' | 'neutral' | 'indeterminada',
+    biasIndicators: string[]
+  ): 'progresista' | 'conservadora' | 'extremista' | 'neutral' | 'indeterminada' {
+    if (articleLeaning !== 'extremista') {
+      return articleLeaning;
+    }
+
+    return this.hasExtremistEvidence(biasIndicators) ? 'extremista' : 'indeterminada';
+  }
+
+  private hasExtremistEvidence(biasIndicators: string[]): boolean {
+    const extremistPattern =
+      /\b(deshumaniza|deshumanizante|plaga|extermin|aniquil|eliminar|matar|violento|enemigo interno|limpieza|subhuman|vermin|kill|destroy|crush|siempre|nunca|sin excepcion)\b/i;
+
+    return biasIndicators.some((indicator) => extremistPattern.test(indicator));
+  }
+
   private buildBiasComment(params: {
     shouldForceIndeterminateBias: boolean;
     biasIndicators: string[];
-    biasLeaning: 'progresista' | 'conservadora' | 'neutral' | 'indeterminada' | 'otra';
+    articleLeaning: 'progresista' | 'conservadora' | 'extremista' | 'neutral' | 'indeterminada';
   }): string {
     if (params.shouldForceIndeterminateBias) {
       return this.normalizeUiComment(
@@ -516,9 +600,9 @@ export class AnalyzeArticleUseCase {
       .map((indicator) => this.summarizeIndicator(indicator))
       .join('; ');
     const leaningText =
-      params.biasLeaning === 'indeterminada'
+      params.articleLeaning === 'indeterminada'
         ? 'sin tendencia ideologica concluyente'
-        : `con tendencia ${params.biasLeaning}`;
+        : `con tendencia ${params.articleLeaning}`;
     const generated = `El encuadre refleja ${leaningText} segun senales citadas (${citedSignals}), evaluadas solo desde el texto disponible y sin inferir hechos externos`;
 
     return this.normalizeUiComment(generated);
@@ -596,7 +680,7 @@ export class AnalyzeArticleUseCase {
     analyzedText: string;
   }): boolean {
     const isLowCostContext =
-      params.usedFallback || params.scrapedContentLength < 800;
+      params.usedFallback || params.scrapedContentLength < AUTO_LOW_COST_CONTENT_THRESHOLD;
     if (!isLowCostContext) {
       return false;
     }
@@ -613,6 +697,46 @@ export class AnalyzeArticleUseCase {
       params.analyzedText
     );
     return !hasAttribution;
+  }
+
+  private normalizeAnalysisMode(value: unknown): AnalysisMode {
+    if (value === 'moderate' || value === 'standard' || value === 'low_cost') {
+      return value;
+    }
+
+    return 'low_cost';
+  }
+
+  private resolveEffectiveAnalysisMode(params: {
+    requestedMode: AnalysisMode;
+    scrapedContentLength: number;
+    usedFallback: boolean;
+  }): AnalysisMode {
+    if (params.usedFallback || params.scrapedContentLength < AUTO_LOW_COST_CONTENT_THRESHOLD) {
+      return 'low_cost';
+    }
+
+    return params.requestedMode;
+  }
+
+  private requiresAnalysisUpgrade(
+    existingAnalysis: ArticleAnalysis,
+    requestedMode: AnalysisMode
+  ): boolean {
+    const cachedMode = this.normalizeAnalysisMode(existingAnalysis.analysisModeUsed);
+    return this.getAnalysisModeRank(cachedMode) < this.getAnalysisModeRank(requestedMode);
+  }
+
+  private getAnalysisModeRank(mode: AnalysisMode): number {
+    switch (mode) {
+      case 'standard':
+        return 3;
+      case 'moderate':
+        return 2;
+      case 'low_cost':
+      default:
+        return 1;
+    }
   }
 
   private clampNumber(

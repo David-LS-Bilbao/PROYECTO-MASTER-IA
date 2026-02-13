@@ -12,6 +12,7 @@
 import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
 import {
   IGeminiClient,
+  AnalysisMode,
   AnalyzeContentInput,
   ChatWithContextInput,
   ChatResponse,
@@ -28,13 +29,15 @@ import { Sentry } from '../monitoring/sentry'; // Sprint 15 - Paso 3: Custom Spa
 import {
   analysisResponseSchema,
   type AnalysisResponsePayload,
-  type BiasLeaning,
+  type ArticleLeaning,
+  type LegacyBiasLeaning,
   type FactCheckVerdict,
   type FactualityStatus,
 } from './schemas/analysis-response.schema';
 import {
   ANALYSIS_PROMPT,
   ANALYSIS_PROMPT_LOW_COST,
+  ANALYSIS_PROMPT_MODERATE,
   MAX_ARTICLE_CONTENT_LENGTH,
   buildRagChatPrompt,
   buildGroundingChatPrompt,
@@ -223,12 +226,11 @@ export class GeminiClient implements IGeminiClient {
     const sanitizedContent = this.sanitizeInput(content);
     const sanitizedSource = this.sanitizeInput(source);
     const selectedContent = this.selectContentForAnalysis(sanitizedContent);
-    const useLowCostPrompt = this.shouldUseLowCostPrompt(sanitizedContent);
+    const requestedMode = this.normalizeAnalysisMode(input.analysisMode);
+    const effectiveMode = this.resolveAnalysisMode(requestedMode, sanitizedContent);
 
     // COST OPTIMIZATION: Seleccion inteligente de contenido para reducir tokens.
-    const analysisPromptTemplate = useLowCostPrompt
-      ? ANALYSIS_PROMPT_LOW_COST
-      : ANALYSIS_PROMPT;
+    const analysisPromptTemplate = this.getAnalysisPromptTemplate(effectiveMode);
     const prompt = analysisPromptTemplate.replace('{title}', sanitizedTitle)
       .replace('{source}', sanitizedSource)
       .replace('{content}', selectedContent);
@@ -239,7 +241,7 @@ export class GeminiClient implements IGeminiClient {
         {
           originalContentLength: sanitizedContent.length,
           selectedContentLength: selectedContent.length,
-          promptProfile: useLowCostPrompt ? 'low-cost' : 'standard',
+          promptProfile: effectiveMode,
         },
         'Starting article analysis'
       );
@@ -303,7 +305,7 @@ export class GeminiClient implements IGeminiClient {
         text,
         tokenUsage,
         sanitizedContent,
-        useLowCostPrompt
+        effectiveMode
       );
     }, 3, 1000); // 3 reintentos, 1s delay inicial
   }
@@ -670,7 +672,7 @@ export class GeminiClient implements IGeminiClient {
     text: string,
     tokenUsage?: TokenUsage,
     analyzedContent: string = '',
-    usedLowCostPrompt: boolean = false
+    analysisMode: AnalysisMode = 'low_cost'
   ): ArticleAnalysis {
     const cleanText = text
       .replace(/```json\n?/g, '')
@@ -715,16 +717,18 @@ export class GeminiClient implements IGeminiClient {
         ? parsed.analysis.explanation
         : undefined;
       const parsedBiasComment = this.normalizeShortComment(parsed.biasComment);
-      const parsedBiasLeaning = this.normalizeBiasLeaning(parsed.biasLeaning);
+      const parsedArticleLeaning = this.normalizeArticleLeaning(
+        parsed.articleLeaning ?? parsed.biasLeaning
+      );
 
-      const parsedBiasIndicators = this.normalizeStringArray(parsed.biasIndicators).slice(0, 3);
+      const parsedBiasIndicators = this.normalizeStringArray(parsed.biasIndicators).slice(0, 5);
       const hasCalibratedBiasSignals = this.hasThreeQuotedBiasIndicators(parsedBiasIndicators);
       const biasRaw = hasCalibratedBiasSignals ? parsedBiasRaw : 0;
       const biasScoreNormalized = hasCalibratedBiasSignals ? parsedBiasScoreNormalized : 0;
       const biasType = hasCalibratedBiasSignals ? (parsedBiasType ?? 'ninguno') : 'ninguno';
       const biasIndicators = hasCalibratedBiasSignals ? parsedBiasIndicators : [];
-      const biasLeaning = hasCalibratedBiasSignals
-        ? (parsedBiasLeaning ?? 'indeterminada')
+      const articleLeaning = hasCalibratedBiasSignals
+        ? (parsedArticleLeaning ?? 'indeterminada')
         : 'indeterminada';
       const biasComment = hasCalibratedBiasSignals
         ? parsedBiasComment
@@ -748,7 +752,7 @@ export class GeminiClient implements IGeminiClient {
 
       const factualityStatus: FactualityStatus =
         parsed.factualityStatus ?? 'no_determinable';
-      const evidence_needed = this.normalizeStringArray(parsed.evidence_needed);
+      const evidence_needed = this.normalizeStringArray(parsed.evidence_needed).slice(0, 4);
       const reliabilityComment = this.normalizeShortComment(parsed.reliabilityComment);
 
       const clickbaitScore = this.clampScore(parsed.clickbaitScore, 0, 100, 0);
@@ -760,10 +764,14 @@ export class GeminiClient implements IGeminiClient {
           : parsed.mainTopics
       ).slice(0, 3);
 
-      const claims = this.normalizeStringArray(parsed.factCheck?.claims);
+      const claims = this.normalizeStringArray(parsed.factCheck?.claims).slice(0, 5);
+      const verdict =
+        claims.length === 0
+          ? 'InsufficientEvidenceInArticle'
+          : this.validateVerdict(parsed.factCheck?.verdict);
       const factCheck = {
         claims,
-        verdict: this.validateVerdict(parsed.factCheck?.verdict),
+        verdict,
         reasoning: typeof parsed.factCheck?.reasoning === 'string'
           ? parsed.factCheck.reasoning
           : 'Sin informacion suficiente para verificar',
@@ -779,7 +787,7 @@ export class GeminiClient implements IGeminiClient {
             clickbaitScore,
           });
       const forcedLowCostEscalation =
-        usedLowCostPrompt &&
+        analysisMode === 'low_cost' &&
         this.hasStrongClaimsWithoutAttribution({
           claims,
           summary: parsed.summary,
@@ -796,7 +804,9 @@ export class GeminiClient implements IGeminiClient {
         biasType,
         biasIndicators,
         biasComment,
-        biasLeaning,
+        articleLeaning,
+        biasLeaning: this.toLegacyBiasLeaning(articleLeaning),
+        analysisModeUsed: analysisMode,
         clickbaitScore,
         reliabilityScore,
         traceabilityScore,
@@ -909,25 +919,37 @@ export class GeminiClient implements IGeminiClient {
     return `${normalized.slice(0, 217).trimEnd()}...`;
   }
 
-  private normalizeBiasLeaning(value: unknown): BiasLeaning | undefined {
+  private normalizeArticleLeaning(value: unknown): ArticleLeaning | undefined {
     if (typeof value !== 'string') {
       return undefined;
     }
 
     const normalized = value.trim().toLowerCase();
-    const validValues: BiasLeaning[] = [
+    const validValues: ArticleLeaning[] = [
       'progresista',
       'conservadora',
+      'extremista',
       'neutral',
       'indeterminada',
-      'otra',
     ];
 
     if ((validValues as string[]).includes(normalized)) {
-      return normalized as BiasLeaning;
+      return normalized as ArticleLeaning;
+    }
+
+    if (normalized === 'otra') {
+      return 'indeterminada';
     }
 
     return undefined;
+  }
+
+  private toLegacyBiasLeaning(value: ArticleLeaning): LegacyBiasLeaning {
+    if (value === 'extremista') {
+      return 'otra';
+    }
+
+    return value;
   }
 
   private normalizeSentiment(raw: unknown): 'positive' | 'negative' | 'neutral' {
@@ -1020,6 +1042,38 @@ export class GeminiClient implements IGeminiClient {
 
     const citationPattern = /["'`][^"'`]{3,140}["'`]|\([^()]{3,120}\)|\[[^\[\]]{3,120}\]/;
     return indicators.slice(0, 3).every((indicator) => citationPattern.test(indicator));
+  }
+
+  private normalizeAnalysisMode(value: unknown): AnalysisMode {
+    if (value === 'moderate' || value === 'standard' || value === 'low_cost') {
+      return value;
+    }
+
+    // Default by design: low-cost in bulk/list contexts.
+    return 'low_cost';
+  }
+
+  private resolveAnalysisMode(
+    requestedMode: AnalysisMode,
+    content: string
+  ): AnalysisMode {
+    if (this.shouldUseLowCostPrompt(content)) {
+      return 'low_cost';
+    }
+
+    return requestedMode;
+  }
+
+  private getAnalysisPromptTemplate(mode: AnalysisMode): string {
+    switch (mode) {
+      case 'moderate':
+        return ANALYSIS_PROMPT_MODERATE;
+      case 'standard':
+        return ANALYSIS_PROMPT;
+      case 'low_cost':
+      default:
+        return ANALYSIS_PROMPT_LOW_COST;
+    }
   }
 
   private shouldUseLowCostPrompt(content: string): boolean {

@@ -74,6 +74,7 @@ describe('GeminiClient parseAnalysisResponse', () => {
     expect(result.sentiment).toBe('positive');
     expect(result.mainTopics).toEqual(['t1', 't2']);
     expect(result.factCheck.verdict).toBe('SupportedByArticle');
+    expect(result.analysisModeUsed).toBe('low_cost');
     expect(result.usage?.totalTokens).toBe(3);
   });
 
@@ -88,7 +89,7 @@ describe('GeminiClient parseAnalysisResponse', () => {
     const result = parse(text);
 
     expect(result.biasIndicators).toEqual([]);
-    expect(result.biasLeaning).toBe('indeterminada');
+    expect(result.articleLeaning).toBe('indeterminada');
     expect(result.biasComment).toContain('No hay suficientes señales citadas');
     expect(result.reliabilityScore).toBe(50);
     expect(result.traceabilityScore).toBe(50);
@@ -110,7 +111,10 @@ describe('GeminiClient parseAnalysisResponse', () => {
         'Foco parcial: "solo esto"',
         'Afirmacion rotunda: "sin duda"',
       ],
-      factCheck: { verdict: 'Verified' },
+      factCheck: {
+        claims: ['Claim respaldado por el propio texto.'],
+        verdict: 'Verified',
+      },
     });
 
     const result = parse(text);
@@ -220,11 +224,26 @@ describe('GeminiClient parseAnalysisResponse', () => {
       text,
       undefined,
       'Texto breve con afirmaciones absolutas pero sin enlaces ni atribuciones.',
-      true
+      'low_cost'
     );
 
     expect(result.should_escalate).toBe(true);
-    expect(result.biasLeaning).toBe('indeterminada');
+    expect(result.articleLeaning).toBe('indeterminada');
+  });
+
+  it('fuerza verdict InsufficientEvidenceInArticle cuando claims es vacio', () => {
+    const parse = (client as any).parseAnalysisResponse.bind(client);
+    const text = JSON.stringify({
+      summary: 'Resumen',
+      factCheck: {
+        claims: [],
+        verdict: 'SupportedByArticle',
+      },
+    });
+
+    const result = parse(text);
+    expect(result.factCheck.claims).toEqual([]);
+    expect(result.factCheck.verdict).toBe('InsufficientEvidenceInArticle');
   });
 
   it('recorta comentarios largos antes de validar schema', () => {

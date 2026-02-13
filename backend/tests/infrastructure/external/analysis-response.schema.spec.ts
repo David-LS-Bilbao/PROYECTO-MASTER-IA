@@ -8,7 +8,7 @@ describe('analysisResponseSchema (Zod)', () => {
       biasRaw: -3,
       biasComment:
         'El texto usa senales citadas y comparables en el encuadre, sin evidencia suficiente para afirmar una agenda ideologica externa y limitando el analisis al propio contenido.',
-      biasLeaning: 'indeterminada',
+      articleLeaning: 'indeterminada',
       reliabilityScore: 58,
       traceabilityScore: 54,
       factualityStatus: 'no_determinable',
@@ -29,7 +29,7 @@ describe('analysisResponseSchema (Zod)', () => {
     expect(parsed.summary).toContain('Resumen');
     expect(parsed.biasRaw).toBe(-3);
     expect(parsed.biasComment).toContain('senales');
-    expect(parsed.biasLeaning).toBe('indeterminada');
+    expect(parsed.articleLeaning).toBe('indeterminada');
     expect(parsed.reliabilityScore).toBe(58);
     expect(parsed.traceabilityScore).toBe(54);
     expect(parsed.factualityStatus).toBe('no_determinable');
@@ -37,6 +37,22 @@ describe('analysisResponseSchema (Zod)', () => {
     expect(parsed.reliabilityComment).toContain('no verificable con fuentes internas');
     expect(parsed.should_escalate).toBe(false);
     expect(parsed.factCheck?.verdict).toBe('SupportedByArticle');
+  });
+
+  it('limita arrays segun contrato de coste', () => {
+    const parsed = analysisResponseSchema.parse({
+      summary: 'Resumen',
+      biasIndicators: ['1', '2', '3', '4', '5'],
+      evidence_needed: ['a', 'b', 'c', 'd'],
+      factCheck: {
+        claims: ['c1', 'c2', 'c3', 'c4', 'c5'],
+        verdict: 'InsufficientEvidenceInArticle',
+      },
+    });
+
+    expect(parsed.biasIndicators).toHaveLength(5);
+    expect(parsed.evidence_needed).toHaveLength(4);
+    expect(parsed.factCheck?.claims).toHaveLength(5);
   });
 
   it('normaliza verdict legacy al enum vNext', () => {

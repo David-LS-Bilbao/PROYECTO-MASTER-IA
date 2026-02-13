@@ -5,11 +5,14 @@
 
 import { ArticleAnalysis } from '../entities/news-article.entity';
 
+export type AnalysisMode = 'low_cost' | 'moderate' | 'standard';
+
 export interface AnalyzeContentInput {
   title: string;
   content: string;
   source: string;
   language: string;
+  analysisMode?: AnalysisMode;
 }
 
 export interface ChatMessage {

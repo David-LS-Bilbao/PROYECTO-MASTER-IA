@@ -6,14 +6,24 @@ export const factualityStatusSchema = z.enum([
 ]);
 export type FactualityStatus = z.infer<typeof factualityStatusSchema>;
 
-export const biasLeaningSchema = z.enum([
+export const articleLeaningSchema = z.enum([
+  'progresista',
+  'conservadora',
+  'extremista',
+  'neutral',
+  'indeterminada',
+]);
+export type ArticleLeaning = z.infer<typeof articleLeaningSchema>;
+
+// Legacy compatibility for old model outputs.
+const legacyBiasLeaningSchema = z.enum([
   'progresista',
   'conservadora',
   'neutral',
   'indeterminada',
   'otra',
 ]);
-export type BiasLeaning = z.infer<typeof biasLeaningSchema>;
+export type LegacyBiasLeaning = z.infer<typeof legacyBiasLeaningSchema>;
 
 export const factCheckVerdictSchema = z.enum([
   'SupportedByArticle',
@@ -53,13 +63,14 @@ export const analysisResponseSchema = z
     biasScore: z.number().optional(),
     biasScoreNormalized: z.number().optional(),
     biasComment: z.string().max(220).optional(),
-    biasLeaning: biasLeaningSchema.optional(),
+    articleLeaning: articleLeaningSchema.optional(),
+    biasLeaning: legacyBiasLeaningSchema.optional(),
 
     // Reliability / traceability
     reliabilityScore: z.number().optional(),
     traceabilityScore: z.number().optional(),
     factualityStatus: factualityStatusSchema.optional(),
-    evidence_needed: z.array(z.string()).optional(),
+    evidence_needed: z.array(z.string()).max(4).optional(),
     should_escalate: z.boolean().optional(),
     reliabilityComment: z.string().max(220).optional(),
 
@@ -72,12 +83,12 @@ export const analysisResponseSchema = z
       .optional(),
     suggestedTopics: z.array(z.string()).max(3).optional(),
     mainTopics: z.array(z.string()).max(3).optional(),
-    biasIndicators: z.array(z.string()).optional(),
+    biasIndicators: z.array(z.string()).max(5).optional(),
     clickbaitScore: z.number().optional(),
     sentiment: z.string().optional(),
     factCheck: z
       .object({
-        claims: z.array(z.string()).optional(),
+        claims: z.array(z.string()).max(5).optional(),
         verdict: z.preprocess(normalizeFactCheckVerdict, factCheckVerdictSchema).optional(),
         reasoning: z.string().optional(),
       })

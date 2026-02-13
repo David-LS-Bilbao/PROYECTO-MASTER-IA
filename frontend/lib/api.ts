@@ -4,8 +4,11 @@
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
+export type AnalysisMode = 'low_cost' | 'moderate' | 'standard';
+
 export interface ArticleAnalysis {
   summary: string;
+  analysisModeUsed?: AnalysisMode;
   // biasScore normalizado 0-1 para UI (0 = neutral, 1 = extremo)
   biasScore: number;
   // biasRaw: -10 (Extrema Izquierda) a +10 (Extrema Derecha)
@@ -14,6 +17,8 @@ export interface ArticleAnalysis {
   biasScoreNormalized?: number;
   biasIndicators: string[];
   biasComment?: string;
+  articleLeaning?: 'progresista' | 'conservadora' | 'extremista' | 'neutral' | 'indeterminada';
+  // Legacy alias maintained for backward compatibility with cached payloads
   biasLeaning?: 'progresista' | 'conservadora' | 'neutral' | 'indeterminada' | 'otra';
   // clickbaitScore: 0 (Serio) a 100 (Clickbait extremo)
   clickbaitScore: number;
@@ -182,13 +187,43 @@ export async function fetchNewsById(id: string, token?: string): Promise<{ succe
  * Requires authentication token
  */
 export async function analyzeArticle(articleId: string, token: string): Promise<AnalyzeResponse> {
+  const payload: Record<string, unknown> = { articleId };
+
   const res = await fetch(`${API_BASE_URL}/api/analyze/article`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`,
     },
-    body: JSON.stringify({ articleId }),
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.message || errorData.error || `Failed to analyze article: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Analyze a single article with AI using an explicit cost mode.
+ * Requires authentication token.
+ */
+export async function analyzeArticleWithMode(
+  articleId: string,
+  token: string,
+  analysisMode: AnalysisMode
+): Promise<AnalyzeResponse> {
+  const payload: Record<string, unknown> = { articleId, analysisMode };
+
+  const res = await fetch(`${API_BASE_URL}/api/analyze/article`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
   });
 
   if (!res.ok) {

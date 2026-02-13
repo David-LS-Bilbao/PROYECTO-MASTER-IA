@@ -59,6 +59,7 @@ export interface ArticleAnalysis {
   internal_reasoning?: string; // Chain-of-Thought (XAI auditing only, excluded from client response)
   summary: string;
   category?: string; // AI-suggested category for the article
+  analysisModeUsed?: 'low_cost' | 'moderate' | 'standard';
 
   // Legacy normalized score alias (0-1), kept for compatibility
   biasScore: number;
@@ -71,7 +72,9 @@ export interface ArticleAnalysis {
   biasIndicators: string[];
   // Comentario corto para UI (explicabilidad textual, sin hechos externos)
   biasComment?: string;
-  // Tendencia ideologica inferida SOLO si hay evidencia citada suficiente
+  // Tendencia ideologica del articulo (solo con evidencia citada suficiente)
+  articleLeaning?: 'progresista' | 'conservadora' | 'extremista' | 'neutral' | 'indeterminada';
+  // Legacy alias para compatibilidad hacia atras (deprecado)
   biasLeaning?: 'progresista' | 'conservadora' | 'neutral' | 'indeterminada' | 'otra';
   clickbaitScore: number; // 0..100
 
