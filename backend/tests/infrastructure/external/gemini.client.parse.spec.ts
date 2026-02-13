@@ -88,6 +88,8 @@ describe('GeminiClient parseAnalysisResponse', () => {
     const result = parse(text);
 
     expect(result.biasIndicators).toEqual([]);
+    expect(result.biasLeaning).toBe('indeterminada');
+    expect(result.biasComment).toContain('No hay suficientes señales citadas');
     expect(result.reliabilityScore).toBe(50);
     expect(result.traceabilityScore).toBe(50);
     expect(result.factualityStatus).toBe('no_determinable');
@@ -222,6 +224,26 @@ describe('GeminiClient parseAnalysisResponse', () => {
     );
 
     expect(result.should_escalate).toBe(true);
+    expect(result.biasLeaning).toBe('indeterminada');
+  });
+
+  it('recorta comentarios largos antes de validar schema', () => {
+    const parse = (client as any).parseAnalysisResponse.bind(client);
+    const text = JSON.stringify({
+      summary: 'Resumen',
+      biasIndicators: [
+        'Lenguaje absoluto: "siempre"',
+        'Foco parcial: "solo esto"',
+        'Afirmacion rotunda: "sin duda"',
+      ],
+      biasComment: 'x'.repeat(260),
+      reliabilityComment: 'y'.repeat(260),
+    });
+
+    const result = parse(text);
+
+    expect(result.biasComment?.length).toBeLessThanOrEqual(220);
+    expect(result.reliabilityComment?.length).toBeLessThanOrEqual(220);
   });
 
   it('repara respuestas sin summary generando uno provisional', () => {

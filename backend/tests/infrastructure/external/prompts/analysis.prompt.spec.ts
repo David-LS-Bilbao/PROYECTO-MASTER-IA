@@ -29,4 +29,15 @@ describe('ANALYSIS_PROMPT vNext.1', () => {
     expect(ANALYSIS_PROMPT).toContain('InsufficientEvidenceInArticle');
     expect(ANALYSIS_PROMPT).toContain('NO uses "Verified" ni "False"');
   });
+
+  it('incluye campos vNext de explicabilidad con limites de longitud', () => {
+    expect(ANALYSIS_PROMPT).toContain('biasComment');
+    expect(ANALYSIS_PROMPT).toContain('biasLeaning');
+    expect(ANALYSIS_PROMPT).toContain('reliabilityComment');
+    expect(ANALYSIS_PROMPT).toContain('max 220');
+  });
+
+  it('exige frase literal para no_determinable en reliabilityComment', () => {
+    expect(ANALYSIS_PROMPT).toContain('no verificable con fuentes internas');
+  });
 });

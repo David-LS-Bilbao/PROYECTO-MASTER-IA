@@ -234,7 +234,15 @@ describe('AnalyzeArticleUseCase - LÃ³gica de OrquestaciÃ³n (ZONA CRÃTICA)
       expect(result).toBeDefined();
       expect(result.summary).toBe('Existing summary');
       expect(result.biasScore).toBe(0.5);
-      expect(result.analysis).toEqual(existingAnalysis);
+      expect(result.analysis).toEqual(
+        expect.objectContaining({
+          summary: existingAnalysis.summary,
+          biasScore: existingAnalysis.biasScore,
+          biasRaw: existingAnalysis.biasRaw,
+          reliabilityScore: expect.any(Number),
+          traceabilityScore: expect.any(Number),
+        })
+      );
 
       // CRÃTICO: Verificar que NO se llamÃ³ a Gemini (cost optimization)
       expect(mockGeminiClient.analyzeArticle).not.toHaveBeenCalled();

@@ -69,6 +69,10 @@ export interface ArticleAnalysis {
 
   biasType?: string; // Tipo de sesgo: encuadre|omision|lenguaje|seleccion|ninguno
   biasIndicators: string[];
+  // Comentario corto para UI (explicabilidad textual, sin hechos externos)
+  biasComment?: string;
+  // Tendencia ideologica inferida SOLO si hay evidencia citada suficiente
+  biasLeaning?: 'progresista' | 'conservadora' | 'neutral' | 'indeterminada' | 'otra';
   clickbaitScore: number; // 0..100
 
   // reliabilityScore: fiabilidad basada SOLO en evidencia interna del texto (0-100)
@@ -79,6 +83,8 @@ export interface ArticleAnalysis {
   factualityStatus: 'no_determinable' | 'plausible_but_unverified';
   evidence_needed: string[];
   should_escalate: boolean;
+  // Comentario corto sobre fiabilidad interna y evidencia faltante
+  reliabilityComment?: string;
 
   sentiment: 'positive' | 'negative' | 'neutral';
   mainTopics: string[];

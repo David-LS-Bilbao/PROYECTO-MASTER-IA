@@ -28,6 +28,7 @@ import { Sentry } from '../monitoring/sentry'; // Sprint 15 - Paso 3: Custom Spa
 import {
   analysisResponseSchema,
   type AnalysisResponsePayload,
+  type BiasLeaning,
   type FactCheckVerdict,
   type FactualityStatus,
 } from './schemas/analysis-response.schema';
@@ -713,6 +714,8 @@ export class GeminiClient implements IGeminiClient {
       const explanation = typeof parsed.analysis?.explanation === 'string'
         ? parsed.analysis.explanation
         : undefined;
+      const parsedBiasComment = this.normalizeShortComment(parsed.biasComment);
+      const parsedBiasLeaning = this.normalizeBiasLeaning(parsed.biasLeaning);
 
       const parsedBiasIndicators = this.normalizeStringArray(parsed.biasIndicators).slice(0, 3);
       const hasCalibratedBiasSignals = this.hasThreeQuotedBiasIndicators(parsedBiasIndicators);
@@ -720,6 +723,12 @@ export class GeminiClient implements IGeminiClient {
       const biasScoreNormalized = hasCalibratedBiasSignals ? parsedBiasScoreNormalized : 0;
       const biasType = hasCalibratedBiasSignals ? (parsedBiasType ?? 'ninguno') : 'ninguno';
       const biasIndicators = hasCalibratedBiasSignals ? parsedBiasIndicators : [];
+      const biasLeaning = hasCalibratedBiasSignals
+        ? (parsedBiasLeaning ?? 'indeterminada')
+        : 'indeterminada';
+      const biasComment = hasCalibratedBiasSignals
+        ? parsedBiasComment
+        : 'No hay suficientes señales citadas para inferir una tendencia ideológica y, con esta evidencia interna, el sesgo queda indeterminado.';
 
       let reliabilityScore = this.clampScore(parsed.reliabilityScore, 0, 100, 50);
       let traceabilityScore = this.clampScore(
@@ -740,6 +749,7 @@ export class GeminiClient implements IGeminiClient {
       const factualityStatus: FactualityStatus =
         parsed.factualityStatus ?? 'no_determinable';
       const evidence_needed = this.normalizeStringArray(parsed.evidence_needed);
+      const reliabilityComment = this.normalizeShortComment(parsed.reliabilityComment);
 
       const clickbaitScore = this.clampScore(parsed.clickbaitScore, 0, 100, 0);
       const sentiment = this.normalizeSentiment(parsed.sentiment);
@@ -785,11 +795,14 @@ export class GeminiClient implements IGeminiClient {
         biasScoreNormalized,
         biasType,
         biasIndicators,
+        biasComment,
+        biasLeaning,
         clickbaitScore,
         reliabilityScore,
         traceabilityScore,
         factualityStatus,
         evidence_needed,
+        reliabilityComment,
         should_escalate: should_escalate || forcedLowCostEscalation,
         sentiment,
         mainTopics,
@@ -832,6 +845,13 @@ export class GeminiClient implements IGeminiClient {
       );
     }
 
+    for (const boundedField of ['biasComment', 'reliabilityComment'] as const) {
+      const value = candidate[boundedField];
+      if (typeof value === 'string' && value.trim().length > 220) {
+        candidate[boundedField] = `${value.trim().slice(0, 217).trimEnd()}...`;
+      }
+    }
+
     return candidate;
   }
 
@@ -870,6 +890,44 @@ export class GeminiClient implements IGeminiClient {
       .filter((entry): entry is string => typeof entry === 'string')
       .map((entry) => entry.trim())
       .filter((entry) => entry.length > 0);
+  }
+
+  private normalizeShortComment(value: unknown): string | undefined {
+    if (typeof value !== 'string') {
+      return undefined;
+    }
+
+    const normalized = value.replace(/\s+/g, ' ').trim();
+    if (!normalized) {
+      return undefined;
+    }
+
+    if (normalized.length <= 220) {
+      return normalized;
+    }
+
+    return `${normalized.slice(0, 217).trimEnd()}...`;
+  }
+
+  private normalizeBiasLeaning(value: unknown): BiasLeaning | undefined {
+    if (typeof value !== 'string') {
+      return undefined;
+    }
+
+    const normalized = value.trim().toLowerCase();
+    const validValues: BiasLeaning[] = [
+      'progresista',
+      'conservadora',
+      'neutral',
+      'indeterminada',
+      'otra',
+    ];
+
+    if ((validValues as string[]).includes(normalized)) {
+      return normalized as BiasLeaning;
+    }
+
+    return undefined;
   }
 
   private normalizeSentiment(raw: unknown): 'positive' | 'negative' | 'neutral' {

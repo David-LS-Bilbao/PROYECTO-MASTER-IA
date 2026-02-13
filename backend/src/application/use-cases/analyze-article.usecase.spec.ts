@@ -69,6 +69,11 @@ const mockAnalysis: ArticleAnalysis = {
   factualityStatus: 'no_determinable',
   evidence_needed: [],
   should_escalate: false,
+  biasComment:
+    'El encuadre refleja una lectura parcial basada en senales textuales citadas y evaluadas solo con evidencia interna.',
+  biasLeaning: 'indeterminada',
+  reliabilityComment:
+    'La fiabilidad interna es alta por trazabilidad de citas y atribuciones; no verificable con fuentes internas en ausencia de validacion externa.',
   factCheck: {
     claims: ['Main claim from the article'],
     verdict: 'SupportedByArticle',
@@ -270,7 +275,17 @@ describe('AnalyzeArticleUseCase', () => {
       expect(result.articleId).toBe(article.id);
       expect(result.summary).toBe(mockAnalysis.summary);
       expect(result.biasScore).toBe(mockAnalysis.biasScore);
-      expect(result.analysis).toEqual(mockAnalysis);
+      expect(result.analysis).toEqual(
+        expect.objectContaining({
+          summary: mockAnalysis.summary,
+          biasScore: mockAnalysis.biasScore,
+          reliabilityScore: expect.any(Number),
+          traceabilityScore: expect.any(Number),
+          biasComment: expect.any(String),
+          biasLeaning: expect.any(String),
+          reliabilityComment: expect.any(String),
+        })
+      );
       expect(result.scrapedContentLength).toBeGreaterThan(0);
     });
 
@@ -356,6 +371,51 @@ describe('AnalyzeArticleUseCase', () => {
       const result = await useCase.execute({ articleId: article.id });
 
       expect(result.analysis.should_escalate).toBe(true);
+    });
+
+    it('should force indeterminada biasLeaning and fallback biasComment in low-cost contexts', async () => {
+      const shortContent = 'Texto corto con framing parcial y afirmaciones politicas. '.repeat(6);
+      const article = createTestArticle({ content: shortContent });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        biasRaw: 5,
+        biasScore: 0.5,
+        biasScoreNormalized: 0.5,
+        biasLeaning: 'progresista',
+        biasComment: 'Comentario del modelo que no debe usarse en low-cost.',
+      });
+
+      const result = await useCase.execute({ articleId: article.id });
+
+      expect(result.scrapedContentLength).toBeLessThan(800);
+      expect(result.analysis.biasLeaning).toBe('indeterminada');
+      expect(result.analysis.biasComment).toContain(
+        'No hay suficientes senales citadas para inferir una tendencia ideologica'
+      );
+    });
+
+    it('should include no_determinable phrase and at most 2 evidence items in reliabilityComment', async () => {
+      const article = createTestArticle({
+        content: 'Contenido con cifras parciales y atribucion incompleta. '.repeat(20),
+      });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        factualityStatus: 'no_determinable',
+        evidence_needed: ['fuente primaria', 'documento oficial', 'metodologia completa'],
+      });
+
+      const result = await useCase.execute({ articleId: article.id });
+
+      expect(result.analysis.reliabilityComment).toContain(
+        'no verificable con fuentes internas'
+      );
+      expect(result.analysis.reliabilityComment).toContain('fuente primaria');
+      expect(result.analysis.reliabilityComment).toContain('documento oficial');
+      expect(result.analysis.reliabilityComment).not.toContain('metodologia completa');
     });
 
     it('should return cached analysis for already analyzed article', async () => {
@@ -650,7 +710,12 @@ describe('AnalyzeArticleUseCase', () => {
       const result = await useCase.execute({ articleId: article.id });
 
       expect(geminiSpy).toHaveBeenCalled();
-      expect(result.analysis).toEqual(mockAnalysis);
+      expect(result.analysis).toEqual(
+        expect.objectContaining({
+          summary: mockAnalysis.summary,
+          biasScore: mockAnalysis.biasScore,
+        })
+      );
     });
 
     it('should use article title and metadata in analysis request', async () => {

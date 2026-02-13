@@ -372,6 +372,27 @@ export class AnalyzeArticleUseCase {
     );
     reliabilityScore = lengthCappedScores.reliabilityScore;
     traceabilityScore = lengthCappedScores.traceabilityScore;
+    const factualityStatus = analysis.factualityStatus ?? 'no_determinable';
+    const evidenceNeeded = Array.isArray(analysis.evidence_needed)
+      ? analysis.evidence_needed
+      : [];
+    const shouldForceIndeterminateBias =
+      !hasCalibratedBiasSignals || scrapedContentLength < 800;
+    const parsedBiasLeaning = this.normalizeBiasLeaning(analysis.biasLeaning);
+    const biasLeaning = shouldForceIndeterminateBias
+      ? 'indeterminada'
+      : (parsedBiasLeaning ?? 'indeterminada');
+    const biasComment = this.buildBiasComment({
+      shouldForceIndeterminateBias,
+      biasIndicators,
+      biasLeaning,
+    });
+    const reliabilityComment = this.buildReliabilityComment({
+      reliabilityScore,
+      traceabilityScore,
+      factualityStatus,
+      evidenceNeeded,
+    });
 
     const claims = Array.isArray(analysis.factCheck?.claims) ? analysis.factCheck.claims : [];
     const inferredEscalation =
@@ -402,10 +423,13 @@ export class AnalyzeArticleUseCase {
       biasType,
       reliabilityScore,
       traceabilityScore,
-      factualityStatus: analysis.factualityStatus ?? 'no_determinable',
-      evidence_needed: Array.isArray(analysis.evidence_needed) ? analysis.evidence_needed : [],
+      factualityStatus,
+      evidence_needed: evidenceNeeded,
       should_escalate: shouldEscalate,
       biasIndicators,
+      biasComment,
+      biasLeaning,
+      reliabilityComment,
       explanation,
       clickbaitScore: this.clampNumber(analysis.clickbaitScore, 0, 100, 0),
       factCheck: {
@@ -451,6 +475,117 @@ export class AnalyzeArticleUseCase {
 
     const citationPattern = /["'`][^"'`]{3,140}["'`]|\([^()]{3,120}\)|\[[^\[\]]{3,120}\]/;
     return indicators.slice(0, 3).every((indicator) => citationPattern.test(indicator));
+  }
+
+  private normalizeBiasLeaning(
+    value: unknown
+  ): 'progresista' | 'conservadora' | 'neutral' | 'indeterminada' | 'otra' | undefined {
+    if (typeof value !== 'string') {
+      return undefined;
+    }
+
+    const normalized = value.trim().toLowerCase();
+    const validValues = [
+      'progresista',
+      'conservadora',
+      'neutral',
+      'indeterminada',
+      'otra',
+    ];
+
+    if ((validValues as string[]).includes(normalized)) {
+      return normalized as 'progresista' | 'conservadora' | 'neutral' | 'indeterminada' | 'otra';
+    }
+
+    return undefined;
+  }
+
+  private buildBiasComment(params: {
+    shouldForceIndeterminateBias: boolean;
+    biasIndicators: string[];
+    biasLeaning: 'progresista' | 'conservadora' | 'neutral' | 'indeterminada' | 'otra';
+  }): string {
+    if (params.shouldForceIndeterminateBias) {
+      return this.normalizeUiComment(
+        'No hay suficientes senales citadas para inferir una tendencia ideologica y, con este nivel de evidencia interna, el sesgo se mantiene indeterminado'
+      );
+    }
+
+    const citedSignals = params.biasIndicators
+      .slice(0, 3)
+      .map((indicator) => this.summarizeIndicator(indicator))
+      .join('; ');
+    const leaningText =
+      params.biasLeaning === 'indeterminada'
+        ? 'sin tendencia ideologica concluyente'
+        : `con tendencia ${params.biasLeaning}`;
+    const generated = `El encuadre refleja ${leaningText} segun senales citadas (${citedSignals}), evaluadas solo desde el texto disponible y sin inferir hechos externos`;
+
+    return this.normalizeUiComment(generated);
+  }
+
+  private buildReliabilityComment(params: {
+    reliabilityScore: number;
+    traceabilityScore: number;
+    factualityStatus: 'no_determinable' | 'plausible_but_unverified';
+    evidenceNeeded: string[];
+  }): string {
+    const reliabilityBand =
+      params.reliabilityScore >= 85
+        ? 'muy alta'
+        : params.reliabilityScore >= 70
+          ? 'alta'
+          : params.reliabilityScore >= 50
+            ? 'media'
+            : params.reliabilityScore >= 30
+              ? 'baja'
+              : 'muy baja';
+    const traceabilityText =
+      params.traceabilityScore >= 70
+        ? 'hay buena trazabilidad de citas, fuentes y contexto'
+        : params.traceabilityScore >= 40
+          ? 'la trazabilidad es parcial y con atribuciones limitadas'
+          : 'la trazabilidad interna es debil por falta de atribuciones claras';
+    const missingEvidence = params.evidenceNeeded.slice(0, 2);
+    const missingEvidenceText =
+      missingEvidence.length > 0 ? `; faltan ${missingEvidence.join(' y ')}` : '';
+    const factualityText =
+      params.factualityStatus === 'no_determinable'
+        ? '; no verificable con fuentes internas'
+        : '';
+    const generated = `La fiabilidad interna es ${reliabilityBand} porque ${traceabilityText}${factualityText}${missingEvidenceText}, considerando solo citas, datos y atribuciones presentes en el articulo`;
+
+    return this.normalizeUiComment(generated);
+  }
+
+  private summarizeIndicator(indicator: string): string {
+    const compact = indicator.replace(/\s+/g, ' ').trim();
+    if (!compact) {
+      return '"sin cita legible"';
+    }
+
+    if (compact.length <= 58) {
+      return compact;
+    }
+
+    return `${compact.slice(0, 55).trimEnd()}...`;
+  }
+
+  private normalizeUiComment(comment: string): string {
+    const normalizedBase = comment
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/[.!?]+$/, '');
+    const withMinimumLength =
+      normalizedBase.length < 140
+        ? `${normalizedBase}, evaluado solo con evidencia interna y sin verificacion factual externa`
+        : normalizedBase;
+
+    if (withMinimumLength.length > 220) {
+      return `${withMinimumLength.slice(0, 217).trimEnd()}...`;
+    }
+
+    return `${withMinimumLength}.`;
   }
 
   private shouldEscalateLowCostStrongClaims(params: {

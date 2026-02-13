@@ -13,6 +13,8 @@ export interface ArticleAnalysis {
   // biasScoreNormalized explicito para UI (vNext)
   biasScoreNormalized?: number;
   biasIndicators: string[];
+  biasComment?: string;
+  biasLeaning?: 'progresista' | 'conservadora' | 'neutral' | 'indeterminada' | 'otra';
   // clickbaitScore: 0 (Serio) a 100 (Clickbait extremo)
   clickbaitScore: number;
   // reliabilityScore: fiabilidad basada en evidencia interna del texto (NO veracidad externa)
@@ -20,6 +22,7 @@ export interface ArticleAnalysis {
   traceabilityScore?: number;
   factualityStatus?: 'no_determinable' | 'plausible_but_unverified';
   evidence_needed?: string[];
+  reliabilityComment?: string;
   should_escalate?: boolean;
   sentiment: 'positive' | 'negative' | 'neutral';
   mainTopics: string[];

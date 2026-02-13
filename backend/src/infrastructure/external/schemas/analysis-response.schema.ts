@@ -6,6 +6,15 @@ export const factualityStatusSchema = z.enum([
 ]);
 export type FactualityStatus = z.infer<typeof factualityStatusSchema>;
 
+export const biasLeaningSchema = z.enum([
+  'progresista',
+  'conservadora',
+  'neutral',
+  'indeterminada',
+  'otra',
+]);
+export type BiasLeaning = z.infer<typeof biasLeaningSchema>;
+
 export const factCheckVerdictSchema = z.enum([
   'SupportedByArticle',
   'NotSupportedByArticle',
@@ -43,6 +52,8 @@ export const analysisResponseSchema = z
     // Legacy input compatibility: in v4 this field represented raw bias (-10..+10)
     biasScore: z.number().optional(),
     biasScoreNormalized: z.number().optional(),
+    biasComment: z.string().max(220).optional(),
+    biasLeaning: biasLeaningSchema.optional(),
 
     // Reliability / traceability
     reliabilityScore: z.number().optional(),
@@ -50,6 +61,7 @@ export const analysisResponseSchema = z
     factualityStatus: factualityStatusSchema.optional(),
     evidence_needed: z.array(z.string()).optional(),
     should_escalate: z.boolean().optional(),
+    reliabilityComment: z.string().max(220).optional(),
 
     // Optional legacy / compatibility blocks
     analysis: z

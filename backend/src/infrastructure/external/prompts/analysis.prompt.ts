@@ -23,6 +23,12 @@ REGLAS NO NEGOCIABLES:
   (entre comillas o con referencia corta entre parentesis/corchetes).
 - Si no puedes justificar 3 indicadores con cita, fuerza sesgo neutral:
   biasRaw=0, biasScoreNormalized=0, analysis.biasType="ninguno".
+- biasComment: 1 frase (ideal 140-200 chars, max 220), sin inventar hechos externos.
+- biasLeaning SOLO puede ser: "progresista" | "conservadora" | "neutral" | "indeterminada" | "otra".
+  - Si no hay evidencia clara de framing ideologico, usa "indeterminada".
+- reliabilityComment: 1 frase (ideal 140-200 chars, max 220) explicando fiabilidad por evidencia interna.
+  - Si factualityStatus="no_determinable", incluye literalmente: "no verificable con fuentes internas".
+  - Si evidence_needed tiene elementos, menciona maximo 2.
 
 ESCALAS OBLIGATORIAS:
 - biasRaw: entero -10..+10 (0 = neutral).
@@ -46,12 +52,12 @@ ESCALAS OBLIGATORIAS:
 FEW-SHOT 1 (clickbait):
 Entrada resumida: "URGENTE! Nos ocultan la verdad. Todos lo saben. Sin fuentes."
 Salida esperada aproximada:
-{"summary":"Nota alarmista sin atribuciones verificables.","biasRaw":2,"biasScoreNormalized":0.2,"biasIndicators":["Lenguaje alarmista: \"URGENTE\"","Generalizacion absoluta: \"Todos lo saben\"","Afirmacion conspirativa: \"Nos ocultan la verdad\""],"reliabilityScore":18,"traceabilityScore":15,"factualityStatus":"no_determinable","evidence_needed":["fuente primaria","documento oficial"],"should_escalate":true,"factCheck":{"verdict":"InsufficientEvidenceInArticle"}}
+{"summary":"Nota alarmista sin atribuciones verificables.","biasRaw":2,"biasScoreNormalized":0.2,"biasIndicators":["Lenguaje alarmista: \"URGENTE\"","Generalizacion absoluta: \"Todos lo saben\"","Afirmacion conspirativa: \"Nos ocultan la verdad\""],"biasComment":"El framing se apoya en tono alarmista y absolutos citados (\"URGENTE\", \"Todos lo saben\", \"Nos ocultan la verdad\"), con carga emocional alta pero sin base para tendencia ideologica estable.","biasLeaning":"indeterminada","reliabilityScore":18,"traceabilityScore":15,"factualityStatus":"no_determinable","evidence_needed":["fuente primaria","documento oficial"],"reliabilityComment":"La fiabilidad interna es muy baja por falta de fuentes, atribuciones y datos trazables; no verificable con fuentes internas, y faltan fuente primaria y documento oficial.","should_escalate":true,"factCheck":{"verdict":"InsufficientEvidenceInArticle"}}
 
 FEW-SHOT 2 (bien citado):
 Entrada resumida: "Segun Ministerio X (informe 2026) y documento PDF enlazado, con cita textual y limites metodologicos."
 Salida esperada aproximada:
-{"summary":"Nota con atribuciones explicitas y enlaces documentales.","biasRaw":0,"biasScoreNormalized":0,"biasIndicators":["Atribucion explicita: \"Segun Ministerio X\"","Referencia documental: \"informe 2026\"","Limite metodologico: \"con limites metodologicos\""],"reliabilityScore":82,"traceabilityScore":86,"factualityStatus":"no_determinable","evidence_needed":[],"should_escalate":false,"factCheck":{"verdict":"SupportedByArticle"}}
+{"summary":"Nota con atribuciones explicitas y enlaces documentales.","biasRaw":0,"biasScoreNormalized":0,"biasIndicators":["Atribucion explicita: \"Segun Ministerio X\"","Referencia documental: \"informe 2026\"","Limite metodologico: \"con limites metodologicos\""],"biasComment":"El texto prioriza atribuciones y limites citados (\"Segun Ministerio X\", \"informe 2026\", \"limites metodologicos\"), con encuadre principalmente informativo y baja carga ideologica.","biasLeaning":"neutral","reliabilityScore":82,"traceabilityScore":86,"factualityStatus":"no_determinable","evidence_needed":[],"reliabilityComment":"La fiabilidad interna es alta por trazabilidad de fuentes, citas y documento enlazado; no verificable con fuentes internas al no ejecutar verificacion externa en este analisis.","should_escalate":false,"factCheck":{"verdict":"SupportedByArticle"}}
 
 <ARTICLE>
 TITLE: {title}
@@ -68,10 +74,13 @@ JSON requerido:
   "biasRaw": "<entero -10..+10>",
   "biasScoreNormalized": "<0..1 = abs(biasRaw)/10>",
   "biasIndicators": ["<exactamente 3 indicadores con cita breve textual>"],
+  "biasComment": "<1 frase, ideal 140-200 chars, max 220, solo con senales citadas>",
+  "biasLeaning": "<progresista|conservadora|neutral|indeterminada|otra>",
   "reliabilityScore": "<entero 0..100 segun escala obligatoria>",
   "traceabilityScore": "<entero 0..100>",
   "factualityStatus": "<no_determinable|plausible_but_unverified>",
   "evidence_needed": ["<max 5 evidencias faltantes>"],
+  "reliabilityComment": "<1 frase, ideal 140-200 chars, max 220, basada en evidencia interna>",
   "should_escalate": "<true|false>",
   "suggestedTopics": ["<maximo 3 temas>"],
   "analysis": {
@@ -95,10 +104,15 @@ Usa:
 - biasRaw (-10..10) y biasScoreNormalized=abs(biasRaw)/10
 - biasIndicators: exactamente 3 indicadores con cita breve textual
 - si no hay 3 indicadores citables: biasRaw=0, biasScoreNormalized=0, analysis.biasType=ninguno
+- biasComment (1 frase, max 220 chars) y biasLeaning en:
+  progresista|conservadora|neutral|indeterminada|otra
+- si no hay evidencia clara de tendencia ideologica: biasLeaning=indeterminada
 - reliabilityScore (evidencia interna 0..100)
 - traceabilityScore (0..100)
 - factualityStatus: no_determinable|plausible_but_unverified
 - evidence_needed: string[]
+- reliabilityComment (1 frase, max 220 chars) y si factualityStatus=no_determinable incluir
+  literalmente "no verificable con fuentes internas"
 - should_escalate: boolean
 - factCheck.verdict: SupportedByArticle|NotSupportedByArticle|InsufficientEvidenceInArticle
 - no usar Verified/False

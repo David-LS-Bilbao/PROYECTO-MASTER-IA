@@ -234,6 +234,13 @@ export default function NewsDetailPage() {
   const isAnalyzed = article.analyzedAt !== null;
   const biasInfo = article.biasScore !== null ? getBiasInfo(article.biasScore) : null;
   const sentimentInfo = article.analysis?.sentiment ? getSentimentInfo(article.analysis.sentiment) : null;
+  const biasLeaningLabels: Record<'progresista' | 'conservadora' | 'neutral' | 'indeterminada' | 'otra', string> = {
+    progresista: 'Progresista',
+    conservadora: 'Conservadora',
+    neutral: 'Neutral',
+    indeterminada: 'Indeterminada',
+    otra: 'Otra',
+  };
 
   // Determine if we should show analysis content or skeleton
   // Show skeleton if: analyzing OR revealing (artificial delay)
@@ -435,6 +442,16 @@ export default function NewsDetailPage() {
                       <p className="text-xs text-muted-foreground">
                         Puntuación: {((article.biasScore ?? 0) * 100).toFixed(0)}% de sesgo detectado
                       </p>
+                      {article.analysis?.biasComment && (
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          {article.analysis.biasComment}
+                        </p>
+                      )}
+                      {article.analysis?.biasLeaning && (
+                        <p className="text-xs text-muted-foreground">
+                          Tendencia estimada: {biasLeaningLabels[article.analysis.biasLeaning]}
+                        </p>
+                      )}
                     </div>
 
                     {/* Reliability Score - Detector de Bulos */}
@@ -448,6 +465,11 @@ export default function NewsDetailPage() {
                           shouldEscalate={article.analysis.should_escalate}
                           reasoning={article.analysis.factCheck?.reasoning}
                         />
+                        {article.analysis.reliabilityComment && (
+                          <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
+                            {article.analysis.reliabilityComment}
+                          </p>
+                        )}
                       </div>
                     )}
 
