@@ -1,4 +1,4 @@
-/**
+﻿/**
  * AnalyzeArticleUseCase Unit Tests
  * Target: 100% coverage
  */
@@ -56,7 +56,11 @@ const mockAnalysis: ArticleAnalysis = {
   biasScore: 0.3,
   biasRaw: 3,
   biasScoreNormalized: 0.3,
-  biasIndicators: ['slight emotional language'],
+  biasIndicators: [
+    'Loaded wording: "total failure"',
+    'Generalization: "everyone knows"',
+    'Selective framing: "only this side"',
+  ],
   sentiment: 'neutral',
   mainTopics: ['technology', 'innovation'],
   clickbaitScore: 20,
@@ -67,7 +71,7 @@ const mockAnalysis: ArticleAnalysis = {
   should_escalate: false,
   factCheck: {
     claims: ['Main claim from the article'],
-    verdict: 'Verified',
+    verdict: 'SupportedByArticle',
     reasoning: 'The claims are supported by credible sources',
   },
 };
@@ -606,6 +610,31 @@ describe('AnalyzeArticleUseCase', () => {
         source: 'Specific Source',
         language: 'en',
       });
+    });
+
+    it('should neutralize bias when cached analysis has fewer than 3 cited bias indicators', async () => {
+      const cachedAnalysis = {
+        ...mockAnalysis,
+        biasRaw: 6,
+        biasScore: 0.6,
+        biasScoreNormalized: 0.6,
+        biasType: 'lenguaje',
+        biasIndicators: ['Loaded wording without citation'],
+      };
+      const article = createTestArticle({
+        analyzedAt: new Date(),
+        summary: cachedAnalysis.summary,
+        biasScore: cachedAnalysis.biasScoreNormalized,
+        analysis: JSON.stringify(cachedAnalysis),
+      });
+      mockRepository.setArticle(article);
+
+      const result = await useCase.execute({ articleId: article.id });
+
+      expect(result.analysis.biasRaw).toBe(0);
+      expect(result.analysis.biasScore).toBe(0);
+      expect(result.analysis.biasScoreNormalized).toBe(0);
+      expect(result.analysis.biasType).toBe('ninguno');
     });
   });
 

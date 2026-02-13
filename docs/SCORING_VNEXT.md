@@ -45,3 +45,23 @@ Evitar confundir sesgo con veracidad y alinear la salida del analizador IA con u
 ## Compatibilidad
 - Se conserva `biasScore` como alias legacy (normalizado 0..1).
 - En caché legacy, el caso de uso normaliza análisis para completar campos vNext con defaults seguros.
+
+## vNext.1
+- Bias calibration reforzada:
+  - El prompt exige `biasIndicators` con exactamente 3 evidencias citadas.
+  - Si no se cumple, el sistema fuerza sesgo neutral:
+    - `biasRaw=0`
+    - `biasScoreNormalized=0`
+    - `biasType="ninguno"`
+- Fact-check verdict sin verificacion externa:
+  - Nuevo enum: `SupportedByArticle | NotSupportedByArticle | InsufficientEvidenceInArticle`.
+  - Se desaconseja `Verified/False` y se normaliza legado en parser.
+- Etiquetado UI:
+  - Si `factualityStatus=no_determinable`, la UI muestra: `No verificable con fuentes internas`.
+  - `Posible bulo / alto riesgo` solo se muestra con regla estricta:
+    - `reliabilityScore < 20`
+    - `traceabilityScore < 20`
+    - y (`clickbaitScore >= 60` o red flags fuertes).
+- Truncado inteligente de entrada:
+  - Reemplaza truncado lineal por seleccion `HEAD + TAIL + QUOTES_DATA + META`.
+  - Mantiene limite total `<= 8000` caracteres.

@@ -321,11 +321,21 @@ export class AnalyzeArticleUseCase {
         : typeof analysis.biasScore === 'number' && Math.abs(analysis.biasScore) > 1
           ? analysis.biasScore
           : 0;
-    const biasRaw = this.clampNumber(rawCandidate, -10, 10, 0);
-    const biasScoreNormalized =
+    const parsedBiasRaw = this.clampNumber(rawCandidate, -10, 10, 0);
+    const parsedBiasScoreNormalized =
       typeof analysis.biasScoreNormalized === 'number'
-        ? this.clampNumber(analysis.biasScoreNormalized, 0, 1, Math.abs(biasRaw) / 10)
-        : Math.abs(biasRaw) / 10;
+        ? this.clampNumber(analysis.biasScoreNormalized, 0, 1, Math.abs(parsedBiasRaw) / 10)
+        : Math.abs(parsedBiasRaw) / 10;
+
+    const rawBiasIndicators = Array.isArray(analysis.biasIndicators)
+      ? analysis.biasIndicators
+      : [];
+    const hasCalibratedBiasSignals = this.hasThreeQuotedBiasIndicators(rawBiasIndicators);
+    const biasRaw = hasCalibratedBiasSignals ? parsedBiasRaw : 0;
+    const biasScoreNormalized = hasCalibratedBiasSignals ? parsedBiasScoreNormalized : 0;
+    const biasType = hasCalibratedBiasSignals ? analysis.biasType : 'ninguno';
+    const biasIndicators = hasCalibratedBiasSignals ? rawBiasIndicators : [];
+
     const reliabilityScore = this.clampNumber(analysis.reliabilityScore, 0, 100, 50);
     const traceabilityScore = this.clampNumber(
       analysis.traceabilityScore,
@@ -345,6 +355,7 @@ export class AnalyzeArticleUseCase {
       biasRaw,
       biasScore: biasScoreNormalized,
       biasScoreNormalized,
+      biasType,
       reliabilityScore,
       traceabilityScore,
       factualityStatus: analysis.factualityStatus ?? 'no_determinable',
@@ -353,17 +364,26 @@ export class AnalyzeArticleUseCase {
         typeof analysis.should_escalate === 'boolean'
           ? analysis.should_escalate
           : inferredEscalation,
-      biasIndicators: Array.isArray(analysis.biasIndicators) ? analysis.biasIndicators : [],
+      biasIndicators,
       clickbaitScore: this.clampNumber(analysis.clickbaitScore, 0, 100, 0),
       factCheck: {
         claims,
-        verdict: analysis.factCheck?.verdict ?? 'Unproven',
+        verdict: analysis.factCheck?.verdict ?? 'InsufficientEvidenceInArticle',
         reasoning:
           typeof analysis.factCheck?.reasoning === 'string'
             ? analysis.factCheck.reasoning
             : 'Sin informacion suficiente para verificar',
       },
     };
+  }
+
+  private hasThreeQuotedBiasIndicators(indicators: string[]): boolean {
+    if (indicators.length < 3) {
+      return false;
+    }
+
+    const citationPattern = /["'`][^"'`]{3,140}["'`]|\([^()]{3,120}\)|\[[^\[\]]{3,120}\]/;
+    return indicators.slice(0, 3).every((indicator) => citationPattern.test(indicator));
   }
 
   private clampNumber(

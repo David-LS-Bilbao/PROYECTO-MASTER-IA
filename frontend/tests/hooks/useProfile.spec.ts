@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Tests para useProfile Hook - Step 6 Plan Mikado
  *
  * Valida:
@@ -42,11 +42,14 @@ const mockProfile = {
   id: 'profile-1',
   email: 'test@test.com',
   name: 'Test User',
+  picture: null,
   plan: 'FREE' as const,
+  location: null,
   preferences: { categories: ['Política', 'Economía'] },
   usageStats: { articlesAnalyzed: 10, searchesPerformed: 5, chatMessages: 3 },
-  counts: { favorites: 2 },
+  counts: { favorites: 2, searchHistory: 0, chats: 0 },
   createdAt: '2026-01-15T00:00:00Z',
+  updatedAt: '2026-01-15T00:00:00Z',
 };
 
 describe('useProfile Hook', () => {

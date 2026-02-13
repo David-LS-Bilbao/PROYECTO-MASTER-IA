@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Tests for Home Page (page.tsx) - Infinite Scroll + Topics
  */
 
@@ -124,7 +124,7 @@ const createMockArticle = (id: string, overrides?: Partial<NewsArticle>): NewsAr
     mainTopics: [],
     factCheck: {
       claims: [],
-      verdict: 'Verified',
+      verdict: 'SupportedByArticle',
       reasoning: 'Mock fact check reasoning',
     },
   },

@@ -107,7 +107,11 @@ function createMockAnalysis(overrides?: Partial<ArticleAnalysis>): ArticleAnalys
     biasScore: 0,
     biasRaw: 0,
     biasScoreNormalized: 0,
-    biasIndicators: [],
+    biasIndicators: [
+      'Loaded wording: "total failure"',
+      'Generalization: "everyone knows"',
+      'Selective framing: "only this side"',
+    ],
     clickbaitScore: 20,
     reliabilityScore: 80,
     traceabilityScore: 80,
@@ -118,7 +122,7 @@ function createMockAnalysis(overrides?: Partial<ArticleAnalysis>): ArticleAnalys
     mainTopics: ['technology', 'AI'],
     factCheck: {
       claims: ['AI is advancing rapidly'],
-      verdict: 'Verified',
+      verdict: 'SupportedByArticle',
       reasoning: 'Based on recent research publications',
     },
     ...overrides,

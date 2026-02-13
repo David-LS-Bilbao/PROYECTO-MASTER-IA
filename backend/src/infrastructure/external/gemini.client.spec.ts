@@ -1,4 +1,4 @@
-/**
+﻿/**
  * GeminiClient Unit Tests - ZONA CRÍTICA (100% Coverage)
  *
  * Este archivo testea la lógica de cálculo de costes y tracking de tokens,
@@ -119,7 +119,7 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
             mainTopics: ['test'],
             factCheck: {
               claims: ['Test claim'],
-              verdict: 'Verified',
+              verdict: 'SupportedByArticle',
               reasoning: 'Test reasoning',
             },
           }),
@@ -161,7 +161,7 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
             mainTopics: ['test'],
             factCheck: {
               claims: [],
-              verdict: 'Unproven',
+              verdict: 'InsufficientEvidenceInArticle',
               reasoning: 'No data',
             },
           }),
@@ -205,7 +205,7 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
             mainTopics: ['economics'],
             factCheck: {
               claims: ['Test claim'],
-              verdict: 'Mixed',
+              verdict: 'InsufficientEvidenceInArticle',
               reasoning: 'Partial verification',
             },
           }),
@@ -249,7 +249,7 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
             mainTopics: ['politics'],
             factCheck: {
               claims: ['Fact 1'],
-              verdict: 'Verified',
+              verdict: 'SupportedByArticle',
               reasoning: 'Official source',
             },
           }),
@@ -304,7 +304,7 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
               mainTopics: ['test'],
               factCheck: {
                 claims: [],
-                verdict: 'Unproven',
+                verdict: 'InsufficientEvidenceInArticle',
                 reasoning: 'Test',
               },
             }),
@@ -385,7 +385,7 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
             mainTopics: ['test'],
             factCheck: {
               claims: [],
-              verdict: 'Unproven',
+              verdict: 'InsufficientEvidenceInArticle',
               reasoning: 'Test',
             },
           }),
@@ -483,7 +483,7 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
               mainTopics: ['test'],
               factCheck: {
                 claims: [],
-                verdict: 'Unproven',
+                verdict: 'InsufficientEvidenceInArticle',
                 reasoning: 'Test',
               },
             }),
@@ -669,7 +669,7 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
             mainTopics: ['test'],
             factCheck: {
               claims: [],
-              verdict: 'Unproven',
+              verdict: 'InsufficientEvidenceInArticle',
               reasoning: 'Test',
             },
           }),
@@ -747,7 +747,7 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
             reliabilityScore: 50,
             sentiment: 'neutral',
             mainTopics: ['test'],
-            factCheck: { claims: [], verdict: 'Unproven', reasoning: 'Test' },
+            factCheck: { claims: [], verdict: 'InsufficientEvidenceInArticle', reasoning: 'Test' },
           }),
           usageMetadata: {
             promptTokenCount: 2000,
@@ -816,7 +816,7 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
             reliabilityScore: 50,
             sentiment: 'neutral',
             mainTopics: ['test'],
-            factCheck: { claims: [], verdict: 'Unproven', reasoning: 'Test' },
+            factCheck: { claims: [], verdict: 'InsufficientEvidenceInArticle', reasoning: 'Test' },
           }),
           usageMetadata: {
             promptTokenCount: 1000,

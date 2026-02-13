@@ -84,7 +84,7 @@ describe('AnalyzeController', () => {
         reliabilityScore: 90,
         sentiment: 'neutral',
         mainTopics: [],
-        factCheck: { claims: [], verdict: 'Verified', reasoning: '' },
+        factCheck: { claims: [], verdict: 'SupportedByArticle', reasoning: '' },
       },
     });
 
