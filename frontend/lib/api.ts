@@ -145,6 +145,17 @@ export interface NewsResponse {
   meta?: {
     location?: string;
     message?: string;
+    localMeta?: {
+      requested: string;        // Input original del usuario ("Mostoles, Madrid")
+      resolved: {
+        city?: string;           // Ciudad extraída ("Mostoles")
+        province?: string;       // Provincia extraída ("Madrid")
+        region?: string;         // Comunidad autónoma (opcional)
+      };
+      scopeUsed: 'city' | 'province' | 'region' | 'general';  // Scope de fallback usado
+      ttlMinutes: number;        // TTL del caché (ej: 15)
+      fetchedAt: string;         // ISO timestamp de última ingesta
+    };
     refresh?: {
       forced: boolean;
       attempted: boolean;

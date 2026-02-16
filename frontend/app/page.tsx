@@ -13,6 +13,7 @@ import { GeneralChatDrawer } from '@/components/general-chat-drawer';
 import { SearchBar } from '@/components/search-bar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { LocalScopeBadge } from '@/components/ui/local-scope-badge';
 import { DateSeparator } from '@/components/date-separator';
 import { ScrollToTop } from '@/components/ui/scroll-to-top';
 import { WarmUpBanner } from '@/components/ui/warm-up-banner';
@@ -200,6 +201,7 @@ function HomeContent() {
       limit: INFINITE_PAGE_SIZE,
       offset: 0,
     },
+    meta: data.pages[0]?.meta, // Sprint 32: Include meta from first page (localMeta, etc)
   } : null;
 
   // =========================================================================
@@ -512,6 +514,10 @@ function HomeContent() {
                     <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">
                       {getTopicTitle(topic)}
                     </h2>
+                    {/* Sprint 32: Local scope badge */}
+                    {topic === 'local' && newsData?.meta?.localMeta && (
+                      <LocalScopeBadge localMeta={newsData.meta.localMeta} />
+                    )}
                     {/* Indicador discreto de refetch en background */}
                     {isFetching && (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">

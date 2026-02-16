@@ -6,6 +6,15 @@
 import { NewsArticle } from '../entities/news-article.entity';
 
 /**
+ * Sprint 32: Local News vNext - Structured location for progressive fallback
+ */
+export interface ParsedLocation {
+  city: string;
+  province?: string;
+  region?: string;
+}
+
+/**
  * Parameters for findAll query
  */
 export interface FindAllParams {
@@ -155,15 +164,20 @@ export interface INewsArticleRepository {
   searchArticles(query: string, limit: number, userId?: string): Promise<NewsArticle[]>;
 
   /**
-   * Search LOCAL articles by city name (Sprint 28: Local News Fix)
-   * Combines category='local' filter with city text search.
-   * Only returns articles stored as local news that mention the city.
-   * @param city City name to search for
+   * Search LOCAL articles with progressive fallback (Sprint 32: Local News vNext)
+   * Implements city → province → region → general fallback strategy.
+   * @param location Structured location (city, province, region)
    * @param limit Maximum number of results
    * @param offset Pagination offset
    * @param userId Optional user ID for favorite enrichment
+   * @returns Articles and scope indicator (city | province | region | general)
    */
-  searchLocalArticles(city: string, limit: number, offset: number, userId?: string): Promise<NewsArticle[]>;
+  searchLocalArticles(
+    location: ParsedLocation,
+    limit: number,
+    offset: number,
+    userId?: string
+  ): Promise<{ articles: NewsArticle[]; scopeUsed: 'city' | 'province' | 'region' | 'general' }>;
 
   /**
    * Count LOCAL articles for a city filter.

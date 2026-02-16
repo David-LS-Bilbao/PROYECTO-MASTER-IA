@@ -7,7 +7,7 @@
  */
 
 import { Request, Response } from 'express';
-import { INewsArticleRepository } from '../../../domain/repositories/news-article.repository';
+import { INewsArticleRepository, ParsedLocation } from '../../../domain/repositories/news-article.repository';
 import { ToggleFavoriteUseCase } from '../../../application/use-cases/toggle-favorite.usecase';
 import { IngestNewsUseCase } from '../../../application/use-cases/ingest-news.usecase';
 import { NewsArticle } from '../../../domain/entities/news-article.entity';
@@ -94,13 +94,17 @@ function markLocalIngested(city: string): void {
   localIngestCache.set(city.toLowerCase().trim(), Date.now());
 }
 
-function normalizeCityInput(input: string): string {
+function parseLocationInput(input: string): ParsedLocation {
   const trimmed = input.trim();
-  if (!trimmed) return '';
+  if (!trimmed) return { city: 'Madrid' };
 
-  // Common format from user profiles: "City, Region"
-  const [firstToken] = trimmed.split(',');
-  return (firstToken ?? trimmed).trim();
+  const parts = trimmed.split(',').map(p => p.trim()).filter(Boolean);
+
+  return {
+    city: parts[0] || 'Madrid',
+    province: parts[1],
+    region: undefined, // TODO: provincia→región mapping
+  };
 }
 
 function buildLocalIngestQuery(input: string): string {
@@ -220,10 +224,10 @@ export class NewsController {
           select: { location: true },
         });
 
-        const requestedCity = location || user?.location;
-        const normalizedCity = requestedCity ? normalizeCityInput(requestedCity) : '';
-        const city = normalizedCity || 'Madrid';
-        const ingestQuery = requestedCity ? buildLocalIngestQuery(requestedCity) : city;
+        const requestedInput = location || user?.location || 'Madrid';
+        const parsed = parseLocationInput(requestedInput);
+        const city = parsed.city; // Para compatibilidad con código existente
+        const ingestQuery = requestedInput ? buildLocalIngestQuery(requestedInput) : city;
         const refreshMeta: {
           forced: boolean;
           attempted: boolean;
@@ -312,10 +316,14 @@ export class NewsController {
           markLocalIngested(city);
         }
 
-        // Sprint 28 BUG #1 FIX: Use searchLocalArticles (category='local' + city filter)
-        // Previously used searchArticles(city) which searched ALL categories
-        const localNews = await this.repository.searchLocalArticles(city, resolvedLimit, resolvedOffset, userId);
-        const localTotal = await this.repository.countLocalArticles(city);
+        // Sprint 28 BUG #1 FIX + vNext: searchLocalArticles con fallback progresivo
+        const { articles: localNews, scopeUsed } = await this.repository.searchLocalArticles(
+          parsed,
+          resolvedLimit,
+          resolvedOffset,
+          userId
+        );
+        const localTotal = localNews.length; // Total basado en scopeUsed real
 
         // If no results, suggest fallback
         if (localNews.length === 0) {
@@ -364,7 +372,22 @@ export class NewsController {
           },
           meta: {
             location: city,
-            message: `Noticias locales para ${city}`,
+            message: scopeUsed === 'city'
+              ? `Noticias locales para ${city}`
+              : scopeUsed === 'province'
+              ? `Noticias de ${parsed.province || 'la provincia'} (cobertura local limitada)`
+              : 'Noticias locales de España',
+            localMeta: {
+              requested: requestedInput,
+              resolved: {
+                city: parsed.city,
+                province: parsed.province,
+                region: parsed.region,
+              },
+              scopeUsed,
+              ttlMinutes: Number(process.env.LOCAL_INGEST_TTL_MINUTES) || 15,
+              fetchedAt: new Date().toISOString(),
+            },
             refresh: refreshMeta,
           },
         });

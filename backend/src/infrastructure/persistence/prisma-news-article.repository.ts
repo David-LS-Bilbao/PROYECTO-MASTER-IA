@@ -6,6 +6,7 @@ import { PrismaClient, Prisma } from '@prisma/client';
 import {
   INewsArticleRepository,
   FindAllParams,
+  ParsedLocation,
 } from '../../domain/repositories/news-article.repository';
 import { NewsArticle } from '../../domain/entities/news-article.entity';
 import { DatabaseError } from '../../domain/errors/infrastructure.error';
@@ -764,78 +765,89 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
   }
 
   // =========================================================================
-  // SPRINT 28: LOCAL NEWS SEARCH (Category-filtered + City text search)
+  // SPRINT 28 & 32: LOCAL NEWS SEARCH (Category-filtered + Progressive fallback)
   // =========================================================================
 
   /**
-   * Search articles in the 'local' category that mention a specific city.
-   *
-   * BUG FIX: Previously used searchArticles(city) which searched ALL categories,
-   * returning international/national articles that happened to mention the city.
-   * Now properly filters to category='local' first, then searches by city name.
+   * Helper: Query local articles by city name
    */
-  async searchLocalArticles(city: string, limit: number, offset: number, userId?: string): Promise<NewsArticle[]> {
-    try {
-      if (!city || city.trim().length === 0) {
-        return [];
-      }
+  private async queryCityArticles(city: string, limit: number): Promise<Prisma.ArticleGetPayload<{}>[]> {
+    const normalized = this.normalizeText(city);
+    const variants = this.generateAccentVariants(normalized);
 
-      const trimmedCity = city.trim();
-      const normalizedCity = this.normalizeText(trimmedCity);
-      const cityVariants = this.generateAccentVariants(normalizedCity);
+    const searchFields = ['title', 'description', 'summary', 'content'] as const;
+    const cityConditions = searchFields.flatMap(field =>
+      variants.map(variant => ({
+        [field]: { contains: variant, mode: 'insensitive' as const }
+      }))
+    );
 
-      console.log(`[Repository.searchLocalArticles] 📍 City: "${trimmedCity}"`);
-      console.log(`[Repository.searchLocalArticles]    🔤 Variants: ${cityVariants.slice(0, 5).join(', ')}...`);
-
-      // Build city text search conditions across title, description, summary, content
-      const searchFields = ['title', 'description', 'summary', 'content'] as const;
-      const cityConditions = searchFields.flatMap(field =>
-        cityVariants.map(variant => ({
-          [field]: { contains: variant, mode: 'insensitive' as const }
-        }))
-      );
-
-      const localCategoryFilter: Prisma.ArticleWhereInput = {
-        category: {
-          equals: 'local',
-          mode: 'insensitive',
-        },
-      };
-      const localCityFilter: Prisma.ArticleWhereInput = {
+    return this.prisma.article.findMany({
+      where: {
         AND: [
-          localCategoryFilter,
-          { OR: cityConditions },
-        ],
-      };
+          { category: { equals: 'local', mode: 'insensitive' } },
+          { OR: cityConditions }
+        ]
+      },
+      orderBy: { publishedAt: 'desc' },
+      take: limit
+    });
+  }
+
+  /**
+   * Helper: Query local articles by province name
+   */
+  private async queryProvinceArticles(province: string, limit: number): Promise<Prisma.ArticleGetPayload<{}>[]> {
+    const normalized = this.normalizeText(province);
+    const variants = this.generateAccentVariants(normalized);
+
+    const searchFields = ['title', 'description', 'summary', 'content'] as const;
+    const provinceConditions = searchFields.flatMap(field =>
+      variants.map(variant => ({
+        [field]: { contains: variant, mode: 'insensitive' as const }
+      }))
+    );
+
+    return this.prisma.article.findMany({
+      where: {
+        AND: [
+          { category: { equals: 'local', mode: 'insensitive' } },
+          { OR: provinceConditions }
+        ]
+      },
+      orderBy: { publishedAt: 'desc' },
+      take: limit
+    });
+  }
+
+  /**
+   * Search articles in the 'local' category with progressive fallback.
+   *
+   * SPRINT 32 vNext: Progressive fallback strategy
+   * - LEVEL 1: Try city search (if >= MIN_RESULTS, return with scopeUsed: 'city')
+   * - LEVEL 2: Try province search (if >= MIN_RESULTS, return with scopeUsed: 'province')
+   * - LEVEL 3: Fallback to all local articles (scopeUsed: 'general')
+   */
+  async searchLocalArticles(
+    location: ParsedLocation,
+    limit: number,
+    offset: number,
+    userId?: string
+  ): Promise<{ articles: NewsArticle[]; scopeUsed: 'city' | 'province' | 'region' | 'general' }> {
+    try {
+      const MIN_RESULTS = 8;
       const bufferSize = Math.max((offset + limit) * 3, 60);
 
-      // Query: category='local' AND (city mentioned in any text field)
-      const localCandidates = await this.prisma.article.findMany({
-        where: localCityFilter,
-        orderBy: {
-          publishedAt: 'desc',
-        },
-        take: bufferSize,
-      });
+      console.log(`[Repository.searchLocalArticles] 📍 Location:`, location);
 
-      console.log(`[Repository.searchLocalArticles] ✅ Found ${localCandidates.length} candidate local articles for "${trimmedCity}"`);
+      // LEVEL 1: Try city search
+      let candidates = await this.queryCityArticles(location.city, bufferSize);
+      console.log(`[Repository.searchLocalArticles]    🏙️  City "${location.city}": ${candidates.length} results`);
 
-      if (localCandidates.length === 0) {
-        // Fallback: return all local articles (without city filter) so user sees something
-        console.log(`[Repository.searchLocalArticles] 🔄 Fallback: returning all local articles`);
-        const fallbackCandidates = await this.prisma.article.findMany({
-          where: localCategoryFilter,
-          orderBy: {
-            publishedAt: 'desc',
-          },
-          take: bufferSize,
-        });
+      if (candidates.length >= MIN_RESULTS) {
+        const articles = this.interleaveBySource(candidates, limit, offset);
+        let domainArticles = articles.map(a => this.mapper.toDomain(a));
 
-        if (fallbackCandidates.length === 0) return [];
-
-        const fallbackArticles = this.interleaveBySource(fallbackCandidates, limit, offset);
-
-        let domainArticles = fallbackArticles.map(a => this.mapper.toDomain(a));
         if (userId && domainArticles.length > 0) {
           domainArticles = await this.enrichWithUserFavorites(domainArticles, userId);
         } else {
@@ -843,15 +855,42 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
             NewsArticle.reconstitute({ ...a.toJSON(), isFavorite: false })
           );
         }
-        return domainArticles;
+
+        return { articles: domainArticles, scopeUsed: 'city' };
       }
 
-      const articles = this.interleaveBySource(localCandidates, limit, offset);
+      // LEVEL 2: Try province search
+      if (location.province) {
+        candidates = await this.queryProvinceArticles(location.province, bufferSize);
+        console.log(`[Repository.searchLocalArticles]    🗺️  Province "${location.province}": ${candidates.length} results`);
 
-      // Convert to domain entities
+        if (candidates.length >= MIN_RESULTS) {
+          const articles = this.interleaveBySource(candidates, limit, offset);
+          let domainArticles = articles.map(a => this.mapper.toDomain(a));
+
+          if (userId && domainArticles.length > 0) {
+            domainArticles = await this.enrichWithUserFavorites(domainArticles, userId);
+          } else {
+            domainArticles = domainArticles.map(a =>
+              NewsArticle.reconstitute({ ...a.toJSON(), isFavorite: false })
+            );
+          }
+
+          return { articles: domainArticles, scopeUsed: 'province' };
+        }
+      }
+
+      // LEVEL 3: Fallback to all local articles
+      console.log(`[Repository.searchLocalArticles]    🌍 Fallback: returning all local articles`);
+      candidates = await this.prisma.article.findMany({
+        where: { category: { equals: 'local', mode: 'insensitive' } },
+        orderBy: { publishedAt: 'desc' },
+        take: bufferSize
+      });
+
+      const articles = this.interleaveBySource(candidates, limit, offset);
       let domainArticles = articles.map(a => this.mapper.toDomain(a));
 
-      // Enrich with per-user favorite status
       if (userId && domainArticles.length > 0) {
         domainArticles = await this.enrichWithUserFavorites(domainArticles, userId);
       } else {
@@ -860,7 +899,7 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
         );
       }
 
-      return domainArticles;
+      return { articles: domainArticles, scopeUsed: 'general' };
     } catch (error) {
       throw new DatabaseError(
         `Failed to search local articles: ${(error as Error).message}`,
