@@ -266,10 +266,16 @@ export default function NewsDetailPage() {
   // Show skeleton if: analyzing OR revealing (artificial delay)
   const showAnalysisSkeleton = isAnalyzing || isRevealing;
   const showAnalysisContent = isAnalyzed && !showAnalysisSkeleton;
+  const isIndeterminateLeaning =
+    articleLeaning === 'indeterminada' || article.analysis?.biasLeaning === 'indeterminada';
+  const isLowCostDueToInsufficientContent =
+    article.analysis?.analysisModeUsed === 'low_cost' &&
+    effectiveContentLength > 0 &&
+    effectiveContentLength < 800;
   const hasPreliminaryContentWarning =
     showAnalysisContent &&
     !qualityNotice &&
-    (effectiveContentLength === 0 || !article.content || article.content.trim().length === 0);
+    (effectiveContentLength < 300 || isIndeterminateLeaning || isLowCostDueToInsufficientContent);
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
