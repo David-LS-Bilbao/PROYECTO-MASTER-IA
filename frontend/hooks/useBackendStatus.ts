@@ -41,9 +41,6 @@ async function pingHealth(): Promise<boolean> {
     const res = await fetch(HEALTH_ENDPOINT, {
       signal: controller.signal,
       cache: 'no-store',
-      headers: {
-        'Cache-Control': 'no-cache',
-      },
     });
 
     if (res.ok) {
