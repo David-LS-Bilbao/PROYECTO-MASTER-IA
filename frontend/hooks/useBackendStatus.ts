@@ -17,7 +17,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 
 export type BackendStatus = 'checking' | 'warming' | 'ready' | 'down';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
 const HEALTH_ENDPOINT = `${API_BASE_URL}/health/check`;
 const PING_TIMEOUT = 8_000;
 const RETRY_INTERVAL = 5_000;
@@ -37,12 +37,28 @@ async function pingHealth(): Promise<boolean> {
   const timeoutId = setTimeout(() => controller.abort(), PING_TIMEOUT);
 
   try {
+    console.log('🔍 Checking backend health...');
     const res = await fetch(HEALTH_ENDPOINT, {
       signal: controller.signal,
       cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache',
+      },
     });
-    return res.ok;
-  } catch {
+
+    if (res.ok) {
+      console.log('✅ Backend ready');
+      return true;
+    }
+
+    console.warn('⚠️ Backend responded but not healthy:', res.status);
+    return false;
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.warn('⏱️ Backend health check timeout (cold start suspected)');
+    } else {
+      console.error('❌ Backend health check failed:', error);
+    }
     return false;
   } finally {
     clearTimeout(timeoutId);
@@ -62,24 +78,31 @@ export function BackendStatusProvider({ children }: { children: React.ReactNode 
     if (!mountedRef.current) return;
 
     if (ok) {
+      if (status === 'warming') {
+        console.log('✅ Backend warmed up successfully!');
+      }
       setStatus('ready');
       setRetryCount(0);
       return;
     }
 
     if (!isRetry) {
+      console.log('🔥 Starting backend warm-up process...');
       setStatus('warming');
       setRetryCount(1);
     } else {
       setRetryCount((prev) => {
         const next = prev + 1;
+        console.log(`🔄 Retry ${next}/${MAX_RETRIES}...`);
+
         if (next > MAX_RETRIES) {
+          console.error('❌ Backend failed to warm up after max retries');
           setStatus('down');
         }
         return next;
       });
     }
-  }, []);
+  }, [status]);
 
   // Auto-retry cuando está en warming
   useEffect(() => {
@@ -106,6 +129,7 @@ export function BackendStatusProvider({ children }: { children: React.ReactNode 
   }, [check]);
 
   const retry = useCallback(() => {
+    console.log('🔄 Manual retry requested');
     setStatus('checking');
     setRetryCount(0);
     check(false);
