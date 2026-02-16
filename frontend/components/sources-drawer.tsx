@@ -43,43 +43,120 @@ interface RssSource {
  */
 const REGION_TO_SOURCES: Record<string, string[]> = {
   // Galicia
-  'A Coruña': ['vozgalicia', 'farodevigo'],
-  'Lugo': ['vozgalicia'],
+  'A Coruña': ['vozgalicia', 'laopinioncoruna'],
+  'La Coruña': ['vozgalicia', 'laopinioncoruna'],
+  'Coruña': ['vozgalicia', 'laopinioncoruna'],
+  'Lugo': ['vozgalicia', 'elprogreso'],
   'Ourense': ['vozgalicia'],
+  'Orense': ['vozgalicia'],
   'Pontevedra': ['vozgalicia', 'farodevigo'],
-  'Galicia': ['vozgalicia', 'farodevigo'],
+  'Vigo': ['farodevigo'],
+  'Galicia': ['vozgalicia', 'farodevigo', 'laopinioncoruna', 'elprogreso'],
 
-  // País Vasco
+  // País Vasco / Euskadi
   'Álava': ['elcorreo', 'diariovasco'],
+  'Araba': ['elcorreo', 'diariovasco'],
   'Vizcaya': ['elcorreo', 'diariovasco'],
-  'Guipúzcoa': ['elcorreo', 'diariovasco'],
+  'Bizkaia': ['elcorreo', 'diariovasco'],
+  'Guipúzcoa': ['diariovasco', 'noticiasgipuzkoa'],
+  'Gipuzkoa': ['diariovasco', 'noticiasgipuzkoa'],
   'Bilbao': ['elcorreo'],
-  'País Vasco': ['elcorreo', 'diariovasco'],
+  'San Sebastián': ['diariovasco', 'noticiasgipuzkoa'],
+  'Donostia': ['diariovasco', 'noticiasgipuzkoa'],
+  'Vitoria': ['elcorreo'],
+  'País Vasco': ['elcorreo', 'diariovasco', 'noticiasgipuzkoa'],
+  'Euskadi': ['elcorreo', 'diariovasco', 'noticiasgipuzkoa'],
 
-  // Aragón
-  'Zaragoza': ['heraldo'],
-  'Huesca': ['heraldo'],
-  'Teruel': ['heraldo'],
-  'Aragón': ['heraldo'],
+  // Cataluña / Catalunya
+  'Barcelona': ['diaridebarcelona', 'elperiodico', 'regio7'],
+  'Girona': ['diaridebarcelona'],
+  'Gerona': ['diaridebarcelona'],
+  'Tarragona': ['diaritarragona'],
+  'Lleida': ['diaridebarcelona'],
+  'Lérida': ['diaridebarcelona'],
+  'Cataluña': ['diaridebarcelona', 'elperiodico', 'regio7', 'diaritarragona'],
+  'Catalunya': ['diaridebarcelona', 'elperiodico', 'regio7', 'diaritarragona'],
 
-  // Comunidad Valenciana
-  'Valencia': ['levante', 'lasnuevecr'],
-  'Alicante': ['levante'],
-  'Castellón': ['levante'],
+  // Madrid
+  'Madrid': ['telemadrid', 'madriddiario', 'somosmadrid'],
 
   // Andalucía
   'Málaga': ['diariosur'],
   'Sevilla': ['diariodesevilla'],
   'Granada': ['ideal'],
-  'Andalucía': ['diariosur', 'diariodesevilla', 'ideal'],
+  'Córdoba': ['diariocordoba'],
+  'Jaén': ['diariojaen'],
+  'Huelva': ['diariosur'],
+  'Cádiz': ['diariosur'],
+  'Almería': ['ideal'],
+  'Andalucía': ['diariosur', 'diariodesevilla', 'ideal', 'diariocordoba', 'diariojaen'],
+
+  // Comunidad Valenciana
+  'Valencia': ['levante', 'lasprovincias'],
+  'Alicante': ['informacion'],
+  'Castellón': ['levante'],
+  'Castelló': ['levante'],
+  'Comunidad Valenciana': ['levante', 'lasprovincias', 'informacion'],
+  'Comunitat Valenciana': ['levante', 'lasprovincias', 'informacion'],
+
+  // Aragón
+  'Zaragoza': ['heraldo'],
+  'Huesca': ['heraldo', 'diarioaltoaragon'],
+  'Teruel': ['heraldo'],
+  'Aragón': ['heraldo', 'diarioaltoaragon'],
 
   // Murcia
-  'Murcia': ['laopinion'],
+  'Murcia': ['laopinionmurcia', 'laverdad'],
 
-  // Cataluña
-  'Barcelona': ['diaridebarcelona'],
-  'Girona': ['diaridebarcelona'],
-  'Cataluña': ['diaridebarcelona'],
+  // Asturias
+  'Asturias': ['lne', 'elcomercio'],
+  'Oviedo': ['lne'],
+  'Gijón': ['elcomercio'],
+
+  // Cantabria
+  'Cantabria': ['eldiariomontanes'],
+  'Santander': ['eldiariomontanes'],
+
+  // Castilla y León
+  'Valladolid': ['nortecastilla'],
+  'León': ['diariodeleon'],
+  'Burgos': ['diariodeburgos'],
+  'Salamanca': ['nortecastilla'],
+  'Ávila': ['nortecastilla'],
+  'Segovia': ['nortecastilla'],
+  'Soria': ['nortecastilla'],
+  'Zamora': ['nortecastilla'],
+  'Palencia': ['nortecastilla'],
+  'Castilla y León': ['nortecastilla', 'diariodeleon', 'diariodeburgos'],
+
+  // La Rioja
+  'La Rioja': ['larioja'],
+  'Logroño': ['larioja'],
+
+  // Navarra
+  'Navarra': ['diariodenavarra', 'noticiasnavarra'],
+  'Pamplona': ['diariodenavarra', 'noticiasnavarra'],
+
+  // Extremadura
+  'Extremadura': ['hoy', 'elperiodicoextremadura'],
+  'Badajoz': ['hoy'],
+  'Cáceres': ['hoy'],
+
+  // Islas Baleares
+  'Baleares': ['ultimahora', 'diariodemallorca'],
+  'Islas Baleares': ['ultimahora', 'diariodemallorca'],
+  'Mallorca': ['ultimahora', 'diariodemallorca'],
+  'Palma': ['ultimahora', 'diariodemallorca'],
+  'Ibiza': ['ultimahora'],
+  'Menorca': ['ultimahora'],
+
+  // Islas Canarias
+  'Canarias': ['canarias7', 'laprovincia'],
+  'Islas Canarias': ['canarias7', 'laprovincia'],
+  'Las Palmas': ['laprovincia'],
+  'Gran Canaria': ['laprovincia'],
+  'Tenerife': ['canarias7'],
+  'Santa Cruz de Tenerife': ['canarias7'],
 };
 
 /**
@@ -155,19 +232,79 @@ const DEFAULT_SOURCES: RssSource[] = [
   { id: 'moncloa', name: 'Moncloa.com', url: 'https://www.moncloa.com/feed/', active: false, category: 'Política' },
   { id: 'elplural', name: 'El Plural', url: 'https://www.elplural.com/rss', active: false, category: 'Política' },
 
-  // --- LOCAL (Diarios Regionales - TOP 12) --- Solo 4 primeras activas por defecto
+  // --- LOCAL (Diarios Regionales - 40 fuentes) --- Solo 4 primeras activas por defecto
+  // Galicia (4 fuentes)
   { id: 'vozgalicia', name: 'La Voz de Galicia', url: 'https://www.lavozdegalicia.es/rss/portada.xml', active: true, category: 'Local', region: 'Galicia' },
-  { id: 'elcorreo', name: 'El Correo (País Vasco)', url: 'https://www.elcorreo.com/rss/2.0/?section=portada', active: true, category: 'Local', region: 'País Vasco' },
-  { id: 'heraldo', name: 'Heraldo de Aragón', url: 'https://www.heraldo.es/rss/seccion/portada/', active: true, category: 'Local', region: 'Aragón' },
-  { id: 'levante', name: 'Levante-EMV (Valencia)', url: 'https://www.levante-emv.com/rss/2.0/?section=portada', active: true, category: 'Local', region: 'Valencia' },
-  { id: 'diariosur', name: 'Diario Sur (Málaga)', url: 'https://www.diariosur.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Málaga' },
-  { id: 'diariodesevilla', name: 'Diario de Sevilla', url: 'https://www.diariodesevilla.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Sevilla' },
-  { id: 'laopinion', name: 'La Opinión de Murcia', url: 'https://www.laopiniondemurcia.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Murcia' },
-  { id: 'lasnuevecr', name: 'Las Provincias (Valencia)', url: 'https://www.lasprovincias.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Valencia' },
-  { id: 'diariovasco', name: 'El Diario Vasco', url: 'https://www.diariovasco.com/rss/2.0/?section=portada', active: false, category: 'Local', region: 'País Vasco' },
   { id: 'farodevigo', name: 'Faro de Vigo', url: 'https://www.farodevigo.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Galicia' },
-  { id: 'ideal', name: 'Ideal Granada', url: 'https://www.ideal.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Granada' },
-  { id: 'diaridebarcelona', name: 'Diari de Barcelona', url: 'https://www.diaridegirona.cat/rss/', active: false, category: 'Local', region: 'Cataluña' },
+  { id: 'laopinioncoruna', name: 'La Opinión A Coruña', url: 'https://www.laopinioncoruna.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Galicia' },
+  { id: 'elprogreso', name: 'El Progreso (Lugo)', url: 'https://www.elprogreso.es/rss/', active: false, category: 'Local', region: 'Galicia' },
+
+  // País Vasco (3 fuentes)
+  { id: 'elcorreo', name: 'El Correo', url: 'https://www.elcorreo.com/rss/2.0/?section=portada', active: true, category: 'Local', region: 'País Vasco' },
+  { id: 'diariovasco', name: 'El Diario Vasco', url: 'https://www.diariovasco.com/rss/2.0/?section=portada', active: false, category: 'Local', region: 'País Vasco' },
+  { id: 'noticiasgipuzkoa', name: 'Noticias de Gipuzkoa', url: 'https://www.noticiasdegipuzkoa.eus/rss/2.0/?section=portada', active: false, category: 'Local', region: 'País Vasco' },
+
+  // Cataluña (4 fuentes)
+  { id: 'diaridebarcelona', name: 'Diari de Girona', url: 'https://www.diaridegirona.cat/rss/', active: false, category: 'Local', region: 'Cataluña' },
+  { id: 'elperiodico', name: 'El Periódico', url: 'https://www.elperiodico.com/es/rss/rss_portada.xml', active: false, category: 'Local', region: 'Cataluña' },
+  { id: 'regio7', name: 'Regió7 (Barcelona)', url: 'https://www.regio7.cat/rss/', active: false, category: 'Local', region: 'Cataluña' },
+  { id: 'diaritarragona', name: 'Diari de Tarragona', url: 'https://www.diaridetarragona.com/rss/', active: false, category: 'Local', region: 'Cataluña' },
+
+  // Madrid (3 fuentes)
+  { id: 'telemadrid', name: 'Telemadrid', url: 'https://www.telemadrid.es/rss/', active: false, category: 'Local', region: 'Madrid' },
+  { id: 'madriddiario', name: 'Madrid Diario', url: 'https://www.madriddiario.es/rss', active: false, category: 'Local', region: 'Madrid' },
+  { id: 'somosmadrid', name: 'Somos Madrid', url: 'https://www.somosmalasana.com/feed/', active: false, category: 'Local', region: 'Madrid' },
+
+  // Andalucía (5 fuentes)
+  { id: 'diariosur', name: 'Diario Sur (Málaga)', url: 'https://www.diariosur.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Andalucía' },
+  { id: 'diariodesevilla', name: 'Diario de Sevilla', url: 'https://www.diariodesevilla.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Andalucía' },
+  { id: 'ideal', name: 'Ideal Granada', url: 'https://www.ideal.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Andalucía' },
+  { id: 'diariocordoba', name: 'Diario Córdoba', url: 'https://www.diariocordoba.com/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Andalucía' },
+  { id: 'diariojaen', name: 'Diario Jaén', url: 'https://www.diariojaen.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Andalucía' },
+
+  // Comunidad Valenciana (3 fuentes)
+  { id: 'levante', name: 'Levante-EMV', url: 'https://www.levante-emv.com/rss/2.0/?section=portada', active: true, category: 'Local', region: 'Valencia' },
+  { id: 'lasprovincias', name: 'Las Provincias', url: 'https://www.lasprovincias.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Valencia' },
+  { id: 'informacion', name: 'Información (Alicante)', url: 'https://www.diarioinformacion.com/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Valencia' },
+
+  // Aragón (2 fuentes)
+  { id: 'heraldo', name: 'Heraldo de Aragón', url: 'https://www.heraldo.es/rss/seccion/portada/', active: true, category: 'Local', region: 'Aragón' },
+  { id: 'diarioaltoaragon', name: 'Diario del AltoAragón', url: 'https://www.diariodelaltoaragon.es/rss/', active: false, category: 'Local', region: 'Aragón' },
+
+  // Murcia (2 fuentes)
+  { id: 'laopinionmurcia', name: 'La Opinión de Murcia', url: 'https://www.laopiniondemurcia.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Murcia' },
+  { id: 'laverdad', name: 'La Verdad (Murcia)', url: 'https://www.laverdad.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Murcia' },
+
+  // Asturias (2 fuentes)
+  { id: 'lne', name: 'La Nueva España', url: 'https://www.lne.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Asturias' },
+  { id: 'elcomercio', name: 'El Comercio (Asturias)', url: 'https://www.elcomercio.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Asturias' },
+
+  // Cantabria (1 fuente)
+  { id: 'eldiariomontanes', name: 'El Diario Montañés', url: 'https://www.eldiariomontanes.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Cantabria' },
+
+  // Castilla y León (3 fuentes)
+  { id: 'nortecastilla', name: 'El Norte de Castilla', url: 'https://www.elnortedecastilla.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Castilla y León' },
+  { id: 'diariodeleon', name: 'Diario de León', url: 'https://www.diariodeleon.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Castilla y León' },
+  { id: 'diariodeburgos', name: 'Diario de Burgos', url: 'https://www.diariodeburgos.es/rss/', active: false, category: 'Local', region: 'Castilla y León' },
+
+  // La Rioja (1 fuente)
+  { id: 'larioja', name: 'La Rioja', url: 'https://www.larioja.com/rss/2.0/?section=portada', active: false, category: 'Local', region: 'La Rioja' },
+
+  // Navarra (2 fuentes)
+  { id: 'diariodenavarra', name: 'Diario de Navarra', url: 'https://www.diariodenavarra.es/rss/', active: false, category: 'Local', region: 'Navarra' },
+  { id: 'noticiasnavarra', name: 'Noticias de Navarra', url: 'https://www.noticiasdenavarra.com/rss/', active: false, category: 'Local', region: 'Navarra' },
+
+  // Extremadura (2 fuentes)
+  { id: 'hoy', name: 'Hoy (Extremadura)', url: 'https://www.hoy.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Extremadura' },
+  { id: 'elperiodicoextremadura', name: 'El Periódico Extremadura', url: 'https://www.elperiodicoextremadura.com/rss/', active: false, category: 'Local', region: 'Extremadura' },
+
+  // Islas Baleares (2 fuentes)
+  { id: 'ultimahora', name: 'Última Hora (Mallorca)', url: 'https://www.ultimahora.es/rss/', active: false, category: 'Local', region: 'Baleares' },
+  { id: 'diariodemallorca', name: 'Diario de Mallorca', url: 'https://www.diariodemallorca.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Baleares' },
+
+  // Islas Canarias (2 fuentes)
+  { id: 'canarias7', name: 'Canarias7', url: 'https://www.canarias7.es/rss/', active: false, category: 'Local', region: 'Canarias' },
+  { id: 'laprovincia', name: 'La Provincia (Las Palmas)', url: 'https://www.laprovincia.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Canarias' },
 ];
 
 interface SourcesDrawerProps {
