@@ -1,18 +1,18 @@
 /**
  * AnalyzeArticleUseCase (Application Layer)
- * Analiza artículos con Gemini AI para detectar sesgo, veracidad y generar resúmenes.
+ * Analiza artÃ­culos con Gemini AI para detectar sesgo, veracidad y generar resÃºmenes.
  *
  * === COST OPTIMIZATION (Sprint 8) ===
  *
- * CACHÉ DE ANÁLISIS (ya implementado):
- * - Los análisis se persisten en PostgreSQL (campos: summary, biasScore, analysis, analyzedAt)
- * - Si article.isAnalyzed === true, se devuelve el análisis cacheado SIN llamar a Gemini
- * - Ubicación del caché: líneas 70-83 (check isAnalyzed → return cached)
+ * CACHÃ‰ DE ANÃLISIS (ya implementado):
+ * - Los anÃ¡lisis se persisten en PostgreSQL (campos: summary, biasScore, analysis, analyzedAt)
+ * - Si article.isAnalyzed === true, se devuelve el anÃ¡lisis cacheado SIN llamar a Gemini
+ * - UbicaciÃ³n del cachÃ©: lÃ­neas 70-83 (check isAnalyzed â†’ return cached)
  *
- * LÍMITES DEFENSIVOS:
- * - Batch limit: máximo 100 artículos por lote (línea 234)
+ * LÃMITES DEFENSIVOS:
+ * - Batch limit: mÃ¡ximo 100 artÃ­culos por lote (lÃ­nea 234)
  * - No hay llamadas a Gemini dentro de bucles sin control
- * - El bucle de batch solo procesa artículos NO analizados (findUnanalyzed)
+ * - El bucle de batch solo procesa artÃ­culos NO analizados (findUnanalyzed)
  */
 
 import { ArticleAnalysis } from '../../domain/entities/news-article.entity';
@@ -30,13 +30,13 @@ import { GeminiErrorMapper } from '../../infrastructure/external/gemini-error-ma
 // ============================================================================
 
 /**
- * Máximo de artículos por lote en análisis batch.
- * Límite defensivo para evitar costes inesperados.
+ * MÃ¡ximo de artÃ­culos por lote en anÃ¡lisis batch.
+ * LÃ­mite defensivo para evitar costes inesperados.
  */
 const MAX_BATCH_LIMIT = 100;
 
 /**
- * Mínimo de caracteres para considerar contenido válido.
+ * MÃ­nimo de caracteres para considerar contenido vÃ¡lido.
  * Contenido muy corto no justifica una llamada a Gemini.
  */
 const MIN_CONTENT_LENGTH = 100;
@@ -46,6 +46,9 @@ const SUMMARY_MIN_LENGTH_FOR_CACHE = 30;
 const SUMMARY_MAX_WORDS_FULL = 90;
 const SUMMARY_MAX_WORDS_LOW_QUALITY = 45;
 const SUMMARY_LOW_QUALITY_NOTICE = 'Falta el texto completo para confirmar detalles.';
+const NEUTRAL_LOW_CONFIDENCE_BIAS_COMMENT =
+  'No se observan se\u00f1ales claras de encuadre ideol\u00f3gico en el texto disponible (confianza baja).';
+const BIAS_INDICATOR_CITATION_PATTERN = /["'`][^"'`]{3,140}["'`]|\([^()]{3,120}\)|\[[^\[\]]{3,120}\]/;
 
 
 export interface AnalyzeArticleInput {
@@ -128,19 +131,19 @@ export class AnalyzeArticleUseCase {
       throw new EntityNotFoundError('Article', articleId);
     }
 
-    console.log(`\n🔍 [Análisis] Iniciando noticia: "${article.title}"`);
+    console.log(`\nðŸ” [AnÃ¡lisis] Iniciando noticia: "${article.title}"`);
 
     // =========================================================================
-    // SPRINT 17: COST OPTIMIZATION - CACHÉ GLOBAL DE ANÁLISIS
+    // SPRINT 17: COST OPTIMIZATION - CACHÃ‰ GLOBAL DE ANÃLISIS
     // =========================================================================
-    // Si el artículo ya fue analizado por CUALQUIER usuario, devolvemos el
-    // análisis cacheado en PostgreSQL SIN llamar a Gemini.
+    // Si el artÃ­culo ya fue analizado por CUALQUIER usuario, devolvemos el
+    // anÃ¡lisis cacheado en PostgreSQL SIN llamar a Gemini.
     //
-    // BENEFICIO: Si 100 usuarios piden análisis del mismo artículo:
-    // - Primera petición: 1 llamada a Gemini ✅
-    // - Siguientes 99: 0 llamadas a Gemini → 99% ahorro 💰
+    // BENEFICIO: Si 100 usuarios piden anÃ¡lisis del mismo artÃ­culo:
+    // - Primera peticiÃ³n: 1 llamada a Gemini âœ…
+    // - Siguientes 99: 0 llamadas a Gemini â†’ 99% ahorro ðŸ’°
     //
-    // El caché es GLOBAL (no por usuario) porque el análisis es objetivo
+    // El cachÃ© es GLOBAL (no por usuario) porque el anÃ¡lisis es objetivo
     // sobre el contenido de la noticia, no subjetivo al perfil del usuario.
     // =========================================================================
     if (article.isAnalyzed) {
@@ -214,7 +217,7 @@ export class AnalyzeArticleUseCase {
       contentToAnalyze.includes('JinaReader API Error');
 
     if (isContentInvalid) {
-      console.log(`   🌐 Scraping contenido con Jina Reader (URL: ${article.url})...`);
+      console.log(`   ðŸŒ Scraping contenido con Jina Reader (URL: ${article.url})...`);
       
       try {
         const scrapedData = await this.jinaReaderClient.scrapeUrl(article.url);
@@ -222,58 +225,58 @@ export class AnalyzeArticleUseCase {
         if (scrapedData.content && scrapedData.content.length >= MIN_CONTENT_LENGTH) {
           contentToAnalyze = scrapedData.content;
           scrapedContentLength = scrapedData.content.length;
-          console.log(`   ✅ Scraping OK (${scrapedContentLength} caracteres).`);
+          console.log(`   âœ… Scraping OK (${scrapedContentLength} caracteres).`);
 
           // Update article with scraped content
           let articleWithContent = article.withFullContent(scrapedData.content);
           
           // Enrich with image URL if article doesn't have one
           if (!article.urlToImage && scrapedData.imageUrl) {
-            console.log(`   🖼️  Imagen detectada: ${scrapedData.imageUrl}`);
+            console.log(`   ðŸ–¼ï¸  Imagen detectada: ${scrapedData.imageUrl}`);
             articleWithContent = articleWithContent.withImage(scrapedData.imageUrl);
           }
           
           await this.articleRepository.save(articleWithContent);
         } else {
-          throw new Error('Contenido scrapeado vacío o muy corto');
+          throw new Error('Contenido scrapeado vacÃ­o o muy corto');
         }
       } catch (scrapingError) {
-        // FALLBACK: Usar título + descripción
-        console.warn(`   ⚠️ Scraping falló. Usando FALLBACK (título + descripción).`);
-        console.warn(`   👉 Razón: ${scrapingError instanceof Error ? scrapingError.message : 'Error desconocido'}`);
+        // FALLBACK: Usar tÃ­tulo + descripciÃ³n
+        console.warn(`   âš ï¸ Scraping fallÃ³. Usando FALLBACK (tÃ­tulo + descripciÃ³n).`);
+        console.warn(`   ðŸ‘‰ RazÃ³n: ${scrapingError instanceof Error ? scrapingError.message : 'Error desconocido'}`);
         
-        const fallbackContent = `${article.title}\n\n${article.description || 'Sin descripción disponible'}`;
+        const fallbackContent = `${article.title}\n\n${article.description || 'Sin descripciÃ³n disponible'}`;
         contentToAnalyze = fallbackContent;
         scrapedContentLength = 0; // Indicar que no se hizo scraping
         usedFallback = true;
       }
     } else {
-        console.log(`   📂 Usando contenido existente en DB.`);
+        console.log(`   ðŸ“‚ Usando contenido existente en DB.`);
     }
 
     // 3.5. Extract image metadata if article doesn't have one (BEFORE Gemini analysis)
     if (!article.urlToImage) {
-      console.log(`   🖼️  Extrayendo metadata de imagen (timeout 2s)...`);
+      console.log(`   ðŸ–¼ï¸  Extrayendo metadata de imagen (timeout 2s)...`);
       try {
         const metadata = await this.metadataExtractor.extractMetadata(article.url);
         const imageUrl = this.metadataExtractor.getBestImageUrl(metadata);
         
         if (imageUrl) {
-          console.log(`   ✅ Imagen encontrada: ${imageUrl.substring(0, 60)}...`);
+          console.log(`   âœ… Imagen encontrada: ${imageUrl.substring(0, 60)}...`);
           // Update article with image URL
           const articleWithImage = article.withImage(imageUrl);
           await this.articleRepository.save(articleWithImage);
           // Update local reference for next steps
           article = articleWithImage;
         } else {
-          console.log(`   ⚠️  No se encontró og:image en la página.`);
+          console.log(`   âš ï¸  No se encontrÃ³ og:image en la pÃ¡gina.`);
         }
       } catch (metadataError) {
-        console.warn(`   ⚠️  Metadata extraction falló (continuando sin imagen): ${metadataError instanceof Error ? metadataError.message : 'Error desconocido'}`);
+        console.warn(`   âš ï¸  Metadata extraction fallÃ³ (continuando sin imagen): ${metadataError instanceof Error ? metadataError.message : 'Error desconocido'}`);
         // Continue without image - not a critical error
       }
     } else {
-      console.log(`   🖼️  Artículo ya tiene imagen.`);
+      console.log(`   ðŸ–¼ï¸  ArtÃ­culo ya tiene imagen.`);
     }
 
     const rawAnalyzedContent = contentToAnalyze || '';
@@ -285,12 +288,12 @@ export class AnalyzeArticleUseCase {
         : rawAnalyzedContent;
 
     // 4. Analyze with Gemini
-    console.log(`   🤖 [NUEVA ANÁLISIS] Generando análisis con IA (este resultado se cacheará globalmente)...`);
+    console.log(`   ðŸ¤– [NUEVA ANÃLISIS] Generando anÃ¡lisis con IA (este resultado se cachearÃ¡ globalmente)...`);
 
     // Si usamos fallback, ajustar el prompt
     let adjustedContent = normalizedContentForAnalysis;
     if (usedFallback) {
-      adjustedContent = `ADVERTENCIA: No se pudo acceder al artículo completo. Realiza el análisis basándote ÚNICAMENTE en el título y el resumen disponibles. Indica explícitamente en tu respuesta que el análisis es preliminar por falta de acceso a la fuente original.\n\n${normalizedContentForAnalysis}`;
+      adjustedContent = `ADVERTENCIA: No se pudo acceder al artÃ­culo completo. Realiza el anÃ¡lisis basÃ¡ndote ÃšNICAMENTE en el tÃ­tulo y el resumen disponibles. Indica explÃ­citamente en tu respuesta que el anÃ¡lisis es preliminar por falta de acceso a la fuente original.\n\n${normalizedContentForAnalysis}`;
     }
     
     const effectiveAnalysisMode = this.resolveEffectiveAnalysisMode({
@@ -317,11 +320,11 @@ export class AnalyzeArticleUseCase {
         articleTitle: article.title,
         rssSnippetDetected,
       });
-      console.log(`   ✅ Gemini OK. Score: ${analysis.biasScore} | Summary: ${analysis.summary.substring(0, 30)}...`);
+      console.log(`   âœ… Gemini OK. Score: ${analysis.biasScore} | Summary: ${analysis.summary.substring(0, 30)}...`);
     } catch (error) {
       // Map Gemini errors for observability (AI_RULES.md compliance)
       const mappedError = GeminiErrorMapper.toExternalAPIError(error);
-      console.error(`   ❌ Gemini analysis failed: ${mappedError.message}`);
+      console.error(`   âŒ Gemini analysis failed: ${mappedError.message}`);
       throw mappedError;
     }
 
@@ -342,7 +345,7 @@ export class AnalyzeArticleUseCase {
 
     // 6. Generate and store embedding in pgvector for semantic search
     try {
-      console.log(`   🔗 Generando embedding para búsqueda semántica...`);
+      console.log(`   ðŸ”— Generando embedding para bÃºsqueda semÃ¡ntica...`);
 
       // Combine relevant text for embedding
       const textToEmbed = `${article.title}. ${article.description || ''}. ${analysis.summary || ''}`;
@@ -353,7 +356,7 @@ export class AnalyzeArticleUseCase {
         embedding = await this.geminiClient.generateEmbedding(textToEmbed);
       } catch (error) {
         const mappedError = GeminiErrorMapper.toExternalAPIError(error);
-        console.error(`   ❌ Gemini embedding failed: ${mappedError.message}`);
+        console.error(`   âŒ Gemini embedding failed: ${mappedError.message}`);
         throw mappedError;
       }
 
@@ -370,10 +373,10 @@ export class AnalyzeArticleUseCase {
         textToEmbed
       );
 
-      console.log(`   ✅ Embedding almacenado en pgvector OK`);
+      console.log(`   âœ… Embedding almacenado en pgvector OK`);
     } catch (indexError) {
       // Non-blocking: log error but don't fail the analysis
-      console.warn(`   ⚠️ Almacenamiento de embedding falló (análisis completado): ${indexError instanceof Error ? indexError.message : 'Error desconocido'}`);
+      console.warn(`   âš ï¸ Almacenamiento de embedding fallÃ³ (anÃ¡lisis completado): ${indexError instanceof Error ? indexError.message : 'Error desconocido'}`);
     }
 
     return {
@@ -418,15 +421,17 @@ export class AnalyzeArticleUseCase {
     const modelBiasIndicators = Array.isArray(analysis.biasIndicators)
       ? analysis.biasIndicators
       : [];
+    const modelCitedBiasIndicators = this.extractQuotedBiasIndicators(modelBiasIndicators);
     const rawBiasIndicators = this.withTitleBiasIndicator(
       modelBiasIndicators,
       context?.articleTitle
     );
-    const hasCalibratedBiasSignals = this.hasThreeQuotedBiasIndicators(rawBiasIndicators);
+    const citedBiasIndicators = this.extractQuotedBiasIndicators(rawBiasIndicators);
+    const hasCalibratedBiasSignals = this.hasThreeQuotedBiasIndicators(modelBiasIndicators);
     const biasRaw = hasCalibratedBiasSignals ? parsedBiasRaw : 0;
     const biasScoreNormalized = hasCalibratedBiasSignals ? parsedBiasScoreNormalized : 0;
     const biasType = hasCalibratedBiasSignals ? analysis.biasType : 'ninguno';
-    const biasIndicators = hasCalibratedBiasSignals ? rawBiasIndicators : [];
+    const biasIndicators = citedBiasIndicators;
 
     let reliabilityScore = this.clampNumber(analysis.reliabilityScore, 0, 100, 50);
     let traceabilityScore = this.clampNumber(
@@ -451,33 +456,47 @@ export class AnalyzeArticleUseCase {
     const evidenceNeeded = Array.isArray(analysis.evidence_needed)
       ? analysis.evidence_needed.slice(0, 4)
       : [];
+    const shouldKeepIndeterminateLeaning =
+      scrapedContentLength < 300 ||
+      context?.rssSnippetDetected === true ||
+      context?.usedFallback === true;
+    const shouldForceNeutralLowConfidence =
+      scrapedContentLength >= 600 && modelCitedBiasIndicators.length < 2;
     const hasIdeologicalEvidence =
       hasCalibratedBiasSignals &&
       scrapedContentLength >= 800 &&
-      biasIndicators.length >= 3 &&
       traceabilityScore >= 40;
     const parsedArticleLeaning = this.normalizeArticleLeaning(
       analysis.articleLeaning ?? analysis.biasLeaning
     );
-    const articleLeaning = hasIdeologicalEvidence
-      ? this.enforceExtremistRule(
-          parsedArticleLeaning ?? 'indeterminada',
-          biasIndicators
-        )
-      : 'indeterminada';
-    const biasComment = this.buildBiasComment({
-      shouldForceIndeterminateBias: !hasIdeologicalEvidence,
-      biasIndicators,
-      articleLeaning,
-    });
-    const reliabilityComment = this.buildReliabilityComment({
-      reliabilityScore,
-      traceabilityScore,
-      factualityStatus,
-      evidenceNeeded,
-      scrapedContentLength,
-      usedFallback: context?.usedFallback === true,
-    });
+    let articleLeaning: 'progresista' | 'conservadora' | 'extremista' | 'neutral' | 'indeterminada';
+    let leaningConfidence: 'baja' | 'media' | 'alta' | undefined;
+    if (shouldKeepIndeterminateLeaning) {
+      articleLeaning = 'indeterminada';
+    } else if (shouldForceNeutralLowConfidence) {
+      articleLeaning = 'neutral';
+      leaningConfidence = 'baja';
+    } else if (hasIdeologicalEvidence) {
+      articleLeaning = this.enforceExtremistRule(
+        parsedArticleLeaning ?? 'neutral',
+        biasIndicators
+      );
+    } else {
+      articleLeaning = 'neutral';
+      leaningConfidence = 'baja';
+    }
+    if (!shouldKeepIndeterminateLeaning && articleLeaning === 'indeterminada') {
+      articleLeaning = 'neutral';
+      leaningConfidence = 'baja';
+    }
+    const biasComment = shouldForceNeutralLowConfidence
+      ? NEUTRAL_LOW_CONFIDENCE_BIAS_COMMENT
+      : this.buildBiasComment({
+          shouldForceIndeterminateBias: shouldKeepIndeterminateLeaning,
+          hasCalibratedBiasSignals,
+          biasIndicators,
+          articleLeaning,
+        });
 
     const claims = Array.isArray(analysis.factCheck?.claims)
       ? analysis.factCheck.claims.slice(0, 5)
@@ -516,8 +535,29 @@ export class AnalyzeArticleUseCase {
       scrapedContentLength,
       usedFallback: context?.usedFallback === true,
     });
+    const factCheck = this.normalizeFactCheck({
+      claims,
+      verdict: analysis.factCheck?.verdict,
+      reasoning: analysis.factCheck?.reasoning,
+      forceInsufficientEvidenceVerdict,
+    });
+    const hasAttributionOrCitations = this.hasAttributionOrCitationEvidence({
+      analyzedText: context?.analyzedText ?? '',
+      biasIndicators: modelCitedBiasIndicators,
+      traceabilityScore,
+    });
+    const reliabilityComment = this.buildReliabilityComment({
+      reliabilityScore,
+      traceabilityScore,
+      factualityStatus,
+      evidenceNeeded,
+      scrapedContentLength,
+      usedFallback: context?.usedFallback === true,
+      factCheckVerdict: factCheck.verdict,
+      hasAttributionOrCitations,
+    });
     const explanation =
-      biasRaw === 0 && biasIndicators.length === 0
+      biasRaw === 0 && !hasCalibratedBiasSignals
         ? 'No se detectaron senales suficientes de sesgo con evidencia citada.'
         : analysis.explanation;
 
@@ -536,17 +576,13 @@ export class AnalyzeArticleUseCase {
       biasIndicators,
       biasComment,
       articleLeaning,
+      leaningConfidence,
       biasLeaning: this.toLegacyBiasLeaning(articleLeaning),
       reliabilityComment,
       explanation,
       analysisModeUsed,
       clickbaitScore,
-      factCheck: this.normalizeFactCheck({
-        claims,
-        verdict: analysis.factCheck?.verdict,
-        reasoning: analysis.factCheck?.reasoning,
-        forceInsufficientEvidenceVerdict,
-      }),
+      factCheck,
     };
   }
 
@@ -576,12 +612,13 @@ export class AnalyzeArticleUseCase {
   }
 
   private hasThreeQuotedBiasIndicators(indicators: string[]): boolean {
-    if (indicators.length < 3) {
-      return false;
-    }
+    return this.extractQuotedBiasIndicators(indicators).length >= 3;
+  }
 
-    const citationPattern = /["'`][^"'`]{3,140}["'`]|\([^()]{3,120}\)|\[[^\[\]]{3,120}\]/;
-    return indicators.slice(0, 3).every((indicator) => citationPattern.test(indicator));
+  private extractQuotedBiasIndicators(indicators: string[]): string[] {
+    return indicators
+      .filter((indicator) => BIAS_INDICATOR_CITATION_PATTERN.test(indicator))
+      .slice(0, 5);
   }
 
   private withTitleBiasIndicator(
@@ -682,12 +719,18 @@ export class AnalyzeArticleUseCase {
 
   private buildBiasComment(params: {
     shouldForceIndeterminateBias: boolean;
+    hasCalibratedBiasSignals: boolean;
     biasIndicators: string[];
     articleLeaning: 'progresista' | 'conservadora' | 'extremista' | 'neutral' | 'indeterminada';
   }): string {
     if (params.shouldForceIndeterminateBias) {
       return this.normalizeUiComment(
-        'No hay suficientes señales citadas para inferir una tendencia ideológica y, con este nivel de evidencia interna, el sesgo se mantiene indeterminado'
+        'No hay suficientes seÃ±ales citadas para inferir una tendencia ideolÃ³gica y, con este nivel de evidencia interna, el sesgo se mantiene indeterminado'
+      );
+    }
+    if (!params.hasCalibratedBiasSignals) {
+      return this.normalizeUiComment(
+        'No se observan senales solidas para atribuir una tendencia ideologica consistente con el texto disponible'
       );
     }
 
@@ -697,9 +740,9 @@ export class AnalyzeArticleUseCase {
       .join('; ');
     const leaningText =
       params.articleLeaning === 'indeterminada'
-        ? 'sin tendencia ideológica concluyente'
+        ? 'sin tendencia ideolÃ³gica concluyente'
         : `con tendencia ${params.articleLeaning}`;
-    const generated = `El encuadre refleja ${leaningText} según señales citadas (${citedSignals}), evaluadas solo desde el texto disponible y sin inferir hechos externos`;
+    const generated = `El encuadre refleja ${leaningText} segÃºn seÃ±ales citadas (${citedSignals}), evaluadas solo desde el texto disponible y sin inferir hechos externos`;
 
     return this.normalizeUiComment(generated);
   }
@@ -711,6 +754,8 @@ export class AnalyzeArticleUseCase {
     evidenceNeeded: string[];
     scrapedContentLength: number;
     usedFallback: boolean;
+    factCheckVerdict: ArticleAnalysis['factCheck']['verdict'];
+    hasAttributionOrCitations: boolean;
   }): string {
     const shortOrFallbackTemplate =
       'Fiabilidad baja: texto incompleto y sin atribuciones; no verificable con fuentes internas.';
@@ -725,15 +770,6 @@ export class AnalyzeArticleUseCase {
     const missingEvidenceText = this.joinGenericMissingEvidence(
       genericMissingEvidence.length > 0 ? genericMissingEvidence : ['citas', 'contexto']
     );
-
-    if (params.scrapedContentLength < 800) {
-      const mediumTemplate =
-        params.factualityStatus === 'no_determinable'
-          ? `Fiabilidad media: soporte interno parcial; faltan ${missingEvidenceText} y no verificable con fuentes internas.`
-          : `Fiabilidad media: soporte interno parcial; faltan ${missingEvidenceText} para mejorar trazabilidad.`;
-      return this.fitReliabilityCommentLength(mediumTemplate, shortOrFallbackTemplate);
-    }
-
     const reliabilityBand =
       params.reliabilityScore >= 85
         ? 'muy alta'
@@ -744,12 +780,34 @@ export class AnalyzeArticleUseCase {
             : params.reliabilityScore >= 30
               ? 'baja'
               : 'muy baja';
+
+    if (
+      params.factCheckVerdict === 'SupportedByArticle' &&
+      params.hasAttributionOrCitations
+    ) {
+      const supportedTemplate = `Fiabilidad ${reliabilityBand}: soportado por el articulo con evidencia interna trazable; sin verificacion externa independiente.`;
+      const compactSupportedTemplate =
+        'Soportado por el articulo con evidencia interna trazable; sin verificacion externa independiente.';
+      return this.fitReliabilityCommentLength(
+        supportedTemplate,
+        compactSupportedTemplate,
+        shortOrFallbackTemplate
+      );
+    }
+
+    if (params.scrapedContentLength < 800) {
+      const mediumTemplate =
+        params.factualityStatus === 'no_determinable'
+          ? `Fiabilidad media: soporte interno parcial; faltan ${missingEvidenceText} y no verificable con fuentes internas.`
+          : `Fiabilidad media: soporte interno parcial; faltan ${missingEvidenceText} para mejorar trazabilidad.`;
+      return this.fitReliabilityCommentLength(mediumTemplate, shortOrFallbackTemplate);
+    }
     const traceabilityClause =
       params.traceabilityScore >= 70
         ? 'hay trazabilidad clara de citas y atribuciones'
         : params.traceabilityScore >= 40
           ? 'la trazabilidad es parcial'
-          : 'la trazabilidad es débil';
+          : 'la trazabilidad es dÃ©bil';
 
     const longTemplate =
       params.factualityStatus === 'no_determinable'
@@ -859,6 +917,19 @@ export class AnalyzeArticleUseCase {
     return this.joinAsNaturalList(evidence.map((item) => labels[item]));
   }
 
+  private hasAttributionOrCitationEvidence(params: {
+    analyzedText: string;
+    biasIndicators: string[];
+    traceabilityScore: number;
+  }): boolean {
+    const attributionPattern =
+      /\b(segun|according to|de acuerdo con|afirmo|informo|reporto|ministerio|universidad|instituto|documento|informe|fuente)\b|https?:\/\/\S+|www\.\S+/i;
+    const hasAttributionInContent = attributionPattern.test(params.analyzedText);
+    const hasQuotedIndicators = this.extractQuotedBiasIndicators(params.biasIndicators).length > 0;
+
+    return hasAttributionInContent || hasQuotedIndicators || params.traceabilityScore >= 55;
+  }
+
   private fitReliabilityCommentLength(...candidates: string[]): string {
     for (const candidate of candidates) {
       const compact = candidate.replace(/\s+/g, ' ').trim();
@@ -894,7 +965,7 @@ export class AnalyzeArticleUseCase {
     let reasoning =
       typeof params.reasoning === 'string' && params.reasoning.trim().length > 0
         ? params.reasoning.trim()
-        : 'Sin información suficiente para verificar.';
+        : 'Sin informaciÃ³n suficiente para verificar.';
 
     if (this.reasoningIndicatesInsufficientEvidence(reasoning)) {
       verdict = 'InsufficientEvidenceInArticle';
@@ -902,7 +973,7 @@ export class AnalyzeArticleUseCase {
 
     if (verdict === 'SupportedByArticle') {
       reasoning =
-        'Aparece explícitamente en el texto (soportado por el artículo), no verificado externamente.';
+        'Aparece explÃ­citamente en el texto (soportado por el artÃ­culo), no verificado externamente.';
     } else if (verdict === 'InsufficientEvidenceInArticle' && !this.reasoningIndicatesInsufficientEvidence(reasoning)) {
       reasoning =
         'La evidencia interna es insuficiente en el texto; no verificable con fuentes internas.';
@@ -999,7 +1070,7 @@ export class AnalyzeArticleUseCase {
   }
 
   private hasStrongClaim(text: string): boolean {
-    return /\b(siempre|nunca|todo esta|todo está|demuestra|100%|sin duda|definitivo|inminente)\b/i.test(
+    return /\b(siempre|nunca|todo esta|todo estÃ¡|demuestra|100%|sin duda|definitivo|inminente)\b/i.test(
       text
     );
   }
@@ -1056,20 +1127,20 @@ export class AnalyzeArticleUseCase {
       '&quot;': '"',
       '&#39;': "'",
       '&nbsp;': ' ',
-      '&aacute;': 'á',
-      '&eacute;': 'é',
-      '&iacute;': 'í',
-      '&oacute;': 'ó',
-      '&uacute;': 'ú',
-      '&Aacute;': 'Á',
-      '&Eacute;': 'É',
-      '&Iacute;': 'Í',
-      '&Oacute;': 'Ó',
-      '&Uacute;': 'Ú',
-      '&ntilde;': 'ñ',
-      '&Ntilde;': 'Ñ',
-      '&uuml;': 'ü',
-      '&Uuml;': 'Ü',
+      '&aacute;': 'Ã¡',
+      '&eacute;': 'Ã©',
+      '&iacute;': 'Ã­',
+      '&oacute;': 'Ã³',
+      '&uacute;': 'Ãº',
+      '&Aacute;': 'Ã',
+      '&Eacute;': 'Ã‰',
+      '&Iacute;': 'Ã',
+      '&Oacute;': 'Ã“',
+      '&Uacute;': 'Ãš',
+      '&ntilde;': 'Ã±',
+      '&Ntilde;': 'Ã‘',
+      '&uuml;': 'Ã¼',
+      '&Uuml;': 'Ãœ',
       '&ldquo;': '"',
       '&rdquo;': '"',
       '&lsquo;': "'",
@@ -1107,14 +1178,14 @@ export class AnalyzeArticleUseCase {
     }
 
     const claimsText = [...params.claims, params.summary].join(' ');
-    const hasStrongClaim = /\b(siempre|nunca|todo esta|todo está|demuestra|100%|sin duda|definitivo|urgente|esc[áa]ndalo|bomba|inminente)\b/i.test(
+    const hasStrongClaim = /\b(siempre|nunca|todo esta|todo estÃ¡|demuestra|100%|sin duda|definitivo|urgente|esc[Ã¡a]ndalo|bomba|inminente)\b/i.test(
       claimsText
     );
     if (!hasStrongClaim) {
       return false;
     }
 
-    const hasAttribution = /\b(seg[uú]n|according to|de acuerdo con|afirm[oó]|inform[oó]|report[oó]|ministerio|universidad|instituto|documento|informe)\b|https?:\/\/\S+|www\.\S+/i.test(
+    const hasAttribution = /\b(seg[uÃº]n|according to|de acuerdo con|afirm[oÃ³]|inform[oÃ³]|report[oÃ³]|ministerio|universidad|instituto|documento|informe)\b|https?:\/\/\S+|www\.\S+/i.test(
       params.analyzedText
     );
     return !hasAttribution;
@@ -1224,7 +1295,7 @@ export class AnalyzeArticleUseCase {
       /\bno es una novedad\b[:,]?\s*/gi,
       /\bcabe destacar\b[:,]?\s*/gi,
       /\ben este contexto\b[:,]?\s*/gi,
-      /\bseg[uú]n se desprende\b[:,]?\s*/gi,
+      /\bseg(?:u|\u00fa)n\s+se\s+desprende\b[:,]?\s*/gi,
     ];
 
     let cleaned = summary;
@@ -1318,21 +1389,21 @@ export class AnalyzeArticleUseCase {
   /**
    * Analyze multiple unanalyzed articles in batch
    *
-   * COST OPTIMIZATION: Límites defensivos
-   * - Máximo MAX_BATCH_LIMIT artículos por lote
-   * - Solo procesa artículos NO analizados (findUnanalyzed)
-   * - Cada artículo individual tiene su propio caché check
+   * COST OPTIMIZATION: LÃ­mites defensivos
+   * - MÃ¡ximo MAX_BATCH_LIMIT artÃ­culos por lote
+   * - Solo procesa artÃ­culos NO analizados (findUnanalyzed)
+   * - Cada artÃ­culo individual tiene su propio cachÃ© check
    */
   async executeBatch(input: AnalyzeBatchInput): Promise<AnalyzeBatchOutput> {
     const { limit } = input;
 
-    // COST OPTIMIZATION: Límite defensivo para evitar costes inesperados
+    // COST OPTIMIZATION: LÃ­mite defensivo para evitar costes inesperados
     if (limit <= 0 || limit > MAX_BATCH_LIMIT) {
       throw new ValidationError('Batch limit must be between 1 and 100');
     }
 
     const unanalyzedArticles = await this.articleRepository.findUnanalyzed(limit);
-    console.log(`📋 [Batch] Encontradas ${unanalyzedArticles.length} noticias pendientes.`);
+    console.log(`ðŸ“‹ [Batch] Encontradas ${unanalyzedArticles.length} noticias pendientes.`);
 
     const results: AnalyzeBatchOutput['results'] = [];
     let successful = 0;
@@ -1347,14 +1418,14 @@ export class AnalyzeArticleUseCase {
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         
-        // --- AQUÍ ESTÁ EL CAMBIO CLAVE ---
-        console.error(`❌ [ERROR] Falló la noticia ID ${article.id}:`);
-        console.error(`   👉 Causa: ${errorMessage}`);
+        // --- AQUÃ ESTÃ EL CAMBIO CLAVE ---
+        console.error(`âŒ [ERROR] FallÃ³ la noticia ID ${article.id}:`);
+        console.error(`   ðŸ‘‰ Causa: ${errorMessage}`);
         // ---------------------------------
 
         // Si el error es de Rate Limit, avisamos
         if (errorMessage.includes('429') || errorMessage.includes('Rate limit')) {
-            console.warn(`   ⚠️ ALERTA: Gemini está saturado. Aumentando tiempo de espera...`);
+            console.warn(`   âš ï¸ ALERTA: Gemini estÃ¡ saturado. Aumentando tiempo de espera...`);
         }
 
 

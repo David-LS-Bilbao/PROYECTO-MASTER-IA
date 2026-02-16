@@ -45,4 +45,23 @@ describe('ReliabilityBadge vNext.1', () => {
 
     expect(screen.queryByText('Posible bulo / alto riesgo')).not.toBeInTheDocument();
   });
+
+  it('muestra etiqueta de soporte interno cuando verdict es SupportedByArticle', () => {
+    render(
+      <ReliabilityBadge
+        score={62}
+        traceabilityScore={58}
+        factualityStatus="no_determinable"
+        factCheckVerdict="SupportedByArticle"
+        shouldEscalate={false}
+      />
+    );
+
+    expect(
+      screen.getByText('Soportado por el artículo (sin verificación externa)')
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('No verificable con fuentes internas')
+    ).not.toBeInTheDocument();
+  });
 });

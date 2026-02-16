@@ -164,6 +164,30 @@ describe('GeminiClient parseAnalysisResponse', () => {
     expect(result.biasScoreNormalized).toBe(0);
     expect(result.biasScore).toBe(0);
     expect(result.biasType).toBe('ninguno');
+    expect(result.biasIndicators).toEqual([]);
+  });
+
+  it('conserva 1-2 biasIndicators citados sin escalar sesgo fuerte', () => {
+    const parse = (client as any).parseAnalysisResponse.bind(client);
+    const text = JSON.stringify({
+      summary: 'Resumen',
+      biasRaw: 6,
+      biasScoreNormalized: 0.6,
+      analysis: { biasType: 'lenguaje' },
+      biasIndicators: [
+        'Lenguaje enfatico: "es una derrota total"',
+        'Framing parcial (solo una version)',
+      ],
+    });
+
+    const result = parse(text);
+    expect(result.biasIndicators).toEqual([
+      'Lenguaje enfatico: "es una derrota total"',
+      'Framing parcial (solo una version)',
+    ]);
+    expect(result.biasRaw).toBe(0);
+    expect(result.biasScoreNormalized).toBe(0);
+    expect(result.biasType).toBe('ninguno');
   });
 
   it('calibra a rango bajo un texto tipo clickbait sin atribuciones', () => {

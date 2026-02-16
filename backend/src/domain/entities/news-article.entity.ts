@@ -74,6 +74,8 @@ export interface ArticleAnalysis {
   biasComment?: string;
   // Tendencia ideologica del articulo (solo con evidencia citada suficiente)
   articleLeaning?: 'progresista' | 'conservadora' | 'extremista' | 'neutral' | 'indeterminada';
+  // Confianza del leaning (opcional, derivada de la calidad de evidencia interna)
+  leaningConfidence?: 'baja' | 'media' | 'alta';
   // Legacy alias para compatibilidad hacia atras (deprecado)
   biasLeaning?: 'progresista' | 'conservadora' | 'neutral' | 'indeterminada' | 'otra';
   clickbaitScore: number; // 0..100

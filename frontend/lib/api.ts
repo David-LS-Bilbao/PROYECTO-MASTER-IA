@@ -81,6 +81,7 @@ export interface ArticleAnalysis {
   biasIndicators: string[];
   biasComment?: string;
   articleLeaning?: 'progresista' | 'conservadora' | 'extremista' | 'neutral' | 'indeterminada';
+  leaningConfidence?: 'baja' | 'media' | 'alta';
   // Legacy alias maintained for backward compatibility with cached payloads
   biasLeaning?: 'progresista' | 'conservadora' | 'neutral' | 'indeterminada' | 'otra';
   // clickbaitScore: 0 (Serio) a 100 (Clickbait extremo)

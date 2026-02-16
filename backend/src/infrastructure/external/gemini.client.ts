@@ -722,11 +722,12 @@ export class GeminiClient implements IGeminiClient {
       );
 
       const parsedBiasIndicators = this.normalizeStringArray(parsed.biasIndicators).slice(0, 5);
+      const citedBiasIndicators = this.extractQuotedBiasIndicators(parsedBiasIndicators);
       const hasCalibratedBiasSignals = this.hasThreeQuotedBiasIndicators(parsedBiasIndicators);
       const biasRaw = hasCalibratedBiasSignals ? parsedBiasRaw : 0;
       const biasScoreNormalized = hasCalibratedBiasSignals ? parsedBiasScoreNormalized : 0;
       const biasType = hasCalibratedBiasSignals ? (parsedBiasType ?? 'ninguno') : 'ninguno';
-      const biasIndicators = hasCalibratedBiasSignals ? parsedBiasIndicators : [];
+      const biasIndicators = citedBiasIndicators;
       const articleLeaning = hasCalibratedBiasSignals
         ? (parsedArticleLeaning ?? 'indeterminada')
         : 'indeterminada';
@@ -1157,12 +1158,12 @@ export class GeminiClient implements IGeminiClient {
   }
 
   private hasThreeQuotedBiasIndicators(indicators: string[]): boolean {
-    if (indicators.length < 3) {
-      return false;
-    }
+    return this.extractQuotedBiasIndicators(indicators).length >= 3;
+  }
 
+  private extractQuotedBiasIndicators(indicators: string[]): string[] {
     const citationPattern = /["'`][^"'`]{3,140}["'`]|\([^()]{3,120}\)|\[[^\[\]]{3,120}\]/;
-    return indicators.slice(0, 3).every((indicator) => citationPattern.test(indicator));
+    return indicators.filter((indicator) => citationPattern.test(indicator)).slice(0, 5);
   }
 
   private normalizeAnalysisMode(value: unknown): AnalysisMode {

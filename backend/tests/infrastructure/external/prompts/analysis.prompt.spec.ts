@@ -22,9 +22,10 @@ describe('ANALYSIS_PROMPT vNext.1', () => {
     expect(ANALYSIS_PROMPT).toContain('FEW-SHOT 2');
   });
 
-  it('exige 3 biasIndicators con cita y fallback neutral', () => {
-    expect(ANALYSIS_PROMPT).toContain('EXACTAMENTE 3 indicadores');
-    expect(ANALYSIS_PROMPT).toContain('fuerza sesgo neutral');
+  it('permite 1-2 biasIndicators citados, pero solo escala sesgo fuerte con 3+', () => {
+    expect(ANALYSIS_PROMPT).toContain('entre 1 y 5 indicadores');
+    expect(ANALYSIS_PROMPT).toContain('1-2 indicadores citados');
+    expect(ANALYSIS_PROMPT).toContain('Solo escala sesgo fuerte cuando haya 3 o mas indicadores citados');
   });
 
   it('usa enum de verdict basado en evidencia interna del articulo', () => {
@@ -37,8 +38,13 @@ describe('ANALYSIS_PROMPT vNext.1', () => {
   it('incluye campos vNext de explicabilidad con limites de longitud', () => {
     expect(ANALYSIS_PROMPT).toContain('biasComment');
     expect(ANALYSIS_PROMPT).toContain('articleLeaning');
+    expect(ANALYSIS_PROMPT).toContain('leaningConfidence');
     expect(ANALYSIS_PROMPT).toContain('reliabilityComment');
     expect(ANALYSIS_PROMPT).toContain('max 220');
+  });
+
+  it('incluye coherencia de fiabilidad para SupportedByArticle', () => {
+    expect(ANALYSIS_PROMPT).toContain('Soportado por el artículo (sin verificación externa)');
   });
 
   it('exige frase literal para no_determinable en reliabilityComment', () => {

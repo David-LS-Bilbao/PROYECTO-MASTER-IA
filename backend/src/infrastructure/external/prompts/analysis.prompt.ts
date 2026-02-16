@@ -34,15 +34,21 @@ REGLAS NO NEGOCIABLES:
     summary de 1-2 frases y 35-45 palabras maximo.
   - En ese caso, explica que afirma el extracto y aclara que falta el cuerpo.
   - Prohibido usar el prefijo "Resumen provisional..." y prohibido repetir plantillas genericas.
-- biasIndicators debe incluir EXACTAMENTE 3 indicadores, cada uno con cita breve del texto
+- biasIndicators puede incluir entre 1 y 5 indicadores con cita breve del texto
   (entre comillas o con referencia corta entre parentesis/corchetes).
-- Si no puedes justificar 3 indicadores con cita, fuerza sesgo neutral:
+- Si hay 1-2 indicadores citados, mantenlos pero NO escales sesgo fuerte:
   biasRaw=0, biasScoreNormalized=0, analysis.biasType="ninguno".
+- Solo escala sesgo fuerte cuando haya 3 o mas indicadores citados.
 - biasComment: 1 frase (ideal 140-200 chars, max 220), sin inventar hechos externos.
 - articleLeaning SOLO puede ser: "progresista" | "conservadora" | "extremista" | "neutral" | "indeterminada".
   - "extremista" solo con evidencias citadas de lenguaje deshumanizante/violento/absolutista.
-  - Si hay duda o evidencia insuficiente, usa "indeterminada".
+  - Usa "indeterminada" SOLO para inputQuality snippet_rss/paywall_o_vacio o contenido <300 chars.
+  - Si contenido >=600 y hay menos de 2 indicadores citados:
+    articleLeaning="neutral", biasLeaning="neutral", leaningConfidence="baja" y
+    biasComment="No se observan señales claras de encuadre ideológico en el texto disponible (confianza baja)."
 - reliabilityComment: 1 frase (ideal 140-200 chars, max 220) explicando fiabilidad por evidencia interna.
+  - Si factCheck.verdict="SupportedByArticle", usa formulacion coherente con
+    "Soportado por el artículo (sin verificación externa)" y evita "no verificable con fuentes internas".
   - Si factualityStatus="no_determinable", incluye literalmente: "no verificable con fuentes internas".
   - Si evidence_needed tiene elementos, menciona maximo 2.
 
@@ -89,9 +95,10 @@ JSON requerido:
   "category": "<politica|economia|tecnologia|deportes|cultura|ciencia|mundo|sociedad>",
   "biasRaw": "<entero -10..+10>",
   "biasScoreNormalized": "<0..1 = abs(biasRaw)/10>",
-  "biasIndicators": ["<3 a 5 indicadores con cita breve textual>"],
+  "biasIndicators": ["<1 a 5 indicadores con cita breve textual>"],
   "biasComment": "<1 frase, ideal 140-200 chars, max 220, solo con senales citadas>",
   "articleLeaning": "<progresista|conservadora|extremista|neutral|indeterminada>",
+  "leaningConfidence": "<opcional: baja|media|alta>",
   "reliabilityScore": "<entero 0..100 segun escala obligatoria>",
   "traceabilityScore": "<entero 0..100>",
   "factualityStatus": "<no_determinable|plausible_but_unverified>",
@@ -126,18 +133,24 @@ Usa:
     1-2 frases, 35-45 palabras maximo, explicando que afirma el extracto y que falta el cuerpo
   - prohibido "Resumen provisional..." y plantillas genericas repetidas
 - biasRaw (-10..10) y biasScoreNormalized=abs(biasRaw)/10
-- biasIndicators: entre 3 y 5 indicadores con cita breve textual
-- si no hay 3 indicadores citables: biasRaw=0, biasScoreNormalized=0, analysis.biasType=ninguno
+- biasIndicators: entre 1 y 5 indicadores con cita breve textual
+- si solo hay 1-2 indicadores citables: mantenlos, pero biasRaw=0, biasScoreNormalized=0, analysis.biasType=ninguno
+- solo escalar sesgo fuerte con 3 o mas indicadores citados
 - biasComment (1 frase, max 220 chars) y articleLeaning en:
   progresista|conservadora|extremista|neutral|indeterminada
 - "extremista" solo con evidencia citada de lenguaje deshumanizante/violento/absolutista
-- si no hay evidencia clara de tendencia ideologica: articleLeaning=indeterminada
+- usa articleLeaning=indeterminada SOLO para snippet_rss/paywall_o_vacio o contenido <300 chars
+- si contenido >=600 y hay menos de 2 indicadores citados:
+  articleLeaning=neutral, biasLeaning=neutral, leaningConfidence=baja y biasComment exacto:
+  "No se observan señales claras de encuadre ideológico en el texto disponible (confianza baja)."
 - reliabilityScore (evidencia interna 0..100)
 - traceabilityScore (0..100)
 - factualityStatus: no_determinable|plausible_but_unverified
 - evidence_needed: string[] max 4
 - reliabilityComment (1 frase, max 220 chars) y si factualityStatus=no_determinable incluir
   literalmente "no verificable con fuentes internas"
+- si factCheck.verdict=SupportedByArticle, usa formulacion coherente con
+  "Soportado por el artículo (sin verificación externa)" en reliabilityComment
 - should_escalate: boolean
 - factCheck.verdict: SupportedByArticle|NotSupportedByArticle|InsufficientEvidenceInArticle
 - si factCheck.claims queda vacio: verdict=InsufficientEvidenceInArticle
@@ -166,12 +179,19 @@ Reglas:
     1-2 frases, 35-45 palabras maximo, explicar el extracto y aclarar falta de cuerpo
   - prohibido usar "Resumen provisional..." y plantillas genericas
 - biasRaw (-10..10), biasScoreNormalized=abs(biasRaw)/10
-- biasIndicators: 3..5 con cita breve textual
+- biasIndicators: 1..5 con cita breve textual
 - articleLeaning: progresista|conservadora|extremista|neutral|indeterminada
 - "extremista" solo con evidencia citada de lenguaje deshumanizante/violento/absolutista
-- si no hay 3 indicadores citables: biasRaw=0, biasScoreNormalized=0, articleLeaning=indeterminada
+- si hay 1-2 indicadores citables: mantenlos, pero biasRaw=0 y biasScoreNormalized=0
+- solo escalar sesgo fuerte con 3 o mas indicadores citados
+- usa articleLeaning=indeterminada SOLO para snippet_rss/paywall_o_vacio o contenido <300 chars
+- si contenido >=600 y hay menos de 2 indicadores citados:
+  articleLeaning=neutral, biasLeaning=neutral, leaningConfidence=baja y biasComment exacto:
+  "No se observan señales claras de encuadre ideológico en el texto disponible (confianza baja)."
 - biasComment y reliabilityComment: 1 frase, max 220 chars
 - reliabilityComment debe incluir "no verificable con fuentes internas" si factualityStatus=no_determinable
+- si factCheck.verdict=SupportedByArticle, reliabilityComment debe ser coherente con:
+  "Soportado por el artículo (sin verificación externa)"
 - evidence_needed: max 4; citar max 2 en reliabilityComment si existen
 - factCheck.claims: max 5
 - si claims vacio: verdict=InsufficientEvidenceInArticle

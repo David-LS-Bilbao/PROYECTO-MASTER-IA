@@ -476,6 +476,7 @@ export default function NewsDetailPage() {
                           score={article.analysis.reliabilityScore}
                           traceabilityScore={article.analysis.traceabilityScore}
                           factualityStatus={article.analysis.factualityStatus}
+                          factCheckVerdict={article.analysis.factCheck?.verdict}
                           clickbaitScore={article.analysis.clickbaitScore}
                           shouldEscalate={article.analysis.should_escalate}
                           reasoning={article.analysis.factCheck?.reasoning}

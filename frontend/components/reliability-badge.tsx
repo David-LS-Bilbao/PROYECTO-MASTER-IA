@@ -4,6 +4,7 @@ interface ReliabilityBadgeProps {
   score: number; // 0-100
   traceabilityScore?: number;
   factualityStatus?: 'no_determinable' | 'plausible_but_unverified';
+  factCheckVerdict?: 'SupportedByArticle' | 'NotSupportedByArticle' | 'InsufficientEvidenceInArticle';
   clickbaitScore?: number;
   shouldEscalate?: boolean;
   reasoning?: string;
@@ -13,6 +14,7 @@ export function ReliabilityBadge({
   score,
   traceabilityScore,
   factualityStatus,
+  factCheckVerdict,
   clickbaitScore,
   shouldEscalate,
   reasoning,
@@ -33,6 +35,11 @@ export function ReliabilityBadge({
     textColor = 'text-red-600';
     text = 'Posible bulo / alto riesgo';
     Icon = ShieldAlert;
+  } else if (factCheckVerdict === 'SupportedByArticle') {
+    color = 'bg-emerald-600';
+    textColor = 'text-emerald-700';
+    text = 'Soportado por el artículo (sin verificación externa)';
+    Icon = ShieldCheck;
   } else if (factualityStatus === 'no_determinable') {
     color = 'bg-zinc-500';
     textColor = 'text-zinc-600';
