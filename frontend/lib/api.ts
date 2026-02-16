@@ -4,6 +4,41 @@
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
+/** Timeout por defecto para llamadas a la API (45s - permite cold start de Render free tier) */
+const DEFAULT_FETCH_TIMEOUT = 45_000;
+
+/**
+ * Wrapper de fetch con timeout via AbortController.
+ * Evita que las llamadas a la API cuelguen indefinidamente cuando el backend
+ * está dormido (Render free tier cold start ~30-60s).
+ */
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init?: RequestInit & { timeout?: number }
+): Promise<Response> {
+  const { timeout = DEFAULT_FETCH_TIMEOUT, ...fetchInit } = init ?? {};
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    const response = await fetch(input, {
+      ...fetchInit,
+      signal: controller.signal,
+    });
+    return response;
+  } catch (error: unknown) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error(
+        `El servidor no responde (timeout ${Math.round(timeout / 1000)}s). ` +
+        'Puede estar despertando. Inténtalo de nuevo en unos segundos.'
+      );
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export type AnalysisMode = 'low_cost' | 'moderate' | 'standard';
 
 function extractApiErrorMessage(errorData: any, fallback: string): string {
@@ -173,7 +208,7 @@ export async function fetchNews(limit = 50, offset = 0, token?: string): Promise
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${API_BASE_URL}/api/news?limit=${limit}&offset=${offset}`,
     {
       cache: 'no-store',
@@ -198,7 +233,7 @@ export async function fetchNewsById(id: string, token?: string): Promise<{ succe
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_BASE_URL}/api/news/${id}`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/news/${id}`, {
     cache: 'no-store',
     headers,
   });
@@ -217,7 +252,7 @@ export async function fetchNewsById(id: string, token?: string): Promise<{ succe
 export async function analyzeArticle(articleId: string, token: string): Promise<AnalyzeResponse> {
   const payload: Record<string, unknown> = { articleId };
 
-  const res = await fetch(`${API_BASE_URL}/api/analyze/article`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/analyze/article`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -247,7 +282,7 @@ export async function analyzeArticleWithMode(
 ): Promise<AnalyzeResponse> {
   const payload: Record<string, unknown> = { articleId, analysisMode };
 
-  const res = await fetch(`${API_BASE_URL}/api/analyze/article`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/analyze/article`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -279,7 +314,7 @@ export async function fetchAnalysisStats(): Promise<{
     biasDistribution: BiasDistribution;
   };
 }> {
-  const res = await fetch(`${API_BASE_URL}/api/analyze/stats`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/analyze/stats`, {
     cache: 'no-store',
   });
 
@@ -352,7 +387,7 @@ export async function chatWithArticle(
   messages: ChatMessage[],
   token: string
 ): Promise<ChatResponse> {
-  const res = await fetch(`${API_BASE_URL}/api/chat/article`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/chat/article`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -395,7 +430,7 @@ export async function chatGeneral(
   messages: ChatMessage[],
   token: string
 ): Promise<ChatGeneralResponse> {
-  const res = await fetch(`${API_BASE_URL}/api/chat/general`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/chat/general`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -437,7 +472,7 @@ export async function searchNews(
   query: string,
   limit = 10
 ): Promise<SearchResponse> {
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${API_BASE_URL}/api/search?q=${encodeURIComponent(query)}&limit=${limit}`,
     {
       cache: 'no-store',
@@ -468,7 +503,7 @@ export interface ToggleFavoriteResponse {
  * Toggle favorite status of an article (requires auth token for per-user isolation)
  */
 export async function toggleFavorite(articleId: string, token: string): Promise<ToggleFavoriteResponse> {
-  const res = await fetch(`${API_BASE_URL}/api/news/${articleId}/favorite`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/news/${articleId}/favorite`, {
     method: 'PATCH',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -492,7 +527,7 @@ export async function fetchFavorites(limit = 50, offset = 0, token?: string): Pr
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${API_BASE_URL}/api/news?favorite=true&limit=${limit}&offset=${offset}`,
     {
       cache: 'no-store',
@@ -525,7 +560,7 @@ export interface IngestResponse {
  * Trigger RSS ingestion for a specific category
  */
 export async function ingestByCategory(category: string, pageSize = 20): Promise<IngestResponse> {
-  const res = await fetch(`${API_BASE_URL}/api/ingest/news`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/ingest/news`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -566,7 +601,7 @@ export async function fetchNewsByCategory(
     query.set('refresh', 'true');
   }
 
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${API_BASE_URL}/api/news?${query.toString()}`,
     {
       cache: 'no-store',
@@ -612,7 +647,7 @@ export interface DiscoverRssResponse {
  * @returns La URL del RSS encontrada o lanza un error
  */
 export async function discoverRssSource(name: string): Promise<string> {
-  const res = await fetch(`${API_BASE_URL}/api/sources/discover`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/sources/discover`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -676,7 +711,7 @@ interface UpdateUserProfileData {
  * Requires authentication token
  */
 export async function getUserProfile(token: string): Promise<UserProfile> {
-  const res = await fetch(`${API_BASE_URL}/api/user/me`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/user/me`, {
     headers: {
       'Authorization': `Bearer ${token}`,
     },
@@ -701,7 +736,7 @@ export async function updateUserProfile(
   token: string,
   data: UpdateUserProfileData
 ): Promise<UserProfile> {
-  const res = await fetch(`${API_BASE_URL}/api/user/me`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/user/me`, {
     method: 'PATCH',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -767,7 +802,7 @@ export interface TokenUsageResponse {
  * Requires authentication token
  */
 export async function getTokenUsage(token: string): Promise<TokenUsageStats> {
-  const res = await fetch(`${API_BASE_URL}/api/user/token-usage`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/user/token-usage`, {
     headers: {
       'Authorization': `Bearer ${token}`,
     },
