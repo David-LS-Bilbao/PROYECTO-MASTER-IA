@@ -17,6 +17,7 @@ import {
   type NewsResponse,
 } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import { useBackendStatus } from '@/hooks/useBackendStatus';
 
 export interface UseNewsParams {
   category?: string; // Sprint 22: Cambiado de string a string para soportar topics dinámicos
@@ -28,6 +29,7 @@ export interface UseNewsParams {
 export function useNews(params: UseNewsParams = {}) {
   const { category = 'general', limit = 50, offset = 0, refetchInterval } = params;
   const { getToken, user, loading: authLoading } = useAuth();
+  const { isReady: backendReady } = useBackendStatus();
   const requiresAuth = category === 'local' || category === 'favorites';
 
   // Cache the token to avoid re-fetching on every render
@@ -68,7 +70,7 @@ export function useNews(params: UseNewsParams = {}) {
     },
 
     placeholderData: keepPreviousData,
-    enabled: !!category && (!requiresAuth || (!authLoading && !!user)),
+    enabled: backendReady && !!category && (!requiresAuth || (!authLoading && !!user)),
     staleTime,
     refetchInterval,
     refetchIntervalInBackground: false,

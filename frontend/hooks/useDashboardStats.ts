@@ -9,6 +9,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { fetchDashboardStats, type DashboardStats } from '@/lib/api';
+import { useBackendStatus } from '@/hooks/useBackendStatus';
 
 /**
  * Hook para fetching de estadísticas del dashboard
@@ -21,10 +22,14 @@ import { fetchDashboardStats, type DashboardStats } from '@/lib/api';
  * @returns { stats, isLoading, isError, error, refetch }
  */
 export function useDashboardStats() {
+  const { isReady: backendReady } = useBackendStatus();
+
   return useQuery<DashboardStats>({
     queryKey: ['dashboard', 'stats'],
-    
+
     queryFn: fetchDashboardStats,
+
+    enabled: backendReady,
 
     // Refetch automático cada 5 minutos (stats cambian lentamente)
     refetchInterval: 5 * 60 * 1000, // 5min

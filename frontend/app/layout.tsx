@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { QueryProvider } from "@/components/providers/query-provider";
+import { BackendStatusProvider } from "@/hooks/useBackendStatus";
 import { GlobalErrorBoundary } from "@/components/providers/global-error-boundary";
 import { ThemeProvider } from "@/components/providers/theme-provider"; // Sprint 19.8: Theme support
 import { Toaster } from "@/components/ui/sonner";
@@ -41,8 +42,9 @@ export default function RootLayout({
         <SentryProvider>
           <ThemeProvider>
             <QueryProvider>
-              <GlobalErrorBoundary>
-                <AuthProvider>
+              <BackendStatusProvider>
+                <GlobalErrorBoundary>
+                  <AuthProvider>
                    {children}
                    <Toaster />
                    <ScrollToTop />
@@ -50,8 +52,9 @@ export default function RootLayout({
                    <Footer />
                    {/* Cookie Banner */}
                    <CookieBanner />
-                </AuthProvider>
-              </GlobalErrorBoundary>
+                  </AuthProvider>
+                </GlobalErrorBoundary>
+              </BackendStatusProvider>
             </QueryProvider>
           </ThemeProvider>
         </SentryProvider>

@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { DateSeparator } from '@/components/date-separator';
 import { ScrollToTop } from '@/components/ui/scroll-to-top';
 import { WarmUpBanner } from '@/components/ui/warm-up-banner';
+import { useQueryClient } from '@tanstack/react-query';
 import { useNewsInfinite } from '@/hooks/useNewsInfinite';
 import { useInvalidateNews } from '@/hooks/useNews';
 import { useBackendStatus } from '@/hooks/useBackendStatus';
@@ -116,6 +117,27 @@ function HomeContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { status: backendStatus, retryCount, retry: retryBackend } = useBackendStatus();
+  const queryClient = useQueryClient();
+  const prevBackendStatus = useRef(backendStatus);
+
+  // =========================================================================
+  // BACKEND READY: Invalidar queries cuando el backend pasa a 'ready'
+  // Esto fuerza un refetch fresco tras el cold start
+  // =========================================================================
+  useEffect(() => {
+    if (prevBackendStatus.current !== 'ready' && backendStatus === 'ready') {
+      queryClient.invalidateQueries({
+        predicate: (query) => {
+          const [base] = query.queryKey;
+          return base === 'news' || base === 'news-infinite' || base === 'dashboard' || base === 'article';
+        },
+      });
+    }
+    prevBackendStatus.current = backendStatus;
+  }, [backendStatus, queryClient]);
+
+  // Detectar si hay datos cacheados (localStorage persist) para decidir banner mode
+  const hasCachedData = queryClient.getQueriesData({ queryKey: ['news-infinite'] }).length > 0;
 
   // Sprint 22: Leer 'topic' en lugar de 'category' (conectado con Sidebar)
   const urlTopic = searchParams.get('topic');
@@ -449,7 +471,7 @@ function HomeContent() {
 
             {/* Loading State - Carga inicial O cambio de topic */}
             {(isLoading || isChangingTopic) && (
-              backendStatus !== 'ready' && !isChangingTopic ? (
+              backendStatus !== 'ready' && !isChangingTopic && !hasCachedData ? (
                 /* Backend warming/down + sin cache → WarmUpScreen completa */
                 <WarmUpBanner
                   status={backendStatus}

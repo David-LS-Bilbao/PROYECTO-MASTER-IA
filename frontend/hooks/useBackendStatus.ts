@@ -1,9 +1,8 @@
 /**
- * useBackendStatus - Backend Availability Guard
+ * useBackendStatus - Backend Availability Guard (Context-based)
  *
  * Detecta si el backend está disponible o despertando (Render free tier cold start).
- * Pings /health/check con timeout corto (8s) para determinar el estado rápido,
- * en lugar de esperar 45s del fetchWithTimeout de las llamadas normales.
+ * Implementado como Context para compartir estado entre todos los hooks de React Query.
  *
  * Estados:
  * - checking: Primer ping en curso
@@ -12,21 +11,26 @@
  * - down: Backend no responde tras múltiples reintentos
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+'use client';
+
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 
 export type BackendStatus = 'checking' | 'warming' | 'ready' | 'down';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 const HEALTH_ENDPOINT = `${API_BASE_URL}/health/check`;
-const PING_TIMEOUT = 8_000; // 8s - suficiente para respuesta normal, falla rápido en cold start
-const RETRY_INTERVAL = 5_000; // 5s entre reintentos
-const MAX_RETRIES = 4; // ~28s total (checking + 4 retries × 5s)
+const PING_TIMEOUT = 8_000;
+const RETRY_INTERVAL = 5_000;
+const MAX_RETRIES = 4;
 
-interface UseBackendStatusReturn {
+interface BackendStatusContextType {
   status: BackendStatus;
   retryCount: number;
   retry: () => void;
+  isReady: boolean;
 }
+
+const BackendStatusContext = createContext<BackendStatusContextType | undefined>(undefined);
 
 async function pingHealth(): Promise<boolean> {
   const controller = new AbortController();
@@ -45,7 +49,7 @@ async function pingHealth(): Promise<boolean> {
   }
 }
 
-export function useBackendStatus(): UseBackendStatusReturn {
+export function BackendStatusProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<BackendStatus>('checking');
   const [retryCount, setRetryCount] = useState(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -63,9 +67,7 @@ export function useBackendStatus(): UseBackendStatusReturn {
       return;
     }
 
-    // Backend no responde
     if (!isRetry) {
-      // Primer fallo → warming
       setStatus('warming');
       setRetryCount(1);
     } else {
@@ -103,12 +105,30 @@ export function useBackendStatus(): UseBackendStatusReturn {
     };
   }, [check]);
 
-  // Retry manual (resetea el ciclo)
   const retry = useCallback(() => {
     setStatus('checking');
     setRetryCount(0);
     check(false);
   }, [check]);
 
-  return { status, retryCount, retry };
+  const value: BackendStatusContextType = {
+    status,
+    retryCount,
+    retry,
+    isReady: status === 'ready',
+  };
+
+  return React.createElement(BackendStatusContext.Provider, { value }, children);
+}
+
+/**
+ * Hook para consumir el estado del backend desde cualquier componente/hook.
+ * Debe usarse dentro de BackendStatusProvider.
+ */
+export function useBackendStatus(): BackendStatusContextType {
+  const context = useContext(BackendStatusContext);
+  if (context === undefined) {
+    throw new Error('useBackendStatus debe usarse dentro de BackendStatusProvider');
+  }
+  return context;
 }

@@ -18,6 +18,7 @@ import {
   type NewsResponse,
 } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import { useBackendStatus } from '@/hooks/useBackendStatus';
 
 export interface UseNewsInfiniteParams {
   category?: string; // Sprint 22: Cambiado de CategoryId a string para soportar topics dinámicos
@@ -27,6 +28,7 @@ export interface UseNewsInfiniteParams {
 export function useNewsInfinite(params: UseNewsInfiniteParams = {}) {
   const { category = 'general', limit = 20 } = params;
   const { getToken, user, loading: authLoading } = useAuth();
+  const { isReady: backendReady } = useBackendStatus();
   const requiresAuth = category === 'local' || category === 'favorites';
 
   // Cache the token to avoid re-fetching on every render
@@ -76,6 +78,6 @@ export function useNewsInfinite(params: UseNewsInfiniteParams = {}) {
     },
 
     staleTime,
-    enabled: !!category && (!requiresAuth || (!authLoading && !!user)),
+    enabled: backendReady && !!category && (!requiresAuth || (!authLoading && !!user)),
   });
 }
