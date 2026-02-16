@@ -251,6 +251,7 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
 
       // =========================================================================
       // SPRINT 18.3: SOURCE INTERLEAVING (Round Robin) - UX Improvement
+      // Sprint 34 FIX: Only apply round robin on first page (offset=0)
       // =========================================================================
       // PROBLEMA: Articles from the same source appear clustered together,
       // creating a "clumping" effect that reduces perceived variety.
@@ -260,10 +261,17 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
       //
       // BENEFICIO: Users see a diverse mix of sources, improving UX and
       // perceived content variety while maintaining chronological relevance.
+      //
+      // BUG FIX (Sprint 34): Round robin + buffer causes duplicates in pagination.
+      // SOLUTION: Only apply round robin on first page (offset=0).
+      // Subsequent pages use normal pagination to avoid overlap.
       // =========================================================================
 
-      // 1. BUFFER: Fetch 3x more articles (minimum 60) for diversity
-      const bufferSize = Math.max(limit * 3, 60);
+      // Sprint 34: Skip round robin for pagination (offset > 0)
+      const useRoundRobin = offset === 0;
+
+      // 1. BUFFER: Fetch 3x more articles (minimum 60) for diversity (only on first page)
+      const bufferSize = useRoundRobin ? Math.max(limit * 3, 60) : limit;
 
       const articles = await this.prisma.article.findMany({
         where,
@@ -274,48 +282,58 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
         skip: offset,
       });
 
-      console.log(`[Repository.findAll] Fetched ${articles.length} articles (buffer for interleaving)`);
+      console.log(`[Repository.findAll] Fetched ${articles.length} articles (buffer=${bufferSize}, roundRobin=${useRoundRobin})`);
 
       if (articles.length === 0) {
         return [];
       }
 
-      // 2. GROUP BY SOURCE: Maintain chronological order within each group
-      const sourceGroups = new Map<string, typeof articles>();
+      let finalArticles: typeof articles;
 
-      for (const article of articles) {
-        const source = article.source;
-        if (!sourceGroups.has(source)) {
-          sourceGroups.set(source, []);
-        }
-        sourceGroups.get(source)!.push(article);
-      }
+      if (useRoundRobin) {
+        // FIRST PAGE: Apply round robin interleaving for source diversity
+        // 2. GROUP BY SOURCE: Maintain chronological order within each group
+        const sourceGroups = new Map<string, typeof articles>();
 
-      console.log(`[Repository.findAll] Grouped into ${sourceGroups.size} sources:`,
-        Array.from(sourceGroups.entries()).map(([src, arts]) => `${src}:${arts.length}`).join(', ')
-      );
-
-      // 3. ROUND ROBIN INTERLEAVING: Mix sources evenly
-      const interleavedArticles: typeof articles = [];
-      const sourceIterators = Array.from(sourceGroups.values());
-      let round = 0;
-
-      while (interleavedArticles.length < limit && sourceIterators.some(group => group.length > 0)) {
-        for (const group of sourceIterators) {
-          if (interleavedArticles.length >= limit) break;
-
-          if (group.length > 0) {
-            const article = group.shift()!; // Take first (most recent in this source)
-            interleavedArticles.push(article);
+        for (const article of articles) {
+          const source = article.source;
+          if (!sourceGroups.has(source)) {
+            sourceGroups.set(source, []);
           }
+          sourceGroups.get(source)!.push(article);
         }
-        round++;
-      }
 
-      console.log(`[Repository.findAll] Interleaved ${interleavedArticles.length} articles in ${round} rounds`);
+        console.log(`[Repository.findAll] Grouped into ${sourceGroups.size} sources:`,
+          Array.from(sourceGroups.entries()).map(([src, arts]) => `${src}:${arts.length}`).join(', ')
+        );
+
+        // 3. ROUND ROBIN INTERLEAVING: Mix sources evenly
+        const interleavedArticles: typeof articles = [];
+        const sourceIterators = Array.from(sourceGroups.values());
+        let round = 0;
+
+        while (interleavedArticles.length < limit && sourceIterators.some(group => group.length > 0)) {
+          for (const group of sourceIterators) {
+            if (interleavedArticles.length >= limit) break;
+
+            if (group.length > 0) {
+              const article = group.shift()!; // Take first (most recent in this source)
+              interleavedArticles.push(article);
+            }
+          }
+          round++;
+        }
+
+        console.log(`[Repository.findAll] Interleaved ${interleavedArticles.length} articles in ${round} rounds`);
+        finalArticles = interleavedArticles;
+      } else {
+        // SUBSEQUENT PAGES: Normal pagination (no round robin to avoid duplicates)
+        finalArticles = articles.slice(0, limit);
+        console.log(`[Repository.findAll] Using normal pagination (no round robin)`);
+      }
 
       // 4. CONVERT TO DOMAIN ENTITIES
-      let domainArticles = interleavedArticles.map((article) => this.mapper.toDomain(article));
+      let domainArticles = finalArticles.map((article) => this.mapper.toDomain(article));
 
       // Enrich with per-user favorite status
       if (userId && domainArticles.length > 0) {
