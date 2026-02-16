@@ -5,7 +5,7 @@
 
 import { ArticleAnalysis } from '../entities/news-article.entity';
 
-export type AnalysisMode = 'low_cost' | 'moderate' | 'standard';
+export type AnalysisMode = 'low_cost' | 'moderate' | 'standard' | 'deep';
 
 export interface AnalyzeContentInput {
   title: string;

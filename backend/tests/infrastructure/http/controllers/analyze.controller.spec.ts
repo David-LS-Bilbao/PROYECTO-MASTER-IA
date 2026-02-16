@@ -27,11 +27,13 @@ vi.mock('../../../../src/infrastructure/monitoring/user-stats-tracker', () => ({
 function createRes() {
   const jsonMock = vi.fn();
   const statusMock = vi.fn(() => ({ json: jsonMock }));
+  const setHeaderMock = vi.fn();
   const res = {
     status: statusMock as any,
     json: jsonMock as any,
+    setHeader: setHeaderMock as any,
   } as Partial<Response>;
-  return { res, jsonMock, statusMock };
+  return { res, jsonMock, statusMock, setHeaderMock };
 }
 
 const validArticleId = '3fa85f64-5717-4562-b3fc-2c963f66afa6';
@@ -94,6 +96,92 @@ describe('AnalyzeController', () => {
     const payload = jsonMock.mock.calls[0][0];
     expect(payload.data.analysis.internal_reasoning).toBeUndefined();
     expect(mockIncrementArticlesAnalyzed).toHaveBeenCalledWith('user-1', 1);
+  });
+
+  it('analyzeArticle responde 403 en modo deep para usuario no premium', async () => {
+    const { res, statusMock, jsonMock } = createRes();
+    const req = {
+      body: { articleId: validArticleId, mode: 'deep' },
+      user: { uid: 'user-1', email: 'free@example.com', subscriptionPlan: 'FREE' },
+    } as Request;
+
+    const originalPremiumEmails = process.env.PREMIUM_EMAILS;
+    process.env.PREMIUM_EMAILS = 'premium@example.com';
+
+    try {
+      await controller.analyzeArticle(req, res as Response);
+    } finally {
+      process.env.PREMIUM_EMAILS = originalPremiumEmails;
+    }
+
+    expect(statusMock).toHaveBeenCalledWith(403);
+    expect(jsonMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: false,
+        error: 'Premium required',
+      })
+    );
+    expect(analyzeUseCase.execute).not.toHaveBeenCalled();
+  });
+
+  it('analyzeArticle responde 200 en modo deep para usuario premium y devuelve secciones deep', async () => {
+    const { res, statusMock, jsonMock } = createRes();
+    const req = {
+      body: { articleId: validArticleId, mode: 'deep' },
+      user: { uid: 'user-1', email: 'premium@example.com', subscriptionPlan: 'FREE' },
+    } as Request;
+
+    const originalPremiumEmails = process.env.PREMIUM_EMAILS;
+    process.env.PREMIUM_EMAILS = 'premium@example.com';
+
+    analyzeUseCase.execute.mockResolvedValueOnce({
+      articleId: validArticleId,
+      summary: 'Resumen profundo',
+      biasScore: 0.1,
+      analysis: {
+        summary: 'Resumen profundo',
+        biasScore: 0.1,
+        biasRaw: 0,
+        biasScoreNormalized: 0.1,
+        biasIndicators: [],
+        clickbaitScore: 10,
+        reliabilityScore: 90,
+        traceabilityScore: 70,
+        factualityStatus: 'no_determinable',
+        evidence_needed: [],
+        should_escalate: false,
+        sentiment: 'neutral',
+        mainTopics: [],
+        factCheck: { claims: ['claim 1'], verdict: 'SupportedByArticle', reasoning: '' },
+        deep: {
+          sections: {
+            known: ['K1'],
+            unknown: ['U1'],
+            quotes: ['"Q1"'],
+            risks: ['R1'],
+          },
+        },
+      },
+      scrapedContentLength: 1500,
+    });
+
+    try {
+      await controller.analyzeArticle(req, res as Response);
+    } finally {
+      process.env.PREMIUM_EMAILS = originalPremiumEmails;
+    }
+
+    expect(statusMock).toHaveBeenCalledWith(200);
+    const payload = jsonMock.mock.calls[0][0];
+    expect(payload.data.analysis.deep.sections.known).toEqual(expect.any(Array));
+    expect(payload.data.analysis.deep.sections.unknown).toEqual(expect.any(Array));
+    expect(payload.data.analysis.deep.sections.quotes).toEqual(expect.any(Array));
+    expect(payload.data.analysis.deep.sections.risks).toEqual(expect.any(Array));
+    expect(analyzeUseCase.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: 'deep',
+      })
+    );
   });
 
   it('analyzeBatch responde 200 y trackea exitosos', async () => {

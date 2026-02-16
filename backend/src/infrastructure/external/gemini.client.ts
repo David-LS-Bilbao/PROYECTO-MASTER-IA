@@ -36,6 +36,7 @@ import {
 } from './schemas/analysis-response.schema';
 import {
   ANALYSIS_PROMPT,
+  ANALYSIS_PROMPT_DEEP,
   ANALYSIS_PROMPT_LOW_COST,
   ANALYSIS_PROMPT_MODERATE,
   MAX_ARTICLE_CONTENT_LENGTH,
@@ -258,7 +259,13 @@ export class GeminiClient implements IGeminiClient {
             'input.content_length': selectedContent.length,
           },
         },
-        async () => await this.model.generateContent(prompt)
+        async () =>
+          await this.model.generateContent({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: {
+              maxOutputTokens: this.getMaxOutputTokensForMode(effectiveMode),
+            },
+          })
       );
 
       const response = result.response;
@@ -686,7 +693,11 @@ export class GeminiClient implements IGeminiClient {
 
     try {
       const rawPayload = JSON.parse(jsonMatch[0]);
-      const repairedPayload = this.repairAnalysisPayload(rawPayload, analyzedContent);
+      const repairedPayload = this.repairAnalysisPayload(
+        rawPayload,
+        analyzedContent,
+        analysisMode
+      );
       const parsed = analysisResponseSchema.parse(
         repairedPayload
       ) as AnalysisResponsePayload;
@@ -721,8 +732,16 @@ export class GeminiClient implements IGeminiClient {
         parsed.articleLeaning ?? parsed.biasLeaning
       );
 
-      const parsedBiasIndicators = this.normalizeStringArray(parsed.biasIndicators).slice(0, 5);
-      const citedBiasIndicators = this.extractQuotedBiasIndicators(parsedBiasIndicators);
+      const maxBiasIndicators = analysisMode === 'deep' ? 8 : 5;
+      const maxClaims = analysisMode === 'deep' ? 10 : 5;
+      const parsedBiasIndicators = this.normalizeStringArray(parsed.biasIndicators).slice(
+        0,
+        maxBiasIndicators
+      );
+      const citedBiasIndicators = this.extractQuotedBiasIndicators(
+        parsedBiasIndicators,
+        maxBiasIndicators
+      );
       const hasCalibratedBiasSignals = this.hasThreeQuotedBiasIndicators(parsedBiasIndicators);
       const biasRaw = hasCalibratedBiasSignals ? parsedBiasRaw : 0;
       const biasScoreNormalized = hasCalibratedBiasSignals ? parsedBiasScoreNormalized : 0;
@@ -765,7 +784,7 @@ export class GeminiClient implements IGeminiClient {
           : parsed.mainTopics
       ).slice(0, 3);
 
-      const claims = this.normalizeStringArray(parsed.factCheck?.claims).slice(0, 5);
+      const claims = this.normalizeStringArray(parsed.factCheck?.claims).slice(0, maxClaims);
       const verdict =
         claims.length === 0
           ? 'InsufficientEvidenceInArticle'
@@ -794,6 +813,7 @@ export class GeminiClient implements IGeminiClient {
           summary: parsed.summary,
           content: analyzedContent,
         });
+      const deepSections = this.normalizeDeepSections(parsed.deep?.sections, maxClaims);
 
       return {
         internal_reasoning,
@@ -819,6 +839,18 @@ export class GeminiClient implements IGeminiClient {
         mainTopics,
         factCheck,
         explanation,
+        ...(analysisMode === 'deep' || deepSections
+          ? {
+              deep: {
+                sections: deepSections ?? {
+                  known: [],
+                  unknown: [],
+                  quotes: [],
+                  risks: [],
+                },
+              },
+            }
+          : {}),
         ...(tokenUsage && { usage: tokenUsage }),
       };
     } catch (error) {
@@ -832,7 +864,8 @@ export class GeminiClient implements IGeminiClient {
 
   private repairAnalysisPayload(
     payload: unknown,
-    analyzedContent: string
+    analyzedContent: string,
+    analysisMode: AnalysisMode
   ): Record<string, unknown> {
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
       return {
@@ -861,10 +894,13 @@ export class GeminiClient implements IGeminiClient {
       candidate.summary = repairedSummary;
     }
 
+    const maxBiasIndicators = analysisMode === 'deep' ? 8 : 5;
+    const maxClaims = analysisMode === 'deep' ? 10 : 5;
+
     candidate.biasIndicators = this.coerceStringArray(
       candidate.biasIndicators,
       ['indicator', 'text', 'quote', 'citation', 'evidence'],
-      5
+      maxBiasIndicators
     );
     candidate.evidence_needed = this.coerceStringArray(
       candidate.evidence_needed,
@@ -880,7 +916,7 @@ export class GeminiClient implements IGeminiClient {
       factCheckCandidate.claims = this.coerceStringArray(
         factCheckCandidate.claims,
         ['claim', 'text', 'statement', 'quote', 'value'],
-        5
+        maxClaims
       );
 
       if (typeof factCheckCandidate.reasoning !== 'string') {
@@ -896,6 +932,37 @@ export class GeminiClient implements IGeminiClient {
       }
 
       candidate.factCheck = factCheckCandidate;
+    }
+
+    const deepRaw = candidate.deep;
+    if (deepRaw && typeof deepRaw === 'object' && !Array.isArray(deepRaw)) {
+      const deepCandidate = { ...(deepRaw as Record<string, unknown>) };
+      const sectionsRaw = deepCandidate.sections;
+      if (sectionsRaw && typeof sectionsRaw === 'object' && !Array.isArray(sectionsRaw)) {
+        const sectionsCandidate = { ...(sectionsRaw as Record<string, unknown>) };
+        sectionsCandidate.known = this.coerceStringArray(
+          sectionsCandidate.known,
+          ['text', 'value', 'item'],
+          10
+        );
+        sectionsCandidate.unknown = this.coerceStringArray(
+          sectionsCandidate.unknown,
+          ['text', 'value', 'item'],
+          10
+        );
+        sectionsCandidate.quotes = this.coerceStringArray(
+          sectionsCandidate.quotes,
+          ['text', 'quote', 'value'],
+          4
+        );
+        sectionsCandidate.risks = this.coerceStringArray(
+          sectionsCandidate.risks,
+          ['text', 'value', 'item'],
+          4
+        );
+        deepCandidate.sections = sectionsCandidate;
+      }
+      candidate.deep = deepCandidate;
     }
 
     for (const boundedField of ['biasComment', 'reliabilityComment'] as const) {
@@ -1153,13 +1220,13 @@ export class GeminiClient implements IGeminiClient {
     return this.extractQuotedBiasIndicators(indicators).length >= 3;
   }
 
-  private extractQuotedBiasIndicators(indicators: string[]): string[] {
+  private extractQuotedBiasIndicators(indicators: string[], maxItems: number = 5): string[] {
     const citationPattern = /["'`][^"'`]{3,140}["'`]|\([^()]{3,120}\)|\[[^\[\]]{3,120}\]/;
-    return indicators.filter((indicator) => citationPattern.test(indicator)).slice(0, 5);
+    return indicators.filter((indicator) => citationPattern.test(indicator)).slice(0, maxItems);
   }
 
   private normalizeAnalysisMode(value: unknown): AnalysisMode {
-    if (value === 'moderate' || value === 'standard' || value === 'low_cost') {
+    if (value === 'moderate' || value === 'standard' || value === 'low_cost' || value === 'deep') {
       return value;
     }
 
@@ -1171,6 +1238,10 @@ export class GeminiClient implements IGeminiClient {
     requestedMode: AnalysisMode,
     content: string
   ): AnalysisMode {
+    if (requestedMode === 'deep') {
+      return 'deep';
+    }
+
     if (this.shouldUseLowCostPrompt(content)) {
       return 'low_cost';
     }
@@ -1180,6 +1251,8 @@ export class GeminiClient implements IGeminiClient {
 
   private getAnalysisPromptTemplate(mode: AnalysisMode): string {
     switch (mode) {
+      case 'deep':
+        return ANALYSIS_PROMPT_DEEP;
       case 'moderate':
         return ANALYSIS_PROMPT_MODERATE;
       case 'standard':
@@ -1188,6 +1261,65 @@ export class GeminiClient implements IGeminiClient {
       default:
         return ANALYSIS_PROMPT_LOW_COST;
     }
+  }
+
+  private getMaxOutputTokensForMode(mode: AnalysisMode): number {
+    switch (mode) {
+      case 'deep':
+        return 2200;
+      case 'standard':
+        return 1600;
+      case 'moderate':
+        return 1300;
+      case 'low_cost':
+      default:
+        return 1000;
+    }
+  }
+
+  private normalizeDeepSections(
+    sections: unknown,
+    maxClaims: number
+  ):
+    | {
+        known: string[];
+        unknown: string[];
+        quotes: string[];
+        risks: string[];
+      }
+    | undefined {
+    if (!sections || typeof sections !== 'object') {
+      return undefined;
+    }
+
+    const known = this.normalizeStringArray((sections as Record<string, unknown>).known).slice(
+      0,
+      Math.max(6, maxClaims)
+    );
+    const unknown = this.normalizeStringArray((sections as Record<string, unknown>).unknown).slice(
+      0,
+      10
+    );
+    const quotes = this.normalizeStringArray((sections as Record<string, unknown>).quotes)
+      .map((quote) => this.limitWords(quote, 24))
+      .slice(0, 4);
+    const risks = this.normalizeStringArray((sections as Record<string, unknown>).risks).slice(0, 4);
+
+    return {
+      known,
+      unknown,
+      quotes,
+      risks,
+    };
+  }
+
+  private limitWords(text: string, maxWords: number): string {
+    const words = text.split(/\s+/).filter(Boolean);
+    if (words.length <= maxWords) {
+      return text.trim();
+    }
+
+    return words.slice(0, maxWords).join(' ').trim();
   }
 
   private shouldUseLowCostPrompt(content: string): boolean {

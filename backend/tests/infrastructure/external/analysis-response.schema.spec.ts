@@ -51,17 +51,36 @@ describe('analysisResponseSchema (Zod)', () => {
   it('limita arrays segun contrato de coste', () => {
     const parsed = analysisResponseSchema.parse({
       summary: 'Resumen',
-      biasIndicators: ['1', '2', '3', '4', '5'],
+      biasIndicators: ['1', '2', '3', '4', '5', '6', '7', '8'],
       evidence_needed: ['a', 'b', 'c', 'd'],
       factCheck: {
-        claims: ['c1', 'c2', 'c3', 'c4', 'c5'],
+        claims: ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9', 'c10'],
         verdict: 'InsufficientEvidenceInArticle',
       },
     });
 
-    expect(parsed.biasIndicators).toHaveLength(5);
+    expect(parsed.biasIndicators).toHaveLength(8);
     expect(parsed.evidence_needed).toHaveLength(4);
-    expect(parsed.factCheck?.claims).toHaveLength(5);
+    expect(parsed.factCheck?.claims).toHaveLength(10);
+  });
+
+  it('acepta bloque deep.sections opcional', () => {
+    const parsed = analysisResponseSchema.parse({
+      summary: 'Resumen',
+      deep: {
+        sections: {
+          known: ['K1'],
+          unknown: ['U1'],
+          quotes: ['"Q1"'],
+          risks: ['R1'],
+        },
+      },
+    });
+
+    expect(parsed.deep?.sections?.known).toEqual(['K1']);
+    expect(parsed.deep?.sections?.unknown).toEqual(['U1']);
+    expect(parsed.deep?.sections?.quotes).toEqual(['"Q1"']);
+    expect(parsed.deep?.sections?.risks).toEqual(['R1']);
   });
 
   it('normaliza verdict legacy al enum vNext', () => {

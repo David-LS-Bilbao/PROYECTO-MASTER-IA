@@ -54,6 +54,7 @@ const BIAS_INDICATOR_CITATION_PATTERN = /["'`][^"'`]{3,140}["'`]|\([^()]{3,120}\
 export interface AnalyzeArticleInput {
   articleId: string;
   analysisMode?: AnalysisMode;
+  mode?: 'standard' | 'deep';
   user?: {
     id: string;
     subscriptionPlan: 'FREE' | 'PREMIUM';
@@ -113,7 +114,11 @@ export class AnalyzeArticleUseCase {
    */
   async execute(input: AnalyzeArticleInput): Promise<AnalyzeArticleOutput> {
     const { articleId, user } = input;
-    const requestedAnalysisMode = this.normalizeAnalysisMode(input.analysisMode);
+    const requestedMode = this.normalizeRequestedMode(input.mode);
+    const requestedAnalysisMode =
+      requestedMode === 'deep'
+        ? 'deep'
+        : this.normalizeAnalysisMode(input.analysisMode);
 
     // Validate input
     if (!articleId || articleId.trim() === '') {
@@ -150,9 +155,12 @@ export class AnalyzeArticleUseCase {
       const existingAnalysis = article.getParsedAnalysis();
       if (existingAnalysis) {
         const cachedContentLength = article.content?.length || 0;
-        const requiredModeForCache = cachedContentLength < AUTO_LOW_COST_CONTENT_THRESHOLD
-          ? 'low_cost'
-          : requestedAnalysisMode;
+        const requiredModeForCache =
+          requestedMode === 'deep'
+            ? 'deep'
+            : cachedContentLength < AUTO_LOW_COST_CONTENT_THRESHOLD
+              ? 'low_cost'
+              : requestedAnalysisMode;
         const shouldUpgradeCachedAnalysis = this.requiresAnalysisUpgrade(
           existingAnalysis,
           requiredModeForCache
@@ -160,8 +168,14 @@ export class AnalyzeArticleUseCase {
         const shouldRegenerateCachedSummary = this.shouldRegenerateCachedSummary(
           article.summary ?? existingAnalysis.summary
         );
+        const shouldRegenerateCachedDeep =
+          requestedMode === 'deep' && !this.hasDeepSections(existingAnalysis);
 
-        if (!shouldUpgradeCachedAnalysis && !shouldRegenerateCachedSummary) {
+        if (
+          !shouldUpgradeCachedAnalysis &&
+          !shouldRegenerateCachedSummary &&
+          !shouldRegenerateCachedDeep
+        ) {
           const normalizedAnalysis = this.normalizeAnalysis(existingAnalysis, {
             scrapedContentLength: article.content?.length || 0,
             usedFallback: false,
@@ -194,7 +208,9 @@ export class AnalyzeArticleUseCase {
           };
         }
 
-        if (shouldRegenerateCachedSummary) {
+        if (shouldRegenerateCachedDeep) {
+          console.log('   [CACHE GLOBAL] Se fuerza re-analisis por cache deep inexistente o incompleta.');
+        } else if (shouldRegenerateCachedSummary) {
           console.log('   [CACHE GLOBAL] Se fuerza re-analisis por summary legacy o demasiado corto.');
         } else {
           console.log(
@@ -211,10 +227,16 @@ export class AnalyzeArticleUseCase {
 
     // COST OPTIMIZATION: Verificar si el contenido justifica una llamada a Gemini
     // Contenido muy corto (<MIN_CONTENT_LENGTH chars) no vale la pena analizar
+    const shouldForceRescrapeForDeep =
+      requestedMode === 'deep' &&
+      (!!contentToAnalyze &&
+        (contentToAnalyze.length < AUTO_LOW_COST_CONTENT_THRESHOLD ||
+          this.detectRssSnippet(contentToAnalyze)));
     const isContentInvalid =
       !contentToAnalyze ||
       contentToAnalyze.length < MIN_CONTENT_LENGTH ||
-      contentToAnalyze.includes('JinaReader API Error');
+      contentToAnalyze.includes('JinaReader API Error') ||
+      shouldForceRescrapeForDeep;
 
     if (isContentInvalid) {
       console.log(`   ðŸŒ Scraping contenido con Jina Reader (URL: ${article.url})...`);
@@ -418,15 +440,24 @@ export class AnalyzeArticleUseCase {
         ? this.clampNumber(analysis.biasScoreNormalized, 0, 1, Math.abs(parsedBiasRaw) / 10)
         : Math.abs(parsedBiasRaw) / 10;
 
+    const maxBiasIndicators = analysisModeUsed === 'deep' ? 8 : 5;
+    const maxClaims = analysisModeUsed === 'deep' ? 10 : 5;
+
     const modelBiasIndicators = Array.isArray(analysis.biasIndicators)
       ? analysis.biasIndicators
       : [];
-    const modelCitedBiasIndicators = this.extractQuotedBiasIndicators(modelBiasIndicators);
+    const modelCitedBiasIndicators = this.extractQuotedBiasIndicators(
+      modelBiasIndicators,
+      maxBiasIndicators
+    );
     const rawBiasIndicators = this.withTitleBiasIndicator(
       modelBiasIndicators,
       context?.articleTitle
     );
-    const citedBiasIndicators = this.extractQuotedBiasIndicators(rawBiasIndicators);
+    const citedBiasIndicators = this.extractQuotedBiasIndicators(
+      rawBiasIndicators,
+      maxBiasIndicators
+    );
     const hasCalibratedBiasSignals = this.hasThreeQuotedBiasIndicators(modelBiasIndicators);
     const biasRaw = hasCalibratedBiasSignals ? parsedBiasRaw : 0;
     const biasScoreNormalized = hasCalibratedBiasSignals ? parsedBiasScoreNormalized : 0;
@@ -499,7 +530,7 @@ export class AnalyzeArticleUseCase {
         });
 
     const claims = Array.isArray(analysis.factCheck?.claims)
-      ? analysis.factCheck.claims.slice(0, 5)
+      ? analysis.factCheck.claims.slice(0, maxClaims)
       : [];
     const summaryContext = {
       scrapedContentLength,
@@ -594,7 +625,17 @@ export class AnalyzeArticleUseCase {
       factCheck,
     };
 
-    return this.sanitizeAnalysisTextFields(normalizedResult);
+    const enrichedResult =
+      analysisModeUsed === 'deep'
+        ? this.ensureDeepSections(normalizedResult, {
+            scrapedContentLength,
+            usedFallback: context?.usedFallback === true,
+            rssSnippetDetected: context?.rssSnippetDetected === true,
+            analyzedText: context?.analyzedText ?? '',
+          })
+        : normalizedResult;
+
+    return this.sanitizeAnalysisTextFields(enrichedResult);
   }
 
   private applyLengthScoreCaps(
@@ -626,10 +667,10 @@ export class AnalyzeArticleUseCase {
     return this.extractQuotedBiasIndicators(indicators).length >= 3;
   }
 
-  private extractQuotedBiasIndicators(indicators: string[]): string[] {
+  private extractQuotedBiasIndicators(indicators: string[], maxItems: number = 5): string[] {
     return indicators
       .filter((indicator) => BIAS_INDICATOR_CITATION_PATTERN.test(indicator))
-      .slice(0, 5);
+      .slice(0, maxItems);
   }
 
   private withTitleBiasIndicator(
@@ -1203,11 +1244,15 @@ export class AnalyzeArticleUseCase {
   }
 
   private normalizeAnalysisMode(value: unknown): AnalysisMode {
-    if (value === 'moderate' || value === 'standard' || value === 'low_cost') {
+    if (value === 'moderate' || value === 'standard' || value === 'low_cost' || value === 'deep') {
       return value;
     }
 
     return 'low_cost';
+  }
+
+  private normalizeRequestedMode(value: unknown): 'standard' | 'deep' {
+    return value === 'deep' ? 'deep' : 'standard';
   }
 
   private resolveEffectiveAnalysisMode(params: {
@@ -1215,6 +1260,10 @@ export class AnalyzeArticleUseCase {
     scrapedContentLength: number;
     usedFallback: boolean;
   }): AnalysisMode {
+    if (params.requestedMode === 'deep') {
+      return 'deep';
+    }
+
     if (params.usedFallback || params.scrapedContentLength < AUTO_LOW_COST_CONTENT_THRESHOLD) {
       return 'low_cost';
     }
@@ -1228,6 +1277,24 @@ export class AnalyzeArticleUseCase {
   ): boolean {
     const cachedMode = this.normalizeAnalysisMode(existingAnalysis.analysisModeUsed);
     return this.getAnalysisModeRank(cachedMode) < this.getAnalysisModeRank(requestedMode);
+  }
+
+  private hasDeepSections(analysis: ArticleAnalysis): boolean {
+    const sections = analysis.deep?.sections;
+    if (!sections) {
+      return false;
+    }
+
+    return (
+      Array.isArray(sections.known) &&
+      Array.isArray(sections.unknown) &&
+      Array.isArray(sections.quotes) &&
+      Array.isArray(sections.risks) &&
+      sections.known.length > 0 &&
+      sections.unknown.length > 0 &&
+      sections.quotes.length > 0 &&
+      sections.risks.length > 0
+    );
   }
 
   private shouldRegenerateCachedSummary(summary: string | null | undefined): boolean {
@@ -1388,6 +1455,148 @@ export class AnalyzeArticleUseCase {
     return this.clampNumber(params.reliabilityScore, 20, 60, 45);
   }
 
+  private ensureDeepSections(
+    analysis: ArticleAnalysis,
+    context: {
+      scrapedContentLength: number;
+      usedFallback: boolean;
+      rssSnippetDetected: boolean;
+      analyzedText: string;
+    }
+  ): ArticleAnalysis {
+    const existingSections = analysis.deep?.sections;
+    const known = this.normalizeDeepSectionArray(existingSections?.known, 10);
+    const unknown = this.normalizeDeepSectionArray(existingSections?.unknown, 10);
+    const risks = this.normalizeDeepSectionArray(existingSections?.risks, 4);
+    const quotes = this.normalizeDeepQuotes(
+      existingSections?.quotes,
+      context.analyzedText,
+      analysis.factCheck?.claims ?? []
+    );
+
+    if (known.length === 0) {
+      known.push(...(analysis.factCheck?.claims ?? []).slice(0, 8));
+      if (known.length === 0 && typeof analysis.summary === 'string') {
+        known.push(this.limitSummaryWords(analysis.summary, 24));
+      }
+    }
+
+    const lowQualityInput =
+      context.usedFallback ||
+      context.rssSnippetDetected ||
+      context.scrapedContentLength < 300;
+    if (lowQualityInput) {
+      unknown.unshift(
+        'El contenido disponible es insuficiente (snippet/paywall o texto incompleto), por lo que faltan detalles para confirmar el contexto completo.'
+      );
+    }
+    if (unknown.length === 0) {
+      unknown.push('No hay verificacion externa independiente en este analisis.');
+    }
+
+    if (risks.length === 0) {
+      if (analysis.factualityStatus === 'no_determinable') {
+        risks.push('La evidencia interna no permite verificar hechos externos de forma concluyente.');
+      }
+      if ((analysis.biasIndicators ?? []).length < 2) {
+        risks.push('La lectura de sesgo tiene confianza baja por pocos indicios textuales citados.');
+      }
+      if (risks.length === 0) {
+        risks.push('El encuadre puede cambiar con contexto adicional o documentos primarios no incluidos.');
+      }
+    }
+
+    return {
+      ...analysis,
+      deep: {
+        sections: {
+          known: known.slice(0, 10),
+          unknown: unknown.slice(0, 10),
+          quotes: quotes.slice(0, 4),
+          risks: risks.slice(0, 4),
+        },
+      },
+    };
+  }
+
+  private normalizeDeepSectionArray(
+    items: string[] | undefined,
+    maxItems: number,
+    maxWords: number = 35
+  ): string[] {
+    if (!Array.isArray(items)) {
+      return [];
+    }
+
+    const unique = new Set<string>();
+    for (const item of items) {
+      if (typeof item !== 'string') {
+        continue;
+      }
+      const compact = item.replace(/\s+/g, ' ').trim();
+      if (!compact) {
+        continue;
+      }
+      unique.add(this.limitSummaryWords(compact, maxWords));
+      if (unique.size >= maxItems) {
+        break;
+      }
+    }
+
+    return Array.from(unique);
+  }
+
+  private normalizeDeepQuotes(
+    quotes: string[] | undefined,
+    analyzedText: string,
+    claims: string[]
+  ): string[] {
+    const normalizedQuotes = this.normalizeDeepSectionArray(quotes, 4, 24);
+    if (normalizedQuotes.length >= 2) {
+      return normalizedQuotes;
+    }
+
+    const extractedFromText = this.extractCandidateQuotes(analyzedText);
+    const extractedFromClaims = this.normalizeDeepSectionArray(claims, 4, 24).map(
+      (claim) => `"${claim}"`
+    );
+    const merged = [...normalizedQuotes, ...extractedFromText, ...extractedFromClaims];
+    const unique = new Set<string>();
+    for (const quote of merged) {
+      const compact = quote.replace(/\s+/g, ' ').trim();
+      if (!compact) {
+        continue;
+      }
+      unique.add(this.limitSummaryWords(compact, 24));
+      if (unique.size >= 4) {
+        break;
+      }
+    }
+
+    return Array.from(unique);
+  }
+
+  private extractCandidateQuotes(text: string): string[] {
+    if (!text) {
+      return [];
+    }
+
+    const matches = text.match(/["'“”][^"'“”]{8,180}["'“”]/g) ?? [];
+    const unique = new Set<string>();
+    for (const rawMatch of matches) {
+      const compact = rawMatch.replace(/\s+/g, ' ').trim();
+      if (!compact) {
+        continue;
+      }
+      unique.add(this.limitSummaryWords(compact, 24));
+      if (unique.size >= 4) {
+        break;
+      }
+    }
+
+    return Array.from(unique);
+  }
+
   private sanitizeAnalysisTextFields(analysis: ArticleAnalysis): ArticleAnalysis {
     const sanitizeValue = (value: unknown): unknown => {
       if (typeof value === 'string') {
@@ -1459,6 +1668,8 @@ export class AnalyzeArticleUseCase {
 
   private getAnalysisModeRank(mode: AnalysisMode): number {
     switch (mode) {
+      case 'deep':
+        return 4;
       case 'standard':
         return 3;
       case 'moderate':

@@ -60,7 +60,7 @@ export interface ArticleAnalysis {
   summary: string;
   qualityNotice?: string;
   category?: string; // AI-suggested category for the article
-  analysisModeUsed?: 'low_cost' | 'moderate' | 'standard';
+  analysisModeUsed?: 'low_cost' | 'moderate' | 'standard' | 'deep';
 
   // Legacy normalized score alias (0-1), kept for compatibility
   biasScore: number;
@@ -96,6 +96,14 @@ export interface ArticleAnalysis {
   mainTopics: string[];
   factCheck: FactCheck;
   explanation?: string; // Transparencia AI Act: por que se asignaron estos scores
+  deep?: {
+    sections?: {
+      known?: string[];
+      unknown?: string[];
+      quotes?: string[];
+      risks?: string[];
+    };
+  };
 
   // Token Taximeter: Cost tracking (Sprint 8.2)
   usage?: TokenUsage;

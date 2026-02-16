@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ANALYSIS_PROMPT,
+  ANALYSIS_PROMPT_DEEP,
   ANALYSIS_PROMPT_LOW_COST,
   ANALYSIS_PROMPT_MODERATE,
 } from '../../../../src/infrastructure/external/prompts/analysis.prompt';
@@ -62,6 +63,15 @@ describe('ANALYSIS_PROMPT vNext.1', () => {
       expect(prompt).toContain('clickbait');
       expect(prompt).toContain('3-5 frases');
     }
+  });
+
+  it('incluye secciones enriquecidas para modo deep', () => {
+    expect(ANALYSIS_PROMPT_DEEP).toContain('deep.sections');
+    expect(ANALYSIS_PROMPT_DEEP).toContain('known');
+    expect(ANALYSIS_PROMPT_DEEP).toContain('unknown');
+    expect(ANALYSIS_PROMPT_DEEP).toContain('quotes');
+    expect(ANALYSIS_PROMPT_DEEP).toContain('risks');
+    expect(ANALYSIS_PROMPT_DEEP).toContain('6 y 10 claims');
   });
 
   it('en modo standard/moderate exige resumen de 3-5 frases y maximo 90 palabras', () => {

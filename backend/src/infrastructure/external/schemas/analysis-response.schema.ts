@@ -83,12 +83,24 @@ export const analysisResponseSchema = z
       .optional(),
     suggestedTopics: z.array(z.string()).max(3).optional(),
     mainTopics: z.array(z.string()).max(3).optional(),
-    biasIndicators: z.array(z.string()).max(5).optional(),
+    biasIndicators: z.array(z.string()).max(8).optional(),
     clickbaitScore: z.number().optional(),
     sentiment: z.string().optional(),
+    deep: z
+      .object({
+        sections: z
+          .object({
+            known: z.array(z.string()).max(10).optional(),
+            unknown: z.array(z.string()).max(10).optional(),
+            quotes: z.array(z.string()).max(4).optional(),
+            risks: z.array(z.string()).max(4).optional(),
+          })
+          .optional(),
+      })
+      .optional(),
     factCheck: z
       .object({
-        claims: z.array(z.string()).max(5).optional(),
+        claims: z.array(z.string()).max(10).optional(),
         verdict: z.preprocess(normalizeFactCheckVerdict, factCheckVerdictSchema).optional(),
         reasoning: z.string().optional(),
       })

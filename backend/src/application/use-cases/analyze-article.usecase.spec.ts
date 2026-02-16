@@ -435,6 +435,75 @@ describe('AnalyzeArticleUseCase', () => {
       );
     });
 
+    it('should keep deep mode for premium deep analysis even with short content', async () => {
+      const shortContent = 'Extracto corto con poco contexto y sin cuerpo completo.';
+      const article = createTestArticle({ content: shortContent });
+      mockRepository.setArticle(article);
+
+      const geminiSpy = vi.spyOn(mockGemini, 'analyzeArticle');
+
+      await useCase.execute({ articleId: article.id, mode: 'deep' });
+
+      expect(geminiSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          analysisMode: 'deep',
+        })
+      );
+    });
+
+    it('should return deep sections in deep mode output', async () => {
+      const article = createTestArticle({
+        content: 'Contenido amplio con citas y datos para analisis profundo. '.repeat(40),
+      });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        analysisModeUsed: 'deep',
+        deep: {
+          sections: {
+            known: ['Se anuncia una medida con fecha de entrada en vigor.'],
+            unknown: ['No se aporta documento tecnico completo en el extracto.'],
+            quotes: ['"La medida entra en vigor el 15 de marzo".'],
+            risks: ['Interpretar el alcance nacional sin anexo metodologico puede inducir error.'],
+          },
+        },
+      });
+
+      const result = await useCase.execute({ articleId: article.id, mode: 'deep' });
+
+      expect(result.analysis.deep?.sections?.known).toEqual(expect.any(Array));
+      expect(result.analysis.deep?.sections?.unknown).toEqual(expect.any(Array));
+      expect(result.analysis.deep?.sections?.quotes).toEqual(expect.any(Array));
+      expect(result.analysis.deep?.sections?.risks).toEqual(expect.any(Array));
+    });
+
+    it('should include limitation in deep unknown section when content is insufficient', async () => {
+      const shortSnippetContent = 'Extracto RSS breve con titular y poco cuerpo.';
+      const article = createTestArticle({ content: shortSnippetContent });
+      mockRepository.setArticle(article);
+      vi.spyOn(mockJina, 'scrapeUrl').mockRejectedValueOnce(new Error('Paywall'));
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        deep: {
+          sections: {
+            known: ['El extracto afirma un cambio regulatorio.'],
+            unknown: [],
+            quotes: ['"Cambio regulatorio inminente"'],
+            risks: [],
+          },
+        },
+      });
+
+      const result = await useCase.execute({ articleId: article.id, mode: 'deep' });
+      const unknownText = (result.analysis.deep?.sections?.unknown || []).join(' ').toLowerCase();
+
+      expect(result.scrapedContentLength).toBeLessThan(300);
+      expect(unknownText).toContain('insuficiente');
+      expect(unknownText).toContain('snippet/paywall');
+    });
+
     it('should force escalation in low-cost context when strong claims lack attribution', async () => {
       const shortContent = 'Asegura resultados absolutos sin citar fuentes, documentos o enlaces.';
       const article = createTestArticle({ content: `${shortContent} ${shortContent}` });

@@ -205,6 +205,69 @@ CONTENT:
 {content}
 </ARTICLE>`;
 
+/**
+ * Variante deep: analisis premium con salida enriquecida.
+ * Objetivo: mayor cobertura de claims, citas y riesgos de interpretacion.
+ */
+export const ANALYSIS_PROMPT_DEEP = `Actua como editor de investigacion OSINT y responde SOLO JSON valido estricto.
+No uses markdown ni texto extra. No infieras hechos fuera de <ARTICLE>.
+Prioriza exhaustividad, claridad y trazabilidad interna del texto.
+Reglas deep:
+- summary editorial: 3-5 frases, 60-90 palabras, directo y sin plantillas.
+- factCheck.claims: entre 6 y 10 claims cuando haya material suficiente; si no, devuelve los disponibles.
+- biasIndicators: hasta 8 indicadores con cita breve textual cuando exista evidencia.
+- Mantener sesgo fuerte solo con evidencia citada suficiente (>=3 indicadores citados).
+- reliabilityComment y biasComment: 1 frase, max 220 chars.
+- Incluir bloque deep.sections con:
+  - known: 4-10 puntos concretos sustentados por el texto.
+  - unknown: 2-6 vacios de informacion o limites de confirmacion.
+  - quotes: 2-4 citas cortas textuales (<25 palabras cada una).
+  - risks: 1-3 riesgos de interpretacion si se exagera el alcance del texto.
+- Si inputQuality es snippet_rss/paywall_o_vacio o contenido <300 chars:
+  - mantener best effort con lo disponible.
+  - explicitar en unknown que falta el cuerpo completo.
+- factCheck.verdict permitido:
+  SupportedByArticle|NotSupportedByArticle|InsufficientEvidenceInArticle
+- No usar Verified/False.
+<ARTICLE>
+TITLE: {title}
+SOURCE: {source}
+CONTENT:
+{content}
+</ARTICLE>
+JSON esperado:
+{
+  "summary": "<string>",
+  "biasRaw": "<-10..10>",
+  "biasScoreNormalized": "<0..1>",
+  "biasIndicators": ["<1..8>"],
+  "biasComment": "<max 220>",
+  "articleLeaning": "<progresista|conservadora|extremista|neutral|indeterminada>",
+  "reliabilityScore": "<0..100>",
+  "traceabilityScore": "<0..100>",
+  "factualityStatus": "<no_determinable|plausible_but_unverified>",
+  "evidence_needed": ["<max 4>"],
+  "reliabilityComment": "<max 220>",
+  "should_escalate": "<true|false>",
+  "analysis": {
+    "biasType": "<encuadre|omision|lenguaje|seleccion|ninguno>",
+    "explanation": "<max 280>"
+  },
+  "factCheck": {
+    "claims": ["<6..10 si hay material>"],
+    "verdict": "<SupportedByArticle|NotSupportedByArticle|InsufficientEvidenceInArticle>",
+    "reasoning": "<max 220>"
+  },
+  "deep": {
+    "sections": {
+      "known": ["<4..10>"],
+      "unknown": ["<2..6>"],
+      "quotes": ["<2..4, <25 palabras cada una>"],
+      "risks": ["<1..3>"]
+    }
+  }
+}`;
+
 export const ANALYSIS_PROMPT = ANALYSIS_PROMPT_VNEXT;
 
 /**

@@ -13,6 +13,7 @@ import { Request, Response } from 'express';
 import { AnalyzeArticleUseCase } from '../../../application/use-cases/analyze-article.usecase';
 import { analyzeArticleSchema, analyzeBatchSchema } from '../schemas/analyze.schema';
 import { UserStatsTracker } from '../../monitoring/user-stats-tracker';
+import { isPremiumUser } from '../utils/premium-user';
 
 export class AnalyzeController {
   constructor(private readonly analyzeArticleUseCase: AnalyzeArticleUseCase) {}
@@ -39,6 +40,16 @@ export class AnalyzeController {
     // Si hay error, Zod lanza ZodError que captura asyncHandler → errorHandler
     const validatedInput = analyzeArticleSchema.parse(req.body);
     console.log(`[AnalyzeController]    ✅ Validation passed`);
+
+    if (validatedInput.mode === 'deep' && !isPremiumUser(req.user?.email)) {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.status(403).json({
+        success: false,
+        error: 'Premium required',
+        message: 'Disponible en Premium',
+      });
+      return;
+    }
 
     // Sprint 14: Pass user to use case for quota enforcement
     const input = {
