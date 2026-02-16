@@ -456,9 +456,9 @@ export default function NewsDetailPage() {
                   <>
                     {/* Bias Score */}
                     <div className="space-y-3">
-                      {(qualityNotice || hasPreliminaryContentWarning) && (
+                      {hasPreliminaryContentWarning && (
                         <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
-                          {qualityNotice || 'Contenido insuficiente: analisis preliminar'}
+                          Contenido insuficiente: analisis preliminar
                         </p>
                       )}
                       <div className="flex justify-between items-center">

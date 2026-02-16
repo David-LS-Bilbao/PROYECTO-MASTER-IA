@@ -47,7 +47,7 @@ REGLAS NO NEGOCIABLES:
   - Usa "indeterminada" SOLO para inputQuality snippet_rss/paywall_o_vacio o contenido <300 chars.
   - Si contenido >=600 y hay menos de 2 indicadores citados:
     articleLeaning="neutral", biasLeaning="neutral", leaningConfidence="baja" y
-    biasComment="No se observan señales claras de encuadre ideológico en el texto disponible (confianza baja)."
+    biasComment="No se observan indicios textuales claros de encuadre ideologico en el texto disponible (confianza baja)."
 - reliabilityComment: 1 frase (ideal 140-200 chars, max 220) explicando fiabilidad por evidencia interna.
   - Si factCheck.verdict="SupportedByArticle", usa formulacion coherente con
     "Soportado por el artículo (sin verificación externa)" y evita "no verificable con fuentes internas".
@@ -76,12 +76,12 @@ ESCALAS OBLIGATORIAS:
 FEW-SHOT 1 (clickbait):
 Entrada resumida: "URGENTE! Nos ocultan la verdad. Todos lo saben. Sin fuentes."
 Salida esperada aproximada:
-{"summary":"Nota alarmista sin atribuciones verificables.","biasRaw":2,"biasScoreNormalized":0.2,"biasIndicators":["Lenguaje alarmista: \"URGENTE\"","Generalizacion absoluta: \"Todos lo saben\"","Afirmacion conspirativa: \"Nos ocultan la verdad\""],"biasComment":"El framing se sostiene en senales citadas (\"URGENTE\", \"Todos lo saben\", \"Nos ocultan la verdad\"), pero no alcanzan para inferir una tendencia ideologica consistente.","articleLeaning":"indeterminada","reliabilityScore":18,"traceabilityScore":15,"factualityStatus":"no_determinable","evidence_needed":["fuente primaria","documento oficial"],"reliabilityComment":"La fiabilidad interna es muy baja por falta de atribuciones y datos trazables; no verificable con fuentes internas, y faltan fuente primaria y documento oficial.","should_escalate":true,"factCheck":{"verdict":"InsufficientEvidenceInArticle"}}
+{"summary":"Nota alarmista sin atribuciones verificables.","biasRaw":2,"biasScoreNormalized":0.2,"biasIndicators":["Lenguaje alarmista: \"URGENTE\"","Generalizacion absoluta: \"Todos lo saben\"","Afirmacion conspirativa: \"Nos ocultan la verdad\""],"biasComment":"El framing se sostiene en indicios textuales citados (\"URGENTE\", \"Todos lo saben\", \"Nos ocultan la verdad\"), pero no alcanzan para inferir una tendencia ideologica consistente.","articleLeaning":"indeterminada","reliabilityScore":18,"traceabilityScore":15,"factualityStatus":"no_determinable","evidence_needed":["fuente primaria","documento oficial"],"reliabilityComment":"La fiabilidad interna es muy baja por falta de atribuciones y datos trazables; no verificable con fuentes internas, y faltan fuente primaria y documento oficial.","should_escalate":true,"factCheck":{"verdict":"InsufficientEvidenceInArticle"}}
 
 FEW-SHOT 2 (bien citado):
 Entrada resumida: "Segun Ministerio X (informe 2026) y documento PDF enlazado, con cita textual y limites metodologicos."
 Salida esperada aproximada:
-{"summary":"Nota con atribuciones explicitas y enlaces documentales.","biasRaw":0,"biasScoreNormalized":0,"biasIndicators":["Atribucion explicita: \"Segun Ministerio X\"","Referencia documental: \"informe 2026\"","Limite metodologico: \"con limites metodologicos\""],"biasComment":"Las senales citadas muestran encuadre informativo y equilibrio de tono (\"Segun Ministerio X\", \"informe 2026\", \"limites metodologicos\"), sin carga ideologica marcada.","articleLeaning":"neutral","reliabilityScore":82,"traceabilityScore":86,"factualityStatus":"no_determinable","evidence_needed":[],"reliabilityComment":"La fiabilidad interna es alta por citas, atribuciones y documento enlazado; no verificable con fuentes internas al no ejecutar verificacion externa en este analisis.","should_escalate":false,"factCheck":{"verdict":"SupportedByArticle"}}
+{"summary":"Nota con atribuciones explicitas y enlaces documentales.","biasRaw":0,"biasScoreNormalized":0,"biasIndicators":["Atribucion explicita: \"Segun Ministerio X\"","Referencia documental: \"informe 2026\"","Limite metodologico: \"con limites metodologicos\""],"biasComment":"Los indicios textuales citados muestran encuadre informativo y equilibrio de tono (\"Segun Ministerio X\", \"informe 2026\", \"limites metodologicos\"), sin carga ideologica marcada.","articleLeaning":"neutral","reliabilityScore":82,"traceabilityScore":86,"factualityStatus":"no_determinable","evidence_needed":[],"reliabilityComment":"La fiabilidad interna es alta por citas, atribuciones y documento enlazado; no verificable con fuentes internas al no ejecutar verificacion externa en este analisis.","should_escalate":false,"factCheck":{"verdict":"SupportedByArticle"}}
 
 <ARTICLE>
 TITLE: {title}
@@ -92,13 +92,13 @@ CONTENT:
 
 JSON requerido:
 {
-  "internal_reasoning": "<max 300 chars sobre señales textuales internas, sin usar hechos externos>",
+  "internal_reasoning": "<max 300 chars sobre indicios textuales internos, sin usar hechos externos>",
   "summary": "<resumen editorial directo: 3-5 frases y 60-90 palabras en moderate/standard; si inputQuality baja, 1-2 frases y 35-45 palabras con aviso de falta de texto completo>",
   "category": "<politica|economia|tecnologia|deportes|cultura|ciencia|mundo|sociedad>",
   "biasRaw": "<entero -10..+10>",
   "biasScoreNormalized": "<0..1 = abs(biasRaw)/10>",
   "biasIndicators": ["<1 a 5 indicadores con cita breve textual>"],
-  "biasComment": "<1 frase, ideal 140-200 chars, max 220, solo con senales citadas>",
+  "biasComment": "<1 frase, ideal 140-200 chars, max 220, solo con indicios textuales citados>",
   "articleLeaning": "<progresista|conservadora|extremista|neutral|indeterminada>",
   "leaningConfidence": "<opcional: baja|media|alta>",
   "reliabilityScore": "<entero 0..100 segun escala obligatoria>",
@@ -144,7 +144,7 @@ Usa:
 - usa articleLeaning=indeterminada SOLO para snippet_rss/paywall_o_vacio o contenido <300 chars
 - si contenido >=600 y hay menos de 2 indicadores citados:
   articleLeaning=neutral, biasLeaning=neutral, leaningConfidence=baja y biasComment exacto:
-  "No se observan señales claras de encuadre ideológico en el texto disponible (confianza baja)."
+  "No se observan indicios textuales claros de encuadre ideologico en el texto disponible (confianza baja)."
 - reliabilityScore (evidencia interna 0..100)
 - traceabilityScore (0..100)
 - factualityStatus: no_determinable|plausible_but_unverified
@@ -189,7 +189,7 @@ Reglas:
 - usa articleLeaning=indeterminada SOLO para snippet_rss/paywall_o_vacio o contenido <300 chars
 - si contenido >=600 y hay menos de 2 indicadores citados:
   articleLeaning=neutral, biasLeaning=neutral, leaningConfidence=baja y biasComment exacto:
-  "No se observan señales claras de encuadre ideológico en el texto disponible (confianza baja)."
+  "No se observan indicios textuales claros de encuadre ideologico en el texto disponible (confianza baja)."
 - biasComment y reliabilityComment: 1 frase, max 220 chars
 - reliabilityComment debe incluir "no verificable con fuentes internas" si factualityStatus=no_determinable
 - si factCheck.verdict=SupportedByArticle, reliabilityComment debe ser coherente con:

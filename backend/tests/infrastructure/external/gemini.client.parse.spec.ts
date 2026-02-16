@@ -89,7 +89,7 @@ describe('GeminiClient parseAnalysisResponse', () => {
 
     expect(result.biasIndicators).toEqual([]);
     expect(result.articleLeaning).toBe('indeterminada');
-    expect(result.biasComment).toContain('No hay suficientes señales citadas');
+    expect(result.biasComment).toContain('No hay suficientes indicios textuales citados');
     expect(result.reliabilityScore).toBe(50);
     expect(result.traceabilityScore).toBe(50);
     expect(result.factualityStatus).toBe('no_determinable');

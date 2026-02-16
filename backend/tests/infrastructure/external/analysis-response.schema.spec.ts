@@ -16,7 +16,7 @@ describe('analysisResponseSchema (Zod)', () => {
       summary: 'Resumen del articulo con contexto.',
       biasRaw: -3,
       biasComment:
-        'El texto usa senales citadas y comparables en el encuadre, sin evidencia suficiente para afirmar una agenda ideologica externa y limitando el analisis al propio contenido.',
+        'El texto usa indicios textuales citados y comparables en el encuadre, sin evidencia suficiente para afirmar una agenda ideologica externa y limitando el analisis al propio contenido.',
       articleLeaning: 'indeterminada',
       reliabilityScore: 58,
       traceabilityScore: 54,
@@ -37,7 +37,7 @@ describe('analysisResponseSchema (Zod)', () => {
 
     expect(parsed.summary).toContain('Resumen');
     expect(parsed.biasRaw).toBe(-3);
-    expect(parsed.biasComment).toContain('senales');
+    expect(parsed.biasComment).toContain('indicios textuales');
     expect(parsed.articleLeaning).toBe('indeterminada');
     expect(parsed.reliabilityScore).toBe(58);
     expect(parsed.traceabilityScore).toBe(54);

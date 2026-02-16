@@ -71,7 +71,7 @@ const mockAnalysis: ArticleAnalysis = {
   evidence_needed: [],
   should_escalate: false,
   biasComment:
-    'El encuadre refleja una lectura parcial basada en senales textuales citadas y evaluadas solo con evidencia interna.',
+    'El encuadre refleja una lectura parcial basada en indicios textuales citados y evaluados solo con evidencia interna.',
   articleLeaning: 'indeterminada',
   biasLeaning: 'indeterminada',
   reliabilityComment:
@@ -505,7 +505,7 @@ describe('AnalyzeArticleUseCase', () => {
       expect(result.analysis.biasLeaning).toBe('neutral');
       expect(result.analysis.leaningConfidence).toBe('baja');
       expect(result.analysis.biasComment).toBe(
-        'No se observan señales claras de encuadre ideológico en el texto disponible (confianza baja).'
+        'No se observan indicios textuales claros de encuadre ideologico en el texto disponible (confianza baja).'
       );
       expect(result.analysis.articleLeaning).not.toBe('indeterminada');
     });
@@ -1223,7 +1223,7 @@ describe('AnalyzeArticleUseCase', () => {
       expect(result.analysis.biasScoreNormalized).toBe(0);
       expect(result.analysis.biasType).toBe('ninguno');
       expect(result.analysis.explanation).toBe(
-        'No se detectaron senales suficientes de sesgo con evidencia citada.'
+        'No se detectaron indicios textuales suficientes de sesgo con evidencia citada.'
       );
     });
   });

@@ -47,7 +47,7 @@ const SUMMARY_MAX_WORDS_FULL = 90;
 const SUMMARY_MAX_WORDS_LOW_QUALITY = 45;
 const SUMMARY_LOW_QUALITY_NOTICE = 'Falta el texto completo para confirmar detalles.';
 const NEUTRAL_LOW_CONFIDENCE_BIAS_COMMENT =
-  'No se observan se\u00f1ales claras de encuadre ideol\u00f3gico en el texto disponible (confianza baja).';
+  'No se observan indicios textuales claros de encuadre ideologico en el texto disponible (confianza baja).';
 const BIAS_INDICATOR_CITATION_PATTERN = /["'`][^"'`]{3,140}["'`]|\([^()]{3,120}\)|\[[^\[\]]{3,120}\]/;
 
 
@@ -566,7 +566,7 @@ export class AnalyzeArticleUseCase {
     });
     const explanation =
       biasRaw === 0 && !hasCalibratedBiasSignals
-        ? 'No se detectaron senales suficientes de sesgo con evidencia citada.'
+        ? 'No se detectaron indicios textuales suficientes de sesgo con evidencia citada.'
         : analysis.explanation;
 
     const normalizedResult: ArticleAnalysis = {
@@ -741,7 +741,7 @@ export class AnalyzeArticleUseCase {
     }
     if (!params.hasCalibratedBiasSignals) {
       return this.normalizeUiComment(
-        'No se observan senales solidas para atribuir una tendencia ideologica consistente con el texto disponible'
+        'No se observan indicios textuales solidos para atribuir una tendencia ideologica consistente con el texto disponible'
       );
     }
 
@@ -753,7 +753,7 @@ export class AnalyzeArticleUseCase {
       params.articleLeaning === 'indeterminada'
         ? 'sin tendencia ideologica concluyente'
         : `con tendencia ${params.articleLeaning}`;
-    const generated = `El encuadre refleja ${leaningText} segun senales citadas (${citedSignals}), evaluadas solo desde el texto disponible y sin inferir hechos externos`;
+    const generated = `El encuadre refleja ${leaningText} segun indicios textuales citados (${citedSignals}), evaluados solo desde el texto disponible y sin inferir hechos externos`;
 
     return this.normalizeUiComment(generated);
   }

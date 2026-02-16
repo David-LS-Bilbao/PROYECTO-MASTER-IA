@@ -733,7 +733,7 @@ export class GeminiClient implements IGeminiClient {
         : 'indeterminada';
       const biasComment = hasCalibratedBiasSignals
         ? parsedBiasComment
-        : 'No hay suficientes señales citadas para inferir una tendencia ideológica y, con esta evidencia interna, el sesgo queda indeterminado.';
+        : 'No hay suficientes indicios textuales citados para inferir una tendencia ideologica y, con esta evidencia interna, el sesgo queda indeterminado.';
 
       let reliabilityScore = this.clampScore(parsed.reliabilityScore, 0, 100, 50);
       let traceabilityScore = this.clampScore(
