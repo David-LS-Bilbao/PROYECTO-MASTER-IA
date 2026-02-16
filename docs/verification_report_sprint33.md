@@ -13,6 +13,9 @@ Se corrigieron cuatro problemas principales del análisis en Verity News con cam
 No se rompió contrato público. `qualityNotice` es opcional y compatible.
 
 ## 2) Cambios Por Archivo
+### Commits
+- `62753bb` `fix(summary,bias,reliability): clean low-quality summaries, add qualityNotice, align UI and UTF-8 safeguards`
+
 ### Backend
 - `backend/src/application/use-cases/analyze-article.usecase.ts`
   - `summary` limpio en low-quality (sin prefijos/avisos embebidos).
