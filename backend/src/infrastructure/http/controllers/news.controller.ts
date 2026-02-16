@@ -151,6 +151,11 @@ function sanitizePotentialMojibake(text: string): string {
 
 function sanitizeResponsePayload<T>(value: T): T {
   const sanitize = (entry: unknown): unknown => {
+    if (entry instanceof Date) {
+      const timestamp = entry.getTime();
+      return Number.isNaN(timestamp) ? null : entry.toISOString();
+    }
+
     if (typeof entry === 'string') {
       return sanitizePotentialMojibake(entry);
     }
@@ -158,6 +163,11 @@ function sanitizeResponsePayload<T>(value: T): T {
       return entry.map((nestedEntry) => sanitize(nestedEntry));
     }
     if (entry && typeof entry === 'object') {
+      const prototype = Object.getPrototypeOf(entry);
+      if (prototype !== Object.prototype && prototype !== null) {
+        return entry;
+      }
+
       const sanitizedRecord: Record<string, unknown> = {};
       for (const [key, nestedValue] of Object.entries(entry as Record<string, unknown>)) {
         sanitizedRecord[key] = sanitize(nestedValue);

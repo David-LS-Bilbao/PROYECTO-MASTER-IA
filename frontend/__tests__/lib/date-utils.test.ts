@@ -126,6 +126,22 @@ describe('groupArticlesByDate', () => {
     expect(groups[0].articles).toHaveLength(1);
   });
 
+  it('does not crash when publishedAt is invalid', () => {
+    const malformedArticle = createMockArticle(
+      'bad-date',
+      'Article with invalid date',
+      '[object Object]',
+      'https://example.com/bad',
+      'Source Bad'
+    );
+
+    const groups = groupArticlesByDate([malformedArticle]);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].date).toBe('sin-fecha');
+    expect(groups[0].label).toBe('Fecha desconocida');
+  });
+
   it('preserves article order within groups', () => {
     const groups = groupArticlesByDate(mockArticles);
 

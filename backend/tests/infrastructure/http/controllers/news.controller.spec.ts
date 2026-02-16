@@ -206,6 +206,8 @@ describe('NewsController', () => {
       await controller.getNews(req, res as Response);      const payload = jsonMock.mock.calls[0][0];
       expect(payload.data[0].analysis).toEqual({ summary: 'Summary', biasScore: 0.2 });
       expect(payload.pagination.total).toBe(1);
+      expect(typeof payload.data[0].publishedAt).toBe('string');
+      expect(payload.data[0].publishedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     });
   });
 
