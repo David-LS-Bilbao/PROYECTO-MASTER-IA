@@ -15,8 +15,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DateSeparator } from '@/components/date-separator';
 import { ScrollToTop } from '@/components/ui/scroll-to-top';
+import { WarmUpBanner } from '@/components/ui/warm-up-banner';
 import { useNewsInfinite } from '@/hooks/useNewsInfinite';
 import { useInvalidateNews } from '@/hooks/useNews';
+import { useBackendStatus } from '@/hooks/useBackendStatus';
 import { useDashboardStats } from '@/hooks/useDashboardStats';
 import { groupArticlesByDate } from '@/lib/date-utils';
 
@@ -113,6 +115,7 @@ function HomeContent() {
   const { user, loading: authLoading } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { status: backendStatus, retryCount, retry: retryBackend } = useBackendStatus();
 
   // Sprint 22: Leer 'topic' en lugar de 'category' (conectado con Sidebar)
   const urlTopic = searchParams.get('topic');
@@ -397,9 +400,18 @@ function HomeContent() {
 
         {/* Scrollable Content Area */}
         <div className="flex-1 overflow-y-auto">
+          {/* WarmUp Banner (inline) - visible cuando hay datos cacheados + backend warming */}
+          {backendStatus !== 'ready' && backendStatus !== 'checking' && newsData && newsData.data.length > 0 && (
+            <WarmUpBanner
+              status={backendStatus}
+              retryCount={retryCount}
+              onRetry={retryBackend}
+            />
+          )}
+
           <div className="px-4 sm:px-6 py-8">
-            {/* Error State */}
-            {error && (
+            {/* Error State - solo mostrar si backend está ready (errores reales, no cold start) */}
+            {error && backendStatus === 'ready' && (
               <div className="max-w-2xl mx-auto p-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
                 <h2 className="text-lg font-semibold text-red-800 dark:text-red-400 mb-2">
                   Error al cargar las noticias
@@ -415,7 +427,7 @@ function HomeContent() {
             )}
 
             {/* Empty State */}
-            {!error && newsData && newsData.data.length === 0 && !isFetching && (
+            {!error && newsData && newsData.data.length === 0 && !isFetching && backendStatus === 'ready' && (
               <div className="max-w-2xl mx-auto text-center py-16">
                 <div className="text-6xl mb-4">
                   {topic === 'favorites' ? '❤️' : '📰'}
@@ -437,29 +449,37 @@ function HomeContent() {
 
             {/* Loading State - Carga inicial O cambio de topic */}
             {(isLoading || isChangingTopic) && (
-              <div className="max-w-7xl mx-auto">
-                {/* Loading message */}
-                <div className="flex items-center justify-center gap-3 mb-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-3 border-blue-600 border-t-transparent"></div>
-                  <p className="text-lg font-medium text-zinc-900 dark:text-white">
-                    {isChangingTopic ? 'Cargando noticias frescas...' : 'Cargando noticias...'}
-                  </p>
-                </div>
-
-                {/* Skeleton cards */}
-                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                  {[...Array(SKELETON_CARD_COUNT)].map((_, i) => (
-                    <div key={i} className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden animate-pulse">
-                      <div className="h-48 bg-zinc-200 dark:bg-zinc-800" />
-                      <div className="p-4 space-y-3">
-                        <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded w-3/4" />
-                        <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded w-1/2" />
-                        <div className="h-3 bg-zinc-200 dark:bg-zinc-800 rounded w-1/4" />
+              backendStatus !== 'ready' && !isChangingTopic ? (
+                /* Backend warming/down + sin cache → WarmUpScreen completa */
+                <WarmUpBanner
+                  status={backendStatus}
+                  retryCount={retryCount}
+                  onRetry={retryBackend}
+                  fullScreen
+                />
+              ) : (
+                /* Backend ready o cambio de topic → skeleton normal */
+                <div className="max-w-7xl mx-auto">
+                  <div className="flex items-center justify-center gap-3 mb-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-3 border-blue-600 border-t-transparent"></div>
+                    <p className="text-lg font-medium text-zinc-900 dark:text-white">
+                      {isChangingTopic ? 'Cargando noticias frescas...' : 'Cargando noticias...'}
+                    </p>
+                  </div>
+                  <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                    {[...Array(SKELETON_CARD_COUNT)].map((_, i) => (
+                      <div key={i} className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden animate-pulse">
+                        <div className="h-48 bg-zinc-200 dark:bg-zinc-800" />
+                        <div className="p-4 space-y-3">
+                          <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded w-3/4" />
+                          <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded w-1/2" />
+                          <div className="h-3 bg-zinc-200 dark:bg-zinc-800 rounded w-1/4" />
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )
             )}
 
             {/* News Grid - Solo mostrar cuando NO estamos cambiando topic */}
