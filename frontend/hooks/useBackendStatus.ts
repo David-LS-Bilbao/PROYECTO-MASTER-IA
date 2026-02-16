@@ -17,7 +17,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 
 export type BackendStatus = 'checking' | 'warming' | 'ready' | 'down';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 const HEALTH_ENDPOINT = `${API_BASE_URL}/health/check`;
 const PING_TIMEOUT = 8_000;
 const RETRY_INTERVAL = 5_000;
