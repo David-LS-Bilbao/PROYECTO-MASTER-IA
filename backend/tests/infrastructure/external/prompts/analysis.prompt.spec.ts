@@ -56,11 +56,11 @@ describe('ANALYSIS_PROMPT vNext.1', () => {
 
     for (const prompt of variants) {
       expect(prompt).toContain('summary');
-      expect(prompt).toContain('Falta el texto completo para confirmar detalles.');
       expect(prompt).toContain('Resumen provisional...');
       expect(prompt).toContain('inputQuality');
       expect(prompt).toContain('35-45 palabras');
       expect(prompt).toContain('clickbait');
+      expect(prompt).toContain('3-5 frases');
     }
   });
 
@@ -77,5 +77,6 @@ describe('ANALYSIS_PROMPT vNext.1', () => {
     expect(ANALYSIS_PROMPT).toContain('"en este contexto"');
     expect(ANALYSIS_PROMPT).toContain('"segun se desprende"');
     expect(ANALYSIS_PROMPT).toContain('Prohibido usar el prefijo "Resumen provisional..."');
+    expect(ANALYSIS_PROMPT).toContain('"No se puede confirmar detalles"');
   });
 });

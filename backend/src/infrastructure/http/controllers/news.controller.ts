@@ -125,6 +125,51 @@ function setOptionalHeader(res: Response, name: string, value: string): void {
   }
 }
 
+function sanitizePotentialMojibake(text: string): string {
+  const compact = text.replace(/\s+/g, ' ').trim();
+  if (!compact || !/[ÃÂâ]/.test(compact)) {
+    return compact;
+  }
+
+  try {
+    let repaired = compact;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      if (!/[ÃÂâ]/.test(repaired)) {
+        break;
+      }
+      repaired = Buffer.from(repaired, 'latin1').toString('utf8').trim();
+    }
+    if (repaired && !repaired.includes('Ã')) {
+      return repaired;
+    }
+  } catch {
+    return compact;
+  }
+
+  return compact.replace(/Ã/g, '');
+}
+
+function sanitizeResponsePayload<T>(value: T): T {
+  const sanitize = (entry: unknown): unknown => {
+    if (typeof entry === 'string') {
+      return sanitizePotentialMojibake(entry);
+    }
+    if (Array.isArray(entry)) {
+      return entry.map((nestedEntry) => sanitize(nestedEntry));
+    }
+    if (entry && typeof entry === 'object') {
+      const sanitizedRecord: Record<string, unknown> = {};
+      for (const [key, nestedValue] of Object.entries(entry as Record<string, unknown>)) {
+        sanitizedRecord[key] = sanitize(nestedValue);
+      }
+      return sanitizedRecord;
+    }
+    return entry;
+  };
+
+  return sanitize(value) as T;
+}
+
 /**
  * Transform domain article to HTTP response format
  * Parses the analysis JSON string into an object for frontend consumption
@@ -145,7 +190,7 @@ function toHttpResponse(article: NewsArticle, maskAnalysis = false) {
 
   // PRIVACY: If user hasn't favorited, mask sensitive AI data
   if (maskAnalysis) {
-    return {
+    return sanitizeResponsePayload({
       ...json,
       // Mask AI fields (null indicates not available to this user)
       analysis: null,
@@ -153,15 +198,15 @@ function toHttpResponse(article: NewsArticle, maskAnalysis = false) {
       biasScore: null,
       // Signal that analysis exists and is ready for instant retrieval
       hasAnalysis,
-    };
+    });
   }
 
   // Normal response with full analysis (user has favorited or analysis doesn't exist)
-  return {
+  return sanitizeResponsePayload({
     ...json,
     analysis: json.analysis ? JSON.parse(json.analysis) : null,
     hasAnalysis,
-  };
+  });
 }
 
 export class NewsController {

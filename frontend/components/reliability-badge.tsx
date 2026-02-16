@@ -38,7 +38,7 @@ export function ReliabilityBadge({
   } else if (factCheckVerdict === 'SupportedByArticle') {
     color = 'bg-emerald-600';
     textColor = 'text-emerald-700';
-    text = 'Soportado por el artículo (sin verificación externa)';
+    text = 'Soportado por el articulo (sin verificacion externa)';
     Icon = ShieldCheck;
   } else if (factualityStatus === 'no_determinable') {
     color = 'bg-zinc-500';
@@ -69,7 +69,7 @@ export function ReliabilityBadge({
       {/* Progress bar with native tooltip */}
       <div
         className="w-full h-4 bg-gray-200 dark:bg-zinc-700 rounded-full overflow-hidden cursor-help"
-        title={reasoning || "Análisis de fuentes y consistencia"}
+        title={reasoning || 'Analisis de fuentes y consistencia'}
       >
         <div
           className={`h-full ${color} transition-all duration-500`}

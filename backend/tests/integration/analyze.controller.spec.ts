@@ -417,6 +417,7 @@ describe('AnalyzeController Integration Tests (API Layer)', () => {
 
       // ASSERT
       expect(response.headers['content-type']).toMatch(/application\/json/);
+      expect(response.headers['content-type']).toMatch(/charset=utf-8/i);
     });
   });
 

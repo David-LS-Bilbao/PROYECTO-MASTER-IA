@@ -915,21 +915,13 @@ export class GeminiClient implements IGeminiClient {
     );
     const compact = withoutFallbackHeader.replace(/\s+/g, ' ').trim();
     if (!compact) {
-      return 'No hay texto suficiente para resumir. Falta el texto completo para confirmar detalles.';
+      return 'No hay texto suficiente para resumir con el extracto disponible.';
     }
     const words = compact.split(/\s+/).filter(Boolean);
     const isLowQualityInput = compact.length < 300;
     const maxWords = isLowQualityInput ? 45 : 90;
     const limited = words.slice(0, maxWords).join(' ').trim();
-
-    if (!isLowQualityInput) {
-      return limited;
-    }
-
-    const notice = 'Falta el texto completo para confirmar detalles.';
-    const noticeWords = notice.split(/\s+/).filter(Boolean).length;
-    const baseWords = words.slice(0, Math.max(0, maxWords - noticeWords)).join(' ').trim();
-    return baseWords ? `${baseWords} ${notice}` : notice;
+    return limited;
   }
 
   private coerceStringArray(

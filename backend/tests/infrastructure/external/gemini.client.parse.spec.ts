@@ -336,6 +336,7 @@ describe('GeminiClient parseAnalysisResponse', () => {
 
     expect(result.summary).not.toContain('Resumen provisional basado en contenido interno');
     expect(result.summary).not.toContain('Resumen provisional');
+    expect(result.summary).not.toContain('Falta el texto completo para confirmar detalles.');
     expect(result.summary.length).toBeGreaterThan(30);
   });
 

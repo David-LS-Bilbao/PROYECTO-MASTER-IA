@@ -71,6 +71,7 @@ function extractApiErrorMessage(errorData: any, fallback: string): string {
 
 export interface ArticleAnalysis {
   summary: string;
+  qualityNotice?: string;
   analysisModeUsed?: AnalysisMode;
   // biasScore normalizado 0-1 para UI (0 = neutral, 1 = extremo)
   biasScore: number;

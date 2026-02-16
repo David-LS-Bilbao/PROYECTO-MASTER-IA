@@ -381,7 +381,7 @@ describe('AnalyzeArticleUseCase', () => {
       expect(normalizedSummary).not.toContain('segun se desprende');
     });
 
-    it('should constrain summary to <=45 words and include missing-body notice for snippet quality', async () => {
+    it('should constrain summary to <=45 words and keep quality notice outside summary for snippet quality', async () => {
       const shortSnippetContent = 'Extracto breve con titulares y sin cuerpo completo. '.repeat(5);
       const article = createTestArticle({ content: shortSnippetContent });
       mockRepository.setArticle(article);
@@ -397,8 +397,10 @@ describe('AnalyzeArticleUseCase', () => {
 
       expect(result.scrapedContentLength).toBeLessThan(300);
       expect(words).toBeLessThanOrEqual(45);
-      expect(result.summary).toContain('Falta el texto completo para confirmar detalles.');
+      expect(result.summary).not.toContain('Falta el texto completo para confirmar detalles.');
       expect(result.summary).not.toContain('Resumen provisional');
+      expect(result.summary).not.toContain('No se puede confirmar detalles');
+      expect(result.analysis.qualityNotice).toBe('Falta el texto completo para confirmar detalles.');
     });
 
     it('should route moderate mode for long content in detail context', async () => {
@@ -602,6 +604,55 @@ describe('AnalyzeArticleUseCase', () => {
       expect(comment.toLowerCase()).not.toContain('no verificable con fuentes internas');
     });
 
+    it('should clamp reliability score into medium range for SupportedByArticle', async () => {
+      const article = createTestArticle({
+        content:
+          'Segun el informe oficial, la medida entra en vigor en abril y afecta a 300.000 usuarios con datos citados y trazabilidad interna. '.repeat(
+            15
+          ),
+      });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        reliabilityScore: 92,
+        factualityStatus: 'no_determinable',
+        factCheck: {
+          claims: ['El informe respalda internamente la cifra de 300.000 usuarios.'],
+          verdict: 'SupportedByArticle',
+          reasoning: 'Soporte interno en el texto.',
+        },
+      });
+
+      const result = await useCase.execute({ articleId: article.id, analysisMode: 'standard' });
+
+      expect(result.analysis.reliabilityScore).toBeGreaterThanOrEqual(45);
+      expect(result.analysis.reliabilityScore).toBeLessThanOrEqual(65);
+    });
+
+    it('should clamp reliability score into low range for insufficient evidence verdict', async () => {
+      const article = createTestArticle({
+        content: 'Resumen breve con afirmaciones sin soporte documental verificable. '.repeat(6),
+      });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        reliabilityScore: 88,
+        factualityStatus: 'no_determinable',
+        factCheck: {
+          claims: ['Afirmacion fuerte sin fuente primaria.'],
+          verdict: 'InsufficientEvidenceInArticle',
+          reasoning: 'No hay evidencia suficiente.',
+        },
+      });
+
+      const result = await useCase.execute({ articleId: article.id, analysisMode: 'standard' });
+
+      expect(result.analysis.reliabilityScore).toBeGreaterThanOrEqual(20);
+      expect(result.analysis.reliabilityScore).toBeLessThanOrEqual(45);
+    });
+
     it('should force factualityStatus no_determinable when rssSnippetDetected', async () => {
       const rssSnippet = `
         <p>Resumen breve de la noticia para portada.</p>
@@ -697,6 +748,30 @@ describe('AnalyzeArticleUseCase', () => {
         true
       );
       expect(result.analysis.biasRaw).toBe(0);
+    });
+
+    it('should sanitize mojibake tokens from analysis payload', async () => {
+      const article = createTestArticle({
+        content: 'Contenido amplio para forzar analisis completo con suficiente contexto. '.repeat(25),
+      });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        summary: 'El artÃ­culo resume un cambio regulatorio y seÃ±ala impacto fiscal.',
+        biasComment: 'No hay seÃ±ales concluyentes de sesgo ideolÃ³gico.',
+        reliabilityComment: 'Soportado por el artÃ­culo, sin verificaciÃ³n externa.',
+        factCheck: {
+          claims: ['El artÃ­culo cita una fecha oficial.'],
+          verdict: 'SupportedByArticle',
+          reasoning: 'Aparece explÃ­citamente en el artÃ­culo.',
+        },
+      });
+
+      const result = await useCase.execute({ articleId: article.id, analysisMode: 'moderate' });
+
+      const payload = JSON.stringify(result.analysis);
+      expect(payload).not.toContain('Ã');
     });
 
     it('should force factCheck verdict to InsufficientEvidenceInArticle when claims are empty', async () => {
@@ -856,7 +931,8 @@ describe('AnalyzeArticleUseCase', () => {
 
       // Verificar que el análisis se completó correctamente usando fallback
       expect(result.articleId).toBe(article.id);
-      expect(result.summary).toContain('Falta el texto completo para confirmar detalles.');
+      expect(result.summary).not.toContain('Falta el texto completo para confirmar detalles.');
+      expect(result.analysis.qualityNotice).toBe('Falta el texto completo para confirmar detalles.');
       expect(result.scrapedContentLength).toBe(0); // Fallback no scraped
       expect(result.analysis.factCheck.verdict).toBe('InsufficientEvidenceInArticle');
     });
@@ -872,7 +948,8 @@ describe('AnalyzeArticleUseCase', () => {
 
       // Verificar que el análisis se completó correctamente usando fallback
       expect(result.articleId).toBe(article.id);
-      expect(result.summary).toContain('Falta el texto completo para confirmar detalles.');
+      expect(result.summary).not.toContain('Falta el texto completo para confirmar detalles.');
+      expect(result.analysis.qualityNotice).toBe('Falta el texto completo para confirmar detalles.');
       expect(result.scrapedContentLength).toBe(0); // Fallback no scraped
       expect(result.analysis.factCheck.verdict).toBe('InsufficientEvidenceInArticle');
     });

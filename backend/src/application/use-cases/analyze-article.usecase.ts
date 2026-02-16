@@ -501,16 +501,34 @@ export class AnalyzeArticleUseCase {
     const claims = Array.isArray(analysis.factCheck?.claims)
       ? analysis.factCheck.claims.slice(0, 5)
       : [];
+    const summaryContext = {
+      scrapedContentLength,
+      usedFallback: context?.usedFallback === true,
+      rssSnippetDetected: context?.rssSnippetDetected === true,
+    };
+    const normalizedSummary = this.normalizeSummaryText(analysis.summary, summaryContext);
+    const qualityNotice = this.buildQualityNotice(summaryContext);
+    const forceInsufficientEvidenceVerdict = this.shouldForceInsufficientVerdict({
+      scrapedContentLength,
+      usedFallback: context?.usedFallback === true,
+    });
+    const factCheck = this.normalizeFactCheck({
+      claims,
+      verdict: analysis.factCheck?.verdict,
+      reasoning: analysis.factCheck?.reasoning,
+      forceInsufficientEvidenceVerdict,
+    });
+    reliabilityScore = this.alignReliabilityScoreWithVerdict({
+      reliabilityScore,
+      verdict: factCheck.verdict,
+      factualityStatus,
+      qualityNotice,
+    });
     const clickbaitScore = this.clampNumber(analysis.clickbaitScore, 0, 100, 0);
     const inferredEscalation =
       traceabilityScore <= 25 &&
       reliabilityScore <= 45 &&
       claims.some((claim) => /\b(todo|siempre|nunca|100%|definitivo)\b/i.test(claim));
-    const normalizedSummary = this.normalizeSummaryText(analysis.summary, {
-      scrapedContentLength,
-      usedFallback: context?.usedFallback === true,
-      rssSnippetDetected: context?.rssSnippetDetected === true,
-    });
     const lowCostEscalation = this.shouldEscalateLowCostStrongClaims({
       scrapedContentLength,
       usedFallback: context?.usedFallback === true,
@@ -530,16 +548,6 @@ export class AnalyzeArticleUseCase {
       summary: normalizedSummary,
       reliabilityScore,
       traceabilityScore,
-    });
-    const forceInsufficientEvidenceVerdict = this.shouldForceInsufficientVerdict({
-      scrapedContentLength,
-      usedFallback: context?.usedFallback === true,
-    });
-    const factCheck = this.normalizeFactCheck({
-      claims,
-      verdict: analysis.factCheck?.verdict,
-      reasoning: analysis.factCheck?.reasoning,
-      forceInsufficientEvidenceVerdict,
     });
     const hasAttributionOrCitations = this.hasAttributionOrCitationEvidence({
       analyzedText: context?.analyzedText ?? '',
@@ -561,9 +569,10 @@ export class AnalyzeArticleUseCase {
         ? 'No se detectaron senales suficientes de sesgo con evidencia citada.'
         : analysis.explanation;
 
-    return {
+    const normalizedResult: ArticleAnalysis = {
       ...analysis,
       summary: normalizedSummary,
+      qualityNotice,
       biasRaw,
       biasScore: biasScoreNormalized,
       biasScoreNormalized,
@@ -584,6 +593,8 @@ export class AnalyzeArticleUseCase {
       clickbaitScore,
       factCheck,
     };
+
+    return this.sanitizeAnalysisTextFields(normalizedResult);
   }
 
   private applyLengthScoreCaps(
@@ -725,7 +736,7 @@ export class AnalyzeArticleUseCase {
   }): string {
     if (params.shouldForceIndeterminateBias) {
       return this.normalizeUiComment(
-        'No hay suficientes seÃ±ales citadas para inferir una tendencia ideolÃ³gica y, con este nivel de evidencia interna, el sesgo se mantiene indeterminado'
+        'No hay suficientes se\u00f1ales citadas para inferir una tendencia ideol\u00f3gica y, con este nivel de evidencia interna, el sesgo se mantiene indeterminado'
       );
     }
     if (!params.hasCalibratedBiasSignals) {
@@ -740,9 +751,9 @@ export class AnalyzeArticleUseCase {
       .join('; ');
     const leaningText =
       params.articleLeaning === 'indeterminada'
-        ? 'sin tendencia ideolÃ³gica concluyente'
+        ? 'sin tendencia ideologica concluyente'
         : `con tendencia ${params.articleLeaning}`;
-    const generated = `El encuadre refleja ${leaningText} segÃºn seÃ±ales citadas (${citedSignals}), evaluadas solo desde el texto disponible y sin inferir hechos externos`;
+    const generated = `El encuadre refleja ${leaningText} segun senales citadas (${citedSignals}), evaluadas solo desde el texto disponible y sin inferir hechos externos`;
 
     return this.normalizeUiComment(generated);
   }
@@ -781,13 +792,13 @@ export class AnalyzeArticleUseCase {
               ? 'baja'
               : 'muy baja';
 
-    if (
-      params.factCheckVerdict === 'SupportedByArticle' &&
-      params.hasAttributionOrCitations
-    ) {
-      const supportedTemplate = `Fiabilidad ${reliabilityBand}: soportado por el articulo con evidencia interna trazable; sin verificacion externa independiente.`;
-      const compactSupportedTemplate =
-        'Soportado por el articulo con evidencia interna trazable; sin verificacion externa independiente.';
+    if (params.factCheckVerdict === 'SupportedByArticle') {
+      const supportedTemplate = params.hasAttributionOrCitations
+        ? `Fiabilidad ${reliabilityBand}: soportado por el articulo con evidencia interna trazable; sin verificacion externa independiente.`
+        : `Fiabilidad ${reliabilityBand}: soportado por el articulo (sin verificacion externa) y con respaldo interno parcial.`;
+      const compactSupportedTemplate = params.hasAttributionOrCitations
+        ? 'Soportado por el articulo con evidencia interna trazable; sin verificacion externa independiente.'
+        : 'Soportado por el articulo (sin verificacion externa).';
       return this.fitReliabilityCommentLength(
         supportedTemplate,
         compactSupportedTemplate,
@@ -807,7 +818,7 @@ export class AnalyzeArticleUseCase {
         ? 'hay trazabilidad clara de citas y atribuciones'
         : params.traceabilityScore >= 40
           ? 'la trazabilidad es parcial'
-          : 'la trazabilidad es dÃ©bil';
+          : 'la trazabilidad es debil';
 
     const longTemplate =
       params.factualityStatus === 'no_determinable'
@@ -965,7 +976,7 @@ export class AnalyzeArticleUseCase {
     let reasoning =
       typeof params.reasoning === 'string' && params.reasoning.trim().length > 0
         ? params.reasoning.trim()
-        : 'Sin informaciÃ³n suficiente para verificar.';
+        : 'Sin informacion suficiente para verificar.';
 
     if (this.reasoningIndicatesInsufficientEvidence(reasoning)) {
       verdict = 'InsufficientEvidenceInArticle';
@@ -973,7 +984,7 @@ export class AnalyzeArticleUseCase {
 
     if (verdict === 'SupportedByArticle') {
       reasoning =
-        'Aparece explÃ­citamente en el texto (soportado por el artÃ­culo), no verificado externamente.';
+        'Aparece explicitamente en el texto (soportado por el articulo), no verificado externamente.';
     } else if (verdict === 'InsufficientEvidenceInArticle' && !this.reasoningIndicatesInsufficientEvidence(reasoning)) {
       reasoning =
         'La evidencia interna es insuficiente en el texto; no verificable con fuentes internas.';
@@ -1127,20 +1138,20 @@ export class AnalyzeArticleUseCase {
       '&quot;': '"',
       '&#39;': "'",
       '&nbsp;': ' ',
-      '&aacute;': 'Ã¡',
-      '&eacute;': 'Ã©',
-      '&iacute;': 'Ã­',
-      '&oacute;': 'Ã³',
-      '&uacute;': 'Ãº',
-      '&Aacute;': 'Ã',
-      '&Eacute;': 'Ã‰',
-      '&Iacute;': 'Ã',
-      '&Oacute;': 'Ã“',
-      '&Uacute;': 'Ãš',
-      '&ntilde;': 'Ã±',
-      '&Ntilde;': 'Ã‘',
-      '&uuml;': 'Ã¼',
-      '&Uuml;': 'Ãœ',
+      '&aacute;': '\u00e1',
+      '&eacute;': '\u00e9',
+      '&iacute;': '\u00ed',
+      '&oacute;': '\u00f3',
+      '&uacute;': '\u00fa',
+      '&Aacute;': '\u00c1',
+      '&Eacute;': '\u00c9',
+      '&Iacute;': '\u00cd',
+      '&Oacute;': '\u00d3',
+      '&Uacute;': '\u00da',
+      '&ntilde;': '\u00f1',
+      '&Ntilde;': '\u00d1',
+      '&uuml;': '\u00fc',
+      '&Uuml;': '\u00dc',
       '&ldquo;': '"',
       '&rdquo;': '"',
       '&lsquo;': "'",
@@ -1265,13 +1276,27 @@ export class AnalyzeArticleUseCase {
     if (isLowQualityInput) {
       normalized = this.takeFirstSentences(normalized, 2);
       normalized = this.limitSummaryWords(normalized, SUMMARY_MAX_WORDS_LOW_QUALITY);
-      normalized = this.ensureLowQualityNotice(normalized, SUMMARY_MAX_WORDS_LOW_QUALITY);
-      return normalized || SUMMARY_LOW_QUALITY_NOTICE;
+      normalized = this.removeBannedSummaryPhrases(normalized);
+      return normalized || 'El extracto disponible describe el hecho principal sin contexto adicional suficiente.';
     }
 
     normalized = this.takeFirstSentences(normalized, 5);
     normalized = this.limitSummaryWords(normalized, SUMMARY_MAX_WORDS_FULL);
+    normalized = this.removeBannedSummaryPhrases(normalized);
     return normalized || 'No hay evidencia suficiente para un resumen editorial.';
+  }
+
+  private buildQualityNotice(context: {
+    scrapedContentLength: number;
+    usedFallback: boolean;
+    rssSnippetDetected: boolean;
+  }): string | undefined {
+    const isLowQualityInput =
+      context.usedFallback ||
+      context.rssSnippetDetected ||
+      context.scrapedContentLength < 300;
+
+    return isLowQualityInput ? SUMMARY_LOW_QUALITY_NOTICE : undefined;
   }
 
   private removeLegacySummaryPrefix(summary: string): string {
@@ -1296,6 +1321,9 @@ export class AnalyzeArticleUseCase {
       /\bcabe destacar\b[:,]?\s*/gi,
       /\ben este contexto\b[:,]?\s*/gi,
       /\bseg(?:u|\u00fa)n\s+se\s+desprende\b[:,]?\s*/gi,
+      /\bfalta\s+el\s+texto\s+completo\s+para\s+confirmar\s+detalles\b[:,.]?\s*/gi,
+      /\bresumen\s+provisional(?:\s+basado\s+en\s+contenido\s+interno)?\b[:,.]?\s*/gi,
+      /\bno\s+se\s+puede\s+confirmar\s+detalles\b[:,.]?\s*/gi,
     ];
 
     let cleaned = summary;
@@ -1339,27 +1367,94 @@ export class AnalyzeArticleUseCase {
     return words.slice(0, maxWords).join(' ').trim();
   }
 
-  private countWords(text: string): number {
-    return text.split(/\s+/).filter(Boolean).length;
-  }
-
-  private ensureLowQualityNotice(summary: string, maxWords: number): string {
-    const compact = summary.replace(/\s+/g, ' ').trim();
-    const withoutNotice = compact
-      .replace(/\s*falta\s+el\s+texto\s+completo\s+para\s+confirmar\s+detalles\.?/gi, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    const noticeWords = this.countWords(SUMMARY_LOW_QUALITY_NOTICE);
-    const availableWords = Math.max(0, maxWords - noticeWords);
-    const limitedBase =
-      availableWords > 0 ? this.limitSummaryWords(withoutNotice, availableWords) : '';
-
-    if (!limitedBase) {
-      return SUMMARY_LOW_QUALITY_NOTICE;
+  private alignReliabilityScoreWithVerdict(params: {
+    reliabilityScore: number;
+    verdict: ArticleAnalysis['factCheck']['verdict'];
+    factualityStatus: 'no_determinable' | 'plausible_but_unverified';
+    qualityNotice?: string;
+  }): number {
+    if (params.verdict === 'SupportedByArticle') {
+      return this.clampNumber(params.reliabilityScore, 45, 65, 55);
     }
 
-    return `${limitedBase} ${SUMMARY_LOW_QUALITY_NOTICE}`.trim();
+    if (
+      params.verdict === 'InsufficientEvidenceInArticle' ||
+      params.factualityStatus === 'no_determinable' ||
+      typeof params.qualityNotice === 'string'
+    ) {
+      return this.clampNumber(params.reliabilityScore, 20, 45, 35);
+    }
+
+    return this.clampNumber(params.reliabilityScore, 20, 60, 45);
+  }
+
+  private sanitizeAnalysisTextFields(analysis: ArticleAnalysis): ArticleAnalysis {
+    const sanitizeValue = (value: unknown): unknown => {
+      if (typeof value === 'string') {
+        return this.sanitizePotentialMojibake(value);
+      }
+
+      if (Array.isArray(value)) {
+        return value.map((entry) => sanitizeValue(entry));
+      }
+
+      if (value && typeof value === 'object') {
+        const sanitizedRecord: Record<string, unknown> = {};
+        for (const [key, nestedValue] of Object.entries(value as Record<string, unknown>)) {
+          sanitizedRecord[key] = sanitizeValue(nestedValue);
+        }
+        return sanitizedRecord;
+      }
+
+      return value;
+    };
+
+    return sanitizeValue(analysis) as ArticleAnalysis;
+  }
+
+  private sanitizePotentialMojibake(text: string): string {
+    const compact = text.replace(/\s+/g, ' ').trim();
+    if (!compact || !/[ÃÂâ]/.test(compact)) {
+      return compact;
+    }
+
+    try {
+      let repaired = compact;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        if (!/[ÃÂâ]/.test(repaired)) {
+          break;
+        }
+        repaired = Buffer.from(repaired, 'latin1').toString('utf8').trim();
+      }
+
+      const replacementMap: Record<string, string> = {
+        'Ã¡': '\u00e1',
+        'Ã©': '\u00e9',
+        'Ã­': '\u00ed',
+        'Ã³': '\u00f3',
+        'Ãº': '\u00fa',
+        'Ã±': '\u00f1',
+        'Ã': '\u00c1',
+        'Ã‰': '\u00c9',
+        'Ã': '\u00cd',
+        'Ã“': '\u00d3',
+        'Ãš': '\u00da',
+        'Ã‘': '\u00d1',
+        'Ã¼': '\u00fc',
+        'Ãœ': '\u00dc',
+      };
+      for (const [broken, fixed] of Object.entries(replacementMap)) {
+        repaired = repaired.split(broken).join(fixed);
+      }
+
+      if (repaired && !repaired.includes('Ã')) {
+        return repaired;
+      }
+    } catch {
+      return compact;
+    }
+
+    return compact.replace(/Ã/g, '');
   }
 
   private getAnalysisModeRank(mode: AnalysisMode): number {

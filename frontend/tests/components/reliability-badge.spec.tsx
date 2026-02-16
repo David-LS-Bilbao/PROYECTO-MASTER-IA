@@ -58,7 +58,7 @@ describe('ReliabilityBadge vNext.1', () => {
     );
 
     expect(
-      screen.getByText('Soportado por el artículo (sin verificación externa)')
+      screen.getByText('Soportado por el articulo (sin verificacion externa)')
     ).toBeInTheDocument();
     expect(
       screen.queryByText('No verificable con fuentes internas')

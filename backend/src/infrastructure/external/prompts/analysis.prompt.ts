@@ -28,7 +28,9 @@ REGLAS NO NEGOCIABLES:
   - Reescribe con palabras claras; no parafrasees mecanicamente el titular/entradilla.
   - Si hay lenguaje clickbait ("entra en combustion", "batalla", "escandalo", "demoledor", etc.),
     neutralizalo ("tension interna", "enfrentamientos", "criticas", etc.) SOLO si el cuerpo lo respalda.
-  - No inventes: si falta contexto, cierra con una frase corta: "Falta el texto completo para confirmar detalles."
+  - No inventes: si falta contexto, indica brevemente que el extracto es incompleto.
+  - Prohibido usar en summary frases fijas como "Falta el texto completo para confirmar detalles.",
+    "Resumen provisional..." o "No se puede confirmar detalles".
 - REGLA DE CALIDAD DE ENTRADA:
   - Si detectas inputQuality = snippet_rss o paywall_o_vacio, o contenido corto/incompleto (<300 chars):
     summary de 1-2 frases y 35-45 palabras maximo.
@@ -128,7 +130,7 @@ Usa:
   - por defecto 3-5 frases claras, sin paja ni frases vacias, evitando parafraseo literal
   - debe cubrir: que pasa, quienes, impacto y 1 dato clave si existe
   - neutraliza lenguaje clickbait solo si el cuerpo lo sostiene
-  - si falta contexto: "Falta el texto completo para confirmar detalles."
+  - si falta contexto: indicarlo con una frase breve y concreta, sin plantillas fijas
   - si inputQuality es snippet_rss/paywall_o_vacio o contenido <300 chars:
     1-2 frases, 35-45 palabras maximo, explicando que afirma el extracto y que falta el cuerpo
   - prohibido "Resumen provisional..." y plantillas genericas repetidas
@@ -174,7 +176,7 @@ Reglas:
   - cubrir explicitamente: que pasa, quienes, impacto y 1 dato clave si existe
   - reescribir con claridad, sin parafraseo mecanico
   - neutralizar clickbait (p.ej. "batalla", "escandalo", "demoledor") a formulacion neutral si el texto lo respalda
-  - si falta contexto, cerrar con: "Falta el texto completo para confirmar detalles."
+  - si falta contexto, indicarlo en una frase breve y concreta, sin plantillas fijas
   - si inputQuality es snippet_rss/paywall_o_vacio o contenido <300 chars:
     1-2 frases, 35-45 palabras maximo, explicar el extracto y aclarar falta de cuerpo
   - prohibido usar "Resumen provisional..." y plantillas genericas

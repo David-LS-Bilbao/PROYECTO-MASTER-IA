@@ -58,6 +58,7 @@ export interface TokenUsage {
 export interface ArticleAnalysis {
   internal_reasoning?: string; // Chain-of-Thought (XAI auditing only, excluded from client response)
   summary: string;
+  qualityNotice?: string;
   category?: string; // AI-suggested category for the article
   analysisModeUsed?: 'low_cost' | 'moderate' | 'standard';
 

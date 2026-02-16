@@ -10,7 +10,7 @@ import { ArrowLeft, ExternalLink, Clock, User, Tag, Sparkles } from 'lucide-reac
 import { analyzeArticleWithMode, type AnalysisMode } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useArticle } from '@/hooks/useArticle';
-import { formatDate, getBiasInfo, getSentimentInfo, isValidUUID, isSafeUrl } from '@/lib/news-utils';
+import { formatDate, getBiasDisplayInfo, getSentimentInfo, isValidUUID, isSafeUrl } from '@/lib/news-utils';
 import { ANALYSIS_COOLDOWN_MS } from '@/lib/constants';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -234,7 +234,6 @@ export default function NewsDetailPage() {
   }
 
   const isAnalyzed = article.analyzedAt !== null;
-  const biasInfo = article.biasScore !== null ? getBiasInfo(article.biasScore) : null;
   const sentimentInfo = article.analysis?.sentiment ? getSentimentInfo(article.analysis.sentiment) : null;
   const articleLeaningLabels: Record<'progresista' | 'conservadora' | 'extremista' | 'neutral' | 'indeterminada', string> = {
     progresista: 'Progresista',
@@ -248,6 +247,20 @@ export default function NewsDetailPage() {
     (article.analysis?.biasLeaning === 'otra'
       ? 'indeterminada'
       : article.analysis?.biasLeaning);
+  const qualityNotice = article.analysis?.qualityNotice?.trim();
+  const effectiveContentLength =
+    lastScrapedContentLength ?? (article.content?.trim().length ?? 0);
+  const biasInfo =
+    article.biasScore !== null
+      ? getBiasDisplayInfo({
+          score: article.biasScore,
+          articleLeaning,
+          leaningConfidence: article.analysis?.leaningConfidence,
+          biasIndicators: article.analysis?.biasIndicators,
+          contentLength: effectiveContentLength,
+          qualityNotice,
+        })
+      : null;
 
   // Determine if we should show analysis content or skeleton
   // Show skeleton if: analyzing OR revealing (artificial delay)
@@ -255,7 +268,8 @@ export default function NewsDetailPage() {
   const showAnalysisContent = isAnalyzed && !showAnalysisSkeleton;
   const hasPreliminaryContentWarning =
     showAnalysisContent &&
-    (lastScrapedContentLength === 0 || !article.content || article.content.trim().length === 0);
+    !qualityNotice &&
+    (effectiveContentLength === 0 || !article.content || article.content.trim().length === 0);
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
@@ -351,6 +365,11 @@ export default function NewsDetailPage() {
                 <p className="text-base text-zinc-700 dark:text-zinc-300 leading-relaxed">
                   {article.summary}
                 </p>
+                {qualityNotice && (
+                  <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-400">
+                    {qualityNotice}
+                  </p>
+                )}
               </div>
             ) : null}
 
@@ -437,9 +456,9 @@ export default function NewsDetailPage() {
                   <>
                     {/* Bias Score */}
                     <div className="space-y-3">
-                      {hasPreliminaryContentWarning && (
+                      {(qualityNotice || hasPreliminaryContentWarning) && (
                         <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
-                          Contenido insuficiente: análisis preliminar
+                          {qualityNotice || 'Contenido insuficiente: analisis preliminar'}
                         </p>
                       )}
                       <div className="flex justify-between items-center">
@@ -448,14 +467,18 @@ export default function NewsDetailPage() {
                           {biasInfo.label}
                         </span>
                       </div>
-                      <div className="h-3 bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-linear-to-r from-green-500 via-amber-500 to-red-500 rounded-full transition-all"
-                          style={{ width: `${(article.biasScore ?? 0) * 100}%` }}
-                        />
-                      </div>
+                      {biasInfo.showScore ? (
+                        <div className="h-3 bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-linear-to-r from-green-500 via-amber-500 to-red-500 rounded-full transition-all"
+                            style={{ width: `${biasInfo.progressValue}%` }}
+                          />
+                        </div>
+                      ) : (
+                        <div className="h-3 bg-zinc-200 dark:bg-zinc-700 rounded-full" />
+                      )}
                       <p className="text-xs text-muted-foreground">
-                        Puntuación: {((article.biasScore ?? 0) * 100).toFixed(0)}% de sesgo detectado
+                        Puntuacion: {biasInfo.showScore ? `${biasInfo.scoreText} de sesgo detectado` : 'N/A'}
                       </p>
                       {article.analysis?.biasComment && (
                         <p className="text-xs text-muted-foreground leading-relaxed">

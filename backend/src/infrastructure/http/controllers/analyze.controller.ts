@@ -81,6 +81,7 @@ export class AnalyzeController {
 
     console.log(`[AnalyzeController]    📤 Sending response (200 OK)`);
 
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.status(200).json({
       success: true,
       data: {
@@ -109,6 +110,7 @@ export class AnalyzeController {
       );
     }
 
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.status(200).json({
       success: true,
       data: result,
@@ -123,6 +125,7 @@ export class AnalyzeController {
   async getStats(_req: Request, res: Response): Promise<void> {
     const stats = await this.analyzeArticleUseCase.getStats();
 
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.status(200).json({
       success: true,
       data: stats,

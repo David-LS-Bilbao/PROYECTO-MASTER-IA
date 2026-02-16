@@ -9,6 +9,21 @@ export interface BiasInfo {
   bg: string;
 }
 
+export interface BiasDisplayInfo extends BiasInfo {
+  scoreText: string;
+  showScore: boolean;
+  progressValue: number;
+}
+
+interface BiasDisplayInput {
+  score: number | null | undefined;
+  articleLeaning?: 'progresista' | 'conservadora' | 'extremista' | 'neutral' | 'indeterminada';
+  leaningConfidence?: 'baja' | 'media' | 'alta';
+  biasIndicators?: string[];
+  contentLength?: number | null;
+  qualityNotice?: string | null;
+}
+
 /**
  * Sentiment configuration and display
  */
@@ -21,11 +36,54 @@ export interface SentimentInfo {
  * Get bias level info based on score (0-1)
  */
 export function getBiasInfo(score: number): BiasInfo {
-  if (score <= 0.2) return { label: 'Muy Neutral', color: 'text-green-700', bg: 'bg-green-100' };
+  if (score <= 0.2) return { label: 'Neutral', color: 'text-green-700', bg: 'bg-green-100' };
   if (score <= 0.4) return { label: 'Ligero Sesgo', color: 'text-blue-700', bg: 'bg-blue-100' };
   if (score <= 0.6) return { label: 'Sesgo Moderado', color: 'text-amber-700', bg: 'bg-amber-100' };
   if (score <= 0.8) return { label: 'Sesgo Alto', color: 'text-orange-700', bg: 'bg-orange-100' };
   return { label: 'Muy Sesgado', color: 'text-red-700', bg: 'bg-red-100' };
+}
+
+export function getBiasDisplayInfo(input: BiasDisplayInput): BiasDisplayInfo {
+  const normalizedScore =
+    typeof input.score === 'number' && Number.isFinite(input.score)
+      ? Math.max(0, Math.min(1, input.score))
+      : 0;
+  const indicatorsCount = Array.isArray(input.biasIndicators) ? input.biasIndicators.length : 0;
+  const hasLowQualitySignal =
+    input.articleLeaning === 'indeterminada' ||
+    typeof input.qualityNotice === 'string' ||
+    (typeof input.contentLength === 'number' && input.contentLength < 300);
+
+  if (hasLowQualitySignal) {
+    return {
+      label: 'Indeterminada',
+      color: 'text-zinc-700',
+      bg: 'bg-zinc-200',
+      scoreText: 'N/A',
+      showScore: false,
+      progressValue: 0,
+    };
+  }
+
+  const isLowConfidence = input.leaningConfidence === 'baja' || indicatorsCount < 2;
+  if (input.articleLeaning === 'neutral' && isLowConfidence) {
+    return {
+      label: 'Neutral (confianza baja)',
+      color: 'text-green-700',
+      bg: 'bg-green-100',
+      scoreText: 'N/A',
+      showScore: false,
+      progressValue: 0,
+    };
+  }
+
+  const base = getBiasInfo(normalizedScore);
+  return {
+    ...base,
+    scoreText: `${Math.round(normalizedScore * 100)}%`,
+    showScore: true,
+    progressValue: normalizedScore * 100,
+  };
 }
 
 /**
