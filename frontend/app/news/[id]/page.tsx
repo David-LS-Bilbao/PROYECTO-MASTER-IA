@@ -10,7 +10,7 @@ import { ArrowLeft, ExternalLink, Clock, User, Tag, Sparkles } from 'lucide-reac
 import { analyzeArticleWithMode, type AnalysisMode, type AnalyzeDepthMode } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useArticle } from '@/hooks/useArticle';
-import { useProfile } from '@/hooks/useProfile';
+import { useEntitlements } from '@/hooks/useEntitlements';
 import { formatDate, getBiasDisplayInfo, getSentimentInfo, isValidUUID, isSafeUrl } from '@/lib/news-utils';
 import { ANALYSIS_COOLDOWN_MS } from '@/lib/constants';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +21,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ReliabilityBadge } from '@/components/reliability-badge';
 import { DeepAnalysisPanel } from '@/components/deep-analysis-panel';
 import { DeepAnalysisButton } from '@/components/deep-analysis-button';
+import { DeepAnalysisRedeemSheet } from '@/components/deep-analysis-redeem-sheet';
 import { NewsChatDrawer } from '@/components/news-chat-drawer';
 import { GeneralChatDrawer } from '@/components/general-chat-drawer';
 
@@ -64,7 +65,13 @@ export default function NewsDetailPage() {
   const queryClient = useQueryClient();
   const id = params.id as string;
   const shouldAutoAnalyze = searchParams.get('analyze') === 'true';
-  const { profile, loading: profileLoading } = useProfile(user, authLoading, getToken);
+  const {
+    entitlements,
+    loading: entitlementsLoading,
+    redeeming: redeemingEntitlements,
+    redeem: redeemEntitlementCode,
+    refetch: refetchEntitlements,
+  } = useEntitlements(user, authLoading, getToken);
 
   // Validate UUID format to prevent injection attacks
   const validUUID = isValidUUID(id);
@@ -87,6 +94,7 @@ export default function NewsDetailPage() {
   // Local state for AI analysis
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [isRedeemSheetOpen, setIsRedeemSheetOpen] = useState(false);
   const [lastAnalyzeTime, setLastAnalyzeTime] = useState<number>(0);
   const [lastScrapedContentLength, setLastScrapedContentLength] = useState<number | null>(null);
 
@@ -166,8 +174,12 @@ export default function NewsDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['news'] });
     } catch (e) {
       console.error(`[page.tsx]    ❌ Analysis failed:`, e);
-      if (mode === 'deep' && e instanceof Error && /premium required/i.test(e.message)) {
-        setAnalyzeError('Disponible en Premium. Mejora tu plan para desbloquear Analisis profundo.');
+      if (
+        mode === 'deep' &&
+        e instanceof Error &&
+        /(premium required|deep analysis entitlement required)/i.test(e.message)
+      ) {
+        setAnalyzeError('Disponible en Premium. Activa Analisis profundo con un codigo promocional.');
         return;
       }
       setAnalyzeError(e instanceof Error ? e.message : 'Error al analizar');
@@ -245,7 +257,7 @@ export default function NewsDetailPage() {
   }
 
   const isAnalyzed = article.analyzedAt !== null;
-  const isPremiumForDeep = profile?.plan === 'PREMIUM';
+  const hasDeepAnalysisEntitlement = entitlements.deepAnalysis;
   const deepSections = article.analysis?.deep?.sections;
   const sentimentInfo = article.analysis?.sentiment ? getSentimentInfo(article.analysis.sentiment) : null;
   const articleLeaningLabels: Record<'progresista' | 'conservadora' | 'extremista' | 'neutral' | 'indeterminada', string> = {
@@ -573,17 +585,17 @@ export default function NewsDetailPage() {
 
                     <DeepAnalysisPanel sections={deepSections} />
                     <DeepAnalysisButton
-                      isPremium={isPremiumForDeep && !profileLoading}
+                      hasEntitlement={hasDeepAnalysisEntitlement && !entitlementsLoading}
                       isBusy={isAnalyzing || isRevealing}
                       onClick={() => handleAnalyze('standard', 'deep')}
                     />
-                    {!isPremiumForDeep && !profileLoading && (
+                    {!hasDeepAnalysisEntitlement && !entitlementsLoading && (
                       <Button
                         variant="outline"
                         className="w-full"
-                        onClick={() => router.push('/pricing')}
+                        onClick={() => setIsRedeemSheetOpen(true)}
                       >
-                        Ver planes
+                        Activar con codigo
                       </Button>
                     )}
                     {analyzeError && (
@@ -654,6 +666,20 @@ export default function NewsDetailPage() {
         isOpen={isGeneralChatOpen}
         onOpenChange={setIsGeneralChatOpen}
         initialQuestion={generalChatInitialQuestion}
+      />
+
+      <DeepAnalysisRedeemSheet
+        isOpen={isRedeemSheetOpen}
+        onOpenChange={setIsRedeemSheetOpen}
+        isSubmitting={redeemingEntitlements}
+        onRedeem={async (code) => {
+          const activated = await redeemEntitlementCode(code);
+          if (activated) {
+            await refetchEntitlements();
+            setAnalyzeError(null);
+          }
+          return activated;
+        }}
       />
     </div>
   );

@@ -688,6 +688,54 @@ export async function discoverRssSource(name: string): Promise<string> {
 }
 
 /**
+ * Discover local RSS sources for a region using AI
+ * FEATURE: SMART LOCAL SOURCES DISCOVERY (Sprint 32)
+ *
+ * @param location Nombre de la región/provincia (e.g., "Madrid", "Andalucía")
+ * @param limit Máximo de fuentes a descubrir (default: 10)
+ * @returns Lista de fuentes descubiertas
+ */
+export interface DiscoveredLocalSource {
+  name: string;
+  url: string;
+  rssUrl: string;
+  region: string;
+  verified: boolean;
+}
+
+export interface DiscoverLocalSourcesResponse {
+  success: boolean;
+  data?: {
+    sources: DiscoveredLocalSource[];
+    fromCache: boolean;
+    location: string;
+  };
+  error?: string;
+  message?: string;
+}
+
+export async function discoverLocalSources(
+  location: string,
+  limit: number = 10
+): Promise<DiscoveredLocalSource[]> {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/sources/discover-local`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ location, limit }),
+  });
+
+  const data: DiscoverLocalSourcesResponse = await res.json();
+
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || data.message || 'No se pudieron descubrir fuentes locales');
+  }
+
+  return data.data?.sources || [];
+}
+
+/**
  * User Profile Management
  * FEATURE: USER PROFILES (Sprint 10)
  */
@@ -698,6 +746,7 @@ export interface UserProfile {
   name: string | null;
   picture: string | null;
   plan: 'FREE' | 'PREMIUM';
+  entitlements: UserEntitlements;
   location: string | null; // Sprint 20: Geolocalización (ej: "Madrid, España")
   preferences: {
     categories?: string[];
@@ -716,6 +765,10 @@ export interface UserProfile {
   };
   createdAt: string;
   updatedAt: string;
+}
+
+export interface UserEntitlements {
+  deepAnalysis: boolean;
 }
 
 export interface UserProfileResponse {

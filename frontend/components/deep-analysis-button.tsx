@@ -1,20 +1,20 @@
-'use client';
+﻿'use client';
 
 import { Lock, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface DeepAnalysisButtonProps {
-  isPremium: boolean;
+  hasEntitlement: boolean;
   isBusy: boolean;
   onClick: () => void;
 }
 
 export function DeepAnalysisButton({
-  isPremium,
+  hasEntitlement,
   isBusy,
   onClick,
 }: DeepAnalysisButtonProps) {
-  const disabled = isBusy || !isPremium;
+  const disabled = isBusy || !hasEntitlement;
 
   return (
     <Button
@@ -22,17 +22,17 @@ export function DeepAnalysisButton({
       className="w-full gap-2"
       onClick={onClick}
       disabled={disabled}
-      title={!isPremium ? 'Disponible en Premium' : undefined}
+      title={!hasEntitlement ? 'Disponible en Premium' : undefined}
     >
       {isBusy ? (
         <>
-          <span className="animate-spin">⏳</span>
+          <span className="animate-spin">...</span>
           Procesando...
         </>
-      ) : isPremium ? (
+      ) : hasEntitlement ? (
         <>
           <Sparkles className="h-4 w-4" />
-          Analisis profundo (Premium)
+          Analisis profundo
         </>
       ) : (
         <>
