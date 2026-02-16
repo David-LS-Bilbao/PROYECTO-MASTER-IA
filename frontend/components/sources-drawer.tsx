@@ -22,7 +22,9 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 // import { Switch } from '@/components/ui/switch'; // TODO: Instalar con: npx shadcn@latest add switch
 // import { toast } from 'sonner'; // TODO: Instalar con: npx shadcn@latest add sonner
 import { discoverRssSource } from '@/lib/api';
-import { Sparkles, Loader2, Rss, Trash2, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Sparkles, Loader2, Rss, Trash2, ToggleLeft, ToggleRight, MapPin, ChevronDown, ChevronUp } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
+import { useProfile } from '@/hooks/useProfile';
 
 const STORAGE_KEY = 'verity_rss_sources';
 
@@ -32,7 +34,53 @@ interface RssSource {
   url: string;
   category: string;
   active: boolean;
+  region?: string; // Sprint 32: Para filtrar fuentes locales por ubicación
 }
+
+/**
+ * Sprint 32: Mapping de provincias/regiones a fuentes locales
+ * Usado para recomendar fuentes según la ubicación del usuario
+ */
+const REGION_TO_SOURCES: Record<string, string[]> = {
+  // Galicia
+  'A Coruña': ['vozgalicia', 'farodevigo'],
+  'Lugo': ['vozgalicia'],
+  'Ourense': ['vozgalicia'],
+  'Pontevedra': ['vozgalicia', 'farodevigo'],
+  'Galicia': ['vozgalicia', 'farodevigo'],
+
+  // País Vasco
+  'Álava': ['elcorreo', 'diariovasco'],
+  'Vizcaya': ['elcorreo', 'diariovasco'],
+  'Guipúzcoa': ['elcorreo', 'diariovasco'],
+  'Bilbao': ['elcorreo'],
+  'País Vasco': ['elcorreo', 'diariovasco'],
+
+  // Aragón
+  'Zaragoza': ['heraldo'],
+  'Huesca': ['heraldo'],
+  'Teruel': ['heraldo'],
+  'Aragón': ['heraldo'],
+
+  // Comunidad Valenciana
+  'Valencia': ['levante', 'lasnuevecr'],
+  'Alicante': ['levante'],
+  'Castellón': ['levante'],
+
+  // Andalucía
+  'Málaga': ['diariosur'],
+  'Sevilla': ['diariodesevilla'],
+  'Granada': ['ideal'],
+  'Andalucía': ['diariosur', 'diariodesevilla', 'ideal'],
+
+  // Murcia
+  'Murcia': ['laopinion'],
+
+  // Cataluña
+  'Barcelona': ['diaridebarcelona'],
+  'Girona': ['diaridebarcelona'],
+  'Cataluña': ['diaridebarcelona'],
+};
 
 /**
  * Default Spanish media sources (60+ outlets)
@@ -108,18 +156,18 @@ const DEFAULT_SOURCES: RssSource[] = [
   { id: 'elplural', name: 'El Plural', url: 'https://www.elplural.com/rss', active: false, category: 'Política' },
 
   // --- LOCAL (Diarios Regionales - TOP 12) --- Solo 4 primeras activas por defecto
-  { id: 'vozgalicia', name: 'La Voz de Galicia', url: 'https://www.lavozdegalicia.es/rss/portada.xml', active: true, category: 'Local' },
-  { id: 'elcorreo', name: 'El Correo (País Vasco)', url: 'https://www.elcorreo.com/rss/2.0/?section=portada', active: true, category: 'Local' },
-  { id: 'heraldo', name: 'Heraldo de Aragón', url: 'https://www.heraldo.es/rss/seccion/portada/', active: true, category: 'Local' },
-  { id: 'levante', name: 'Levante-EMV (Valencia)', url: 'https://www.levante-emv.com/rss/2.0/?section=portada', active: true, category: 'Local' },
-  { id: 'diariosur', name: 'Diario Sur (Málaga)', url: 'https://www.diariosur.es/rss/2.0/?section=portada', active: false, category: 'Local' },
-  { id: 'diariodesevilla', name: 'Diario de Sevilla', url: 'https://www.diariodesevilla.es/rss/2.0/?section=portada', active: false, category: 'Local' },
-  { id: 'laopinion', name: 'La Opinión de Murcia', url: 'https://www.laopiniondemurcia.es/rss/2.0/?section=portada', active: false, category: 'Local' },
-  { id: 'lasnuevecr', name: 'Las Provincias (Valencia)', url: 'https://www.lasprovincias.es/rss/2.0/?section=portada', active: false, category: 'Local' },
-  { id: 'diariovasco', name: 'El Diario Vasco', url: 'https://www.diariovasco.com/rss/2.0/?section=portada', active: false, category: 'Local' },
-  { id: 'farodevigo', name: 'Faro de Vigo', url: 'https://www.farodevigo.es/rss/2.0/?section=portada', active: false, category: 'Local' },
-  { id: 'ideal', name: 'Ideal Granada', url: 'https://www.ideal.es/rss/2.0/?section=portada', active: false, category: 'Local' },
-  { id: 'diaridebarcelona', name: 'Diari de Barcelona', url: 'https://www.diaridegirona.cat/rss/', active: false, category: 'Local' },
+  { id: 'vozgalicia', name: 'La Voz de Galicia', url: 'https://www.lavozdegalicia.es/rss/portada.xml', active: true, category: 'Local', region: 'Galicia' },
+  { id: 'elcorreo', name: 'El Correo (País Vasco)', url: 'https://www.elcorreo.com/rss/2.0/?section=portada', active: true, category: 'Local', region: 'País Vasco' },
+  { id: 'heraldo', name: 'Heraldo de Aragón', url: 'https://www.heraldo.es/rss/seccion/portada/', active: true, category: 'Local', region: 'Aragón' },
+  { id: 'levante', name: 'Levante-EMV (Valencia)', url: 'https://www.levante-emv.com/rss/2.0/?section=portada', active: true, category: 'Local', region: 'Valencia' },
+  { id: 'diariosur', name: 'Diario Sur (Málaga)', url: 'https://www.diariosur.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Málaga' },
+  { id: 'diariodesevilla', name: 'Diario de Sevilla', url: 'https://www.diariodesevilla.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Sevilla' },
+  { id: 'laopinion', name: 'La Opinión de Murcia', url: 'https://www.laopiniondemurcia.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Murcia' },
+  { id: 'lasnuevecr', name: 'Las Provincias (Valencia)', url: 'https://www.lasprovincias.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Valencia' },
+  { id: 'diariovasco', name: 'El Diario Vasco', url: 'https://www.diariovasco.com/rss/2.0/?section=portada', active: false, category: 'Local', region: 'País Vasco' },
+  { id: 'farodevigo', name: 'Faro de Vigo', url: 'https://www.farodevigo.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Galicia' },
+  { id: 'ideal', name: 'Ideal Granada', url: 'https://www.ideal.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Granada' },
+  { id: 'diaridebarcelona', name: 'Diari de Barcelona', url: 'https://www.diaridegirona.cat/rss/', active: false, category: 'Local', region: 'Cataluña' },
 ];
 
 interface SourcesDrawerProps {
@@ -127,11 +175,67 @@ interface SourcesDrawerProps {
   onOpenChange: (open: boolean) => void;
 }
 
+/**
+ * Sprint 32: Componente auxiliar para renderizar una fuente RSS
+ */
+interface SourceItemProps {
+  source: RssSource;
+  onToggle: (id: string) => void;
+  onDelete: (id: string) => void;
+}
+
+function SourceItem({ source, onToggle, onDelete }: SourceItemProps) {
+  return (
+    <div className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/30 transition-colors">
+      <button
+        onClick={() => onToggle(source.id)}
+        className="shrink-0"
+        title={source.active ? 'Desactivar' : 'Activar'}
+      >
+        {source.active ? (
+          <ToggleRight className="size-5 text-primary" />
+        ) : (
+          <ToggleLeft className="size-5 text-muted-foreground" />
+        )}
+      </button>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <p className="font-medium text-sm truncate">{source.name}</p>
+          <Badge variant="secondary" className="text-xs">
+            {source.category}
+          </Badge>
+          {source.region && (
+            <Badge variant="outline" className="text-xs gap-1">
+              <MapPin className="size-3" />
+              {source.region}
+            </Badge>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground truncate">
+          {source.url}
+        </p>
+      </div>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        onClick={() => onDelete(source.id)}
+        title="Eliminar"
+      >
+        <Trash2 className="size-4 text-destructive" />
+      </Button>
+    </div>
+  );
+}
+
 export function SourcesDrawer({ isOpen, onOpenChange }: SourcesDrawerProps) {
+  const { user, loading: authLoading, getToken } = useAuth();
+  const { profile } = useProfile(user, authLoading, getToken);
+
   const [sources, setSources] = useState<RssSource[]>([]);
   const [newName, setNewName] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [showAllLocalSources, setShowAllLocalSources] = useState(false);
 
   // Cargar fuentes desde localStorage al montar
   useEffect(() => {
@@ -207,6 +311,29 @@ export function SourcesDrawer({ isOpen, onOpenChange }: SourcesDrawerProps) {
       setSources(sources.filter(s => s.id !== id));
       // toast.success('Fuente eliminada');
     }
+  };
+
+  /**
+   * Sprint 32: Obtener IDs de fuentes recomendadas según ubicación del usuario
+   */
+  const getRecommendedSourceIds = (): string[] => {
+    if (!profile?.location) return [];
+
+    const locationParts = profile.location.split(',').map(p => p.trim());
+    const recommendedIds = new Set<string>();
+
+    // Buscar coincidencias en REGION_TO_SOURCES
+    locationParts.forEach(part => {
+      const matchingRegion = Object.keys(REGION_TO_SOURCES).find(
+        region => region.toLowerCase() === part.toLowerCase()
+      );
+
+      if (matchingRegion) {
+        REGION_TO_SOURCES[matchingRegion].forEach(id => recommendedIds.add(id));
+      }
+    });
+
+    return Array.from(recommendedIds);
   };
 
   /**
@@ -317,50 +444,79 @@ export function SourcesDrawer({ isOpen, onOpenChange }: SourcesDrawerProps) {
               </div>
             </div>
 
-            {/* Lista de Fuentes */}
-            <div className="space-y-2">
-              <h3 className="font-semibold text-sm">
-                Fuentes ({filteredSources.length})
-              </h3>
-              <div className="space-y-2">
-                {filteredSources.map(source => (
-                  <div
-                    key={source.id}
-                    className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/30 transition-colors"
-                  >
-                    <button
-                      onClick={() => toggleSource(source.id)}
-                      className="shrink-0"
-                      title={source.active ? 'Desactivar' : 'Activar'}
-                    >
-                      {source.active ? (
-                        <ToggleRight className="size-5 text-primary" />
-                      ) : (
-                        <ToggleLeft className="size-5 text-muted-foreground" />
-                      )}
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium text-sm truncate">{source.name}</p>
-                        <Badge variant="secondary" className="text-xs">
-                          {source.category}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {source.url}
-                      </p>
+            {/* Sprint 32: Fuentes recomendadas según ubicación del usuario */}
+            {selectedCategory === 'Local' && profile?.location && (() => {
+              const recommendedIds = getRecommendedSourceIds();
+              const recommendedSources = sources.filter(s => recommendedIds.includes(s.id));
+
+              if (recommendedSources.length > 0) {
+                return (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="size-4 text-primary" />
+                      <h3 className="font-semibold text-sm">
+                        Recomendadas para {profile.location.split(',')[0]} ({recommendedSources.length})
+                      </h3>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => deleteSource(source.id)}
-                      title="Eliminar"
-                    >
-                      <Trash2 className="size-4 text-destructive" />
-                    </Button>
+                    <div className="space-y-2">
+                      {recommendedSources.map(source => (
+                        <SourceItem
+                          key={source.id}
+                          source={source}
+                          onToggle={toggleSource}
+                          onDelete={deleteSource}
+                        />
+                      ))}
+                    </div>
                   </div>
-                ))}
-              </div>
+                );
+              }
+              return null;
+            })()}
+
+            {/* Todas las fuentes (o fuentes filtradas por categoría) */}
+            <div className="space-y-2">
+              {selectedCategory === 'Local' && profile?.location && getRecommendedSourceIds().length > 0 ? (
+                // Si hay fuentes recomendadas, mostrar toggle para ver todas
+                <div>
+                  <button
+                    onClick={() => setShowAllLocalSources(!showAllLocalSources)}
+                    className="flex items-center gap-2 w-full text-sm font-semibold hover:text-primary transition-colors"
+                  >
+                    {showAllLocalSources ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+                    Todas las fuentes locales ({filteredSources.length})
+                  </button>
+                  {showAllLocalSources && (
+                    <div className="space-y-2 mt-2">
+                      {filteredSources.map(source => (
+                        <SourceItem
+                          key={source.id}
+                          source={source}
+                          onToggle={toggleSource}
+                          onDelete={deleteSource}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                // Comportamiento normal: mostrar todas las fuentes
+                <>
+                  <h3 className="font-semibold text-sm">
+                    Fuentes ({filteredSources.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {filteredSources.map(source => (
+                      <SourceItem
+                        key={source.id}
+                        source={source}
+                        onToggle={toggleSource}
+                        onDelete={deleteSource}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
