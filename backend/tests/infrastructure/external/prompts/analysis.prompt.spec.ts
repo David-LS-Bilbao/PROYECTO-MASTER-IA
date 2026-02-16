@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { ANALYSIS_PROMPT } from '../../../../src/infrastructure/external/prompts/analysis.prompt';
+import {
+  ANALYSIS_PROMPT,
+  ANALYSIS_PROMPT_LOW_COST,
+  ANALYSIS_PROMPT_MODERATE,
+} from '../../../../src/infrastructure/external/prompts/analysis.prompt';
 
 describe('ANALYSIS_PROMPT vNext.1', () => {
   it('separa analisis textual y verificacion factual, y exige JSON estricto', () => {
@@ -39,5 +43,33 @@ describe('ANALYSIS_PROMPT vNext.1', () => {
 
   it('exige frase literal para no_determinable en reliabilityComment', () => {
     expect(ANALYSIS_PROMPT).toContain('no verificable con fuentes internas');
+  });
+
+  it('define reglas editoriales de summary en todas las variantes', () => {
+    const variants = [ANALYSIS_PROMPT, ANALYSIS_PROMPT_MODERATE, ANALYSIS_PROMPT_LOW_COST];
+
+    for (const prompt of variants) {
+      expect(prompt).toContain('summary');
+      expect(prompt).toContain('Falta el texto completo para confirmar detalles.');
+      expect(prompt).toContain('Resumen provisional...');
+      expect(prompt).toContain('inputQuality');
+      expect(prompt).toContain('35-45 palabras');
+      expect(prompt).toContain('clickbait');
+    }
+  });
+
+  it('en modo standard/moderate exige resumen de 3-5 frases y maximo 90 palabras', () => {
+    expect(ANALYSIS_PROMPT).toContain('3-5 frases');
+    expect(ANALYSIS_PROMPT).toContain('60-90 palabras');
+    expect(ANALYSIS_PROMPT_MODERATE).toContain('3-5 frases');
+    expect(ANALYSIS_PROMPT_MODERATE).toContain('60-90 palabras');
+  });
+
+  it('prohibe frases vacias y prefijos legacy de resumen', () => {
+    expect(ANALYSIS_PROMPT).toContain('"no es una novedad"');
+    expect(ANALYSIS_PROMPT).toContain('"cabe destacar"');
+    expect(ANALYSIS_PROMPT).toContain('"en este contexto"');
+    expect(ANALYSIS_PROMPT).toContain('"segun se desprende"');
+    expect(ANALYSIS_PROMPT).toContain('Prohibido usar el prefijo "Resumen provisional..."');
   });
 });

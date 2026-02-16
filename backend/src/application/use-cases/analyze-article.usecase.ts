@@ -41,6 +41,11 @@ const MAX_BATCH_LIMIT = 100;
  */
 const MIN_CONTENT_LENGTH = 100;
 const AUTO_LOW_COST_CONTENT_THRESHOLD = 800;
+const LEGACY_SUMMARY_PREFIX = 'resumen provisional basado en contenido interno:';
+const SUMMARY_MIN_LENGTH_FOR_CACHE = 30;
+const SUMMARY_MAX_WORDS_FULL = 90;
+const SUMMARY_MAX_WORDS_LOW_QUALITY = 45;
+const SUMMARY_LOW_QUALITY_NOTICE = 'Falta el texto completo para confirmar detalles.';
 
 
 export interface AnalyzeArticleInput {
@@ -149,8 +154,11 @@ export class AnalyzeArticleUseCase {
           existingAnalysis,
           requiredModeForCache
         );
+        const shouldRegenerateCachedSummary = this.shouldRegenerateCachedSummary(
+          article.summary ?? existingAnalysis.summary
+        );
 
-        if (!shouldUpgradeCachedAnalysis) {
+        if (!shouldUpgradeCachedAnalysis && !shouldRegenerateCachedSummary) {
           const normalizedAnalysis = this.normalizeAnalysis(existingAnalysis, {
             scrapedContentLength: article.content?.length || 0,
             usedFallback: false,
@@ -176,16 +184,20 @@ export class AnalyzeArticleUseCase {
 
           return {
             articleId: article.id,
-            summary: article.summary ?? normalizedAnalysis.summary,
+            summary: normalizedAnalysis.summary,
             biasScore: normalizedAnalysis.biasScoreNormalized,
             analysis: normalizedAnalysis,
             scrapedContentLength: article.content?.length || 0,
           };
         }
 
-        console.log(
-          `   [CACHE GLOBAL] Se fuerza re-analisis por upgrade de modo (${requiredModeForCache}).`
-        );
+        if (shouldRegenerateCachedSummary) {
+          console.log('   [CACHE GLOBAL] Se fuerza re-analisis por summary legacy o demasiado corto.');
+        } else {
+          console.log(
+            `   [CACHE GLOBAL] Se fuerza re-analisis por upgrade de modo (${requiredModeForCache}).`
+          );
+        }
       }
     }
 
@@ -475,11 +487,16 @@ export class AnalyzeArticleUseCase {
       traceabilityScore <= 25 &&
       reliabilityScore <= 45 &&
       claims.some((claim) => /\b(todo|siempre|nunca|100%|definitivo)\b/i.test(claim));
+    const normalizedSummary = this.normalizeSummaryText(analysis.summary, {
+      scrapedContentLength,
+      usedFallback: context?.usedFallback === true,
+      rssSnippetDetected: context?.rssSnippetDetected === true,
+    });
     const lowCostEscalation = this.shouldEscalateLowCostStrongClaims({
       scrapedContentLength,
       usedFallback: context?.usedFallback === true,
       claims,
-      summary: analysis.summary,
+      summary: normalizedSummary,
       analyzedText: context?.analyzedText ?? '',
     });
     const baseEscalation =
@@ -491,7 +508,7 @@ export class AnalyzeArticleUseCase {
       category: context?.articleCategory ?? analysis.category,
       clickbaitScore,
       claims,
-      summary: analysis.summary,
+      summary: normalizedSummary,
       reliabilityScore,
       traceabilityScore,
     });
@@ -506,6 +523,7 @@ export class AnalyzeArticleUseCase {
 
     return {
       ...analysis,
+      summary: normalizedSummary,
       biasRaw,
       biasScore: biasScoreNormalized,
       biasScoreNormalized,
@@ -1128,6 +1146,149 @@ export class AnalyzeArticleUseCase {
   ): boolean {
     const cachedMode = this.normalizeAnalysisMode(existingAnalysis.analysisModeUsed);
     return this.getAnalysisModeRank(cachedMode) < this.getAnalysisModeRank(requestedMode);
+  }
+
+  private shouldRegenerateCachedSummary(summary: string | null | undefined): boolean {
+    if (typeof summary !== 'string') {
+      return true;
+    }
+
+    const normalized = summary.trim();
+    if (!normalized) {
+      return true;
+    }
+
+    if (normalized.length < SUMMARY_MIN_LENGTH_FOR_CACHE) {
+      return true;
+    }
+
+    if (this.isLegacySummary(normalized)) {
+      return true;
+    }
+
+    if (/^resumen no disponible:/i.test(normalized)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  private normalizeSummaryText(
+    summary: string,
+    context: {
+      scrapedContentLength: number;
+      usedFallback: boolean;
+      rssSnippetDetected: boolean;
+    }
+  ): string {
+    let normalized = typeof summary === 'string' ? summary : '';
+    normalized = normalized.replace(/\s+/g, ' ').trim();
+    normalized = this.removeLegacySummaryPrefix(normalized);
+    normalized = this.removeBannedSummaryPhrases(normalized);
+
+    const isLowQualityInput =
+      context.usedFallback ||
+      context.rssSnippetDetected ||
+      context.scrapedContentLength < 300;
+
+    if (isLowQualityInput) {
+      normalized = this.takeFirstSentences(normalized, 2);
+      normalized = this.limitSummaryWords(normalized, SUMMARY_MAX_WORDS_LOW_QUALITY);
+      normalized = this.ensureLowQualityNotice(normalized, SUMMARY_MAX_WORDS_LOW_QUALITY);
+      return normalized || SUMMARY_LOW_QUALITY_NOTICE;
+    }
+
+    normalized = this.takeFirstSentences(normalized, 5);
+    normalized = this.limitSummaryWords(normalized, SUMMARY_MAX_WORDS_FULL);
+    return normalized || 'No hay evidencia suficiente para un resumen editorial.';
+  }
+
+  private removeLegacySummaryPrefix(summary: string): string {
+    if (!summary) {
+      return summary;
+    }
+
+    return summary.replace(/^resumen provisional basado en contenido interno:\s*/i, '').trim();
+  }
+
+  private isLegacySummary(summary: string): boolean {
+    return summary.trim().toLowerCase().startsWith(LEGACY_SUMMARY_PREFIX);
+  }
+
+  private removeBannedSummaryPhrases(summary: string): string {
+    if (!summary) {
+      return summary;
+    }
+
+    const bannedPatterns = [
+      /\bno es una novedad\b[:,]?\s*/gi,
+      /\bcabe destacar\b[:,]?\s*/gi,
+      /\ben este contexto\b[:,]?\s*/gi,
+      /\bseg[uú]n se desprende\b[:,]?\s*/gi,
+    ];
+
+    let cleaned = summary;
+    for (const pattern of bannedPatterns) {
+      cleaned = cleaned.replace(pattern, '');
+    }
+
+    return cleaned
+      .replace(/\s{2,}/g, ' ')
+      .replace(/^[,;:\-]+\s*/g, '')
+      .trim();
+  }
+
+  private takeFirstSentences(summary: string, maxSentences: number): string {
+    if (!summary) {
+      return summary;
+    }
+
+    const sentences = summary
+      .split(/(?<=[.!?])\s+/)
+      .map((sentence) => sentence.trim())
+      .filter((sentence) => sentence.length > 0);
+
+    if (sentences.length <= maxSentences) {
+      return summary.trim();
+    }
+
+    return sentences.slice(0, maxSentences).join(' ').trim();
+  }
+
+  private limitSummaryWords(summary: string, maxWords: number): string {
+    if (!summary) {
+      return summary;
+    }
+
+    const words = summary.split(/\s+/).filter(Boolean);
+    if (words.length <= maxWords) {
+      return summary.trim();
+    }
+
+    return words.slice(0, maxWords).join(' ').trim();
+  }
+
+  private countWords(text: string): number {
+    return text.split(/\s+/).filter(Boolean).length;
+  }
+
+  private ensureLowQualityNotice(summary: string, maxWords: number): string {
+    const compact = summary.replace(/\s+/g, ' ').trim();
+    const withoutNotice = compact
+      .replace(/\s*falta\s+el\s+texto\s+completo\s+para\s+confirmar\s+detalles\.?/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const noticeWords = this.countWords(SUMMARY_LOW_QUALITY_NOTICE);
+    const availableWords = Math.max(0, maxWords - noticeWords);
+    const limitedBase =
+      availableWords > 0 ? this.limitSummaryWords(withoutNotice, availableWords) : '';
+
+    if (!limitedBase) {
+      return SUMMARY_LOW_QUALITY_NOTICE;
+    }
+
+    return `${limitedBase} ${SUMMARY_LOW_QUALITY_NOTICE}`.trim();
   }
 
   private getAnalysisModeRank(mode: AnalysisMode): number {

@@ -293,7 +293,7 @@ describe('GeminiClient parseAnalysisResponse', () => {
     expect(result.reliabilityComment?.length).toBeLessThanOrEqual(220);
   });
 
-  it('repara respuestas sin summary generando uno provisional', () => {
+  it('repara respuestas sin summary generando uno sin prefijo legacy', () => {
     const parse = (client as any).parseAnalysisResponse.bind(client);
     const text = JSON.stringify({
       biasRaw: 0,
@@ -310,7 +310,8 @@ describe('GeminiClient parseAnalysisResponse', () => {
       'El articulo describe medidas economicas y cita que la inflacion mensual fue del 2.1% segun estimaciones internas.'
     );
 
-    expect(result.summary).toContain('Resumen provisional basado en contenido interno');
+    expect(result.summary).not.toContain('Resumen provisional basado en contenido interno');
+    expect(result.summary).not.toContain('Resumen provisional');
     expect(result.summary.length).toBeGreaterThan(30);
   });
 

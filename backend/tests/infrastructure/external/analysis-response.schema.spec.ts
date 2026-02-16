@@ -2,6 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { analysisResponseSchema } from '../../../src/infrastructure/external/schemas/analysis-response.schema';
 
 describe('analysisResponseSchema (Zod)', () => {
+  it('requiere summary como string en payload valido', () => {
+    const parsed = analysisResponseSchema.parse({
+      summary: 'Resumen editorial claro y directo.',
+    });
+
+    expect(typeof parsed.summary).toBe('string');
+    expect(parsed.summary.length).toBeGreaterThan(0);
+  });
+
   it('valida el payload vNext con nuevo enum de factCheck.verdict', () => {
     const parsed = analysisResponseSchema.parse({
       summary: 'Resumen del articulo con contexto.',

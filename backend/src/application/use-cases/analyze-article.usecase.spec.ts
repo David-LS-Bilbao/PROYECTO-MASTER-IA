@@ -353,6 +353,50 @@ describe('AnalyzeArticleUseCase', () => {
       expect(result.analysis.traceabilityScore).toBe(30);
     });
 
+    it('should keep editorial summary under 90 words for complete input quality', async () => {
+      const longContent = 'Contenido extenso con datos y contexto. '.repeat(70);
+      const article = createTestArticle({ content: longContent });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        summary: `No es una novedad que el gobierno anuncie el plan, y en este contexto cabe destacar que lo presenta hoy ante empresas y sindicatos.
+        El texto explica que la medida entra en batalla con la oposición y que la inversión prevista llega a 2.500 millones para 2026.
+        Según se desprende, el impacto esperado se centra en empleo industrial y costes energéticos durante el próximo año.
+        Además, detalla que la implementación arranca en marzo y afecta primero a regiones con mayor dependencia de gas.
+        También menciona controles trimestrales y revisión parlamentaria al cierre del ejercicio.`,
+      });
+
+      const result = await useCase.execute({ articleId: article.id, analysisMode: 'moderate' });
+      const words = result.summary.split(/\s+/).filter(Boolean).length;
+
+      expect(words).toBeLessThanOrEqual(90);
+      expect(result.summary.toLowerCase()).not.toContain('no es una novedad');
+      expect(result.summary.toLowerCase()).not.toContain('cabe destacar');
+      expect(result.summary.toLowerCase()).not.toContain('en este contexto');
+      expect(result.summary.toLowerCase()).not.toContain('según se desprende');
+    });
+
+    it('should constrain summary to <=45 words and include missing-body notice for snippet quality', async () => {
+      const shortSnippetContent = 'Extracto breve con titulares y sin cuerpo completo. '.repeat(5);
+      const article = createTestArticle({ content: shortSnippetContent });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        summary:
+          'La pieza asegura que hay un giro en la negociación y señala enfrentamientos entre gobierno y oposición por el presupuesto. Añade una cifra preliminar de gasto, pero no explica metodología, alcance territorial ni calendario normativo completo.',
+      });
+
+      const result = await useCase.execute({ articleId: article.id, analysisMode: 'standard' });
+      const words = result.summary.split(/\s+/).filter(Boolean).length;
+
+      expect(result.scrapedContentLength).toBeLessThan(300);
+      expect(words).toBeLessThanOrEqual(45);
+      expect(result.summary).toContain('Falta el texto completo para confirmar detalles.');
+      expect(result.summary).not.toContain('Resumen provisional');
+    });
+
     it('should route moderate mode for long content in detail context', async () => {
       const longContent = 'Contenido extenso con citas y datos verificables. '.repeat(30);
       const article = createTestArticle({ content: longContent });
@@ -657,7 +701,7 @@ describe('AnalyzeArticleUseCase', () => {
         summary: mockAnalysis.summary,
         biasScore: mockAnalysis.biasScore,
         analysis: existingAnalysis,
-        content: 'Some content',
+        content: 'Contenido completo con contexto suficiente para mantener el resumen cacheado. '.repeat(8),
       });
       mockRepository.setArticle(article);
 
@@ -668,6 +712,34 @@ describe('AnalyzeArticleUseCase', () => {
       expect(geminiSpy).not.toHaveBeenCalled();
       expect(result.summary).toBe(mockAnalysis.summary);
       expect(result.biasScore).toBe(mockAnalysis.biasScore);
+    });
+
+    it('should regenerate summary when cached summary is legacy prefixed', async () => {
+      const legacySummary = 'Resumen provisional basado en contenido interno: texto antiguo.';
+      const cachedAnalysis = {
+        ...mockAnalysis,
+        summary: legacySummary,
+      };
+      const article = createTestArticle({
+        analyzedAt: new Date(),
+        summary: legacySummary,
+        biasScore: mockAnalysis.biasScore,
+        analysis: JSON.stringify(cachedAnalysis),
+        content: 'Contenido suficientemente largo con contexto y datos verificables. '.repeat(25),
+      });
+      mockRepository.setArticle(article);
+
+      const geminiSpy = vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        summary:
+          'El articulo informa de una nueva medida fiscal presentada por el ministerio y respaldada por sindicatos y patronal. Incluye un calendario de aplicacion para 2026 y estima impacto en empleo y costes energéticos.',
+      });
+
+      const result = await useCase.execute({ articleId: article.id, analysisMode: 'moderate' });
+
+      expect(geminiSpy).toHaveBeenCalledTimes(1);
+      expect(result.summary).not.toContain('Resumen provisional basado en contenido interno:');
+      expect(result.summary.length).toBeGreaterThanOrEqual(30);
     });
 
     it('should throw ValidationError for empty articleId', async () => {
@@ -711,7 +783,7 @@ describe('AnalyzeArticleUseCase', () => {
 
       // Verificar que el análisis se completó correctamente usando fallback
       expect(result.articleId).toBe(article.id);
-      expect(result.summary).toBe(mockAnalysis.summary);
+      expect(result.summary).toContain('Falta el texto completo para confirmar detalles.');
       expect(result.scrapedContentLength).toBe(0); // Fallback no scraped
       expect(result.analysis.factCheck.verdict).toBe('InsufficientEvidenceInArticle');
     });
@@ -727,7 +799,7 @@ describe('AnalyzeArticleUseCase', () => {
 
       // Verificar que el análisis se completó correctamente usando fallback
       expect(result.articleId).toBe(article.id);
-      expect(result.summary).toBe(mockAnalysis.summary);
+      expect(result.summary).toContain('Falta el texto completo para confirmar detalles.');
       expect(result.scrapedContentLength).toBe(0); // Fallback no scraped
       expect(result.analysis.factCheck.verdict).toBe('InsufficientEvidenceInArticle');
     });
@@ -1061,7 +1133,7 @@ describe('AnalyzeArticleUseCase', () => {
       });
 
       expect(result.articleId).toBe(article.id);
-      expect(result.summary).toBe(mockAnalysis.summary);
+      expect(result.summary).toContain('This is a test summary of the article.');
     });
 
     it('should allow analysis when no quota service provided', async () => {
