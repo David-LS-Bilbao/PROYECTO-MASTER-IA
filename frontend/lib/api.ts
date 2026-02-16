@@ -40,6 +40,7 @@ async function fetchWithTimeout(
 }
 
 export type AnalysisMode = 'low_cost' | 'moderate' | 'standard';
+export type AnalyzeDepthMode = 'standard' | 'deep';
 
 function extractApiErrorMessage(errorData: any, fallback: string): string {
   if (!errorData || typeof errorData !== 'object') {
@@ -72,7 +73,7 @@ function extractApiErrorMessage(errorData: any, fallback: string): string {
 export interface ArticleAnalysis {
   summary: string;
   qualityNotice?: string;
-  analysisModeUsed?: AnalysisMode;
+  analysisModeUsed?: AnalysisMode | 'deep';
   // biasScore normalizado 0-1 para UI (0 = neutral, 1 = extremo)
   biasScore: number;
   // biasRaw: -10 (Extrema Izquierda) a +10 (Extrema Derecha)
@@ -103,6 +104,14 @@ export interface ArticleAnalysis {
       | 'NotSupportedByArticle'
       | 'InsufficientEvidenceInArticle';
     reasoning: string;
+  };
+  deep?: {
+    sections?: {
+      known?: string[];
+      unknown?: string[];
+      quotes?: string[];
+      risks?: string[];
+    };
   };
   // Legacy field
   factualClaims?: string[];
@@ -291,9 +300,10 @@ export async function analyzeArticle(articleId: string, token: string): Promise<
 export async function analyzeArticleWithMode(
   articleId: string,
   token: string,
-  analysisMode: AnalysisMode
+  analysisMode: AnalysisMode,
+  mode: AnalyzeDepthMode = 'standard'
 ): Promise<AnalyzeResponse> {
-  const payload: Record<string, unknown> = { articleId, analysisMode };
+  const payload: Record<string, unknown> = { articleId, analysisMode, mode };
 
   const res = await fetchWithTimeout(`${API_BASE_URL}/api/analyze/article`, {
     method: 'POST',

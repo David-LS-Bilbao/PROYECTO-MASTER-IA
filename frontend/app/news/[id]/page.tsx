@@ -7,9 +7,10 @@ import Image from 'next/image';
 import DOMPurify from 'dompurify';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ExternalLink, Clock, User, Tag, Sparkles } from 'lucide-react';
-import { analyzeArticleWithMode, type AnalysisMode } from '@/lib/api';
+import { analyzeArticleWithMode, type AnalysisMode, type AnalyzeDepthMode } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useArticle } from '@/hooks/useArticle';
+import { useProfile } from '@/hooks/useProfile';
 import { formatDate, getBiasDisplayInfo, getSentimentInfo, isValidUUID, isSafeUrl } from '@/lib/news-utils';
 import { ANALYSIS_COOLDOWN_MS } from '@/lib/constants';
 import { Badge } from '@/components/ui/badge';
@@ -18,6 +19,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ReliabilityBadge } from '@/components/reliability-badge';
+import { DeepAnalysisPanel } from '@/components/deep-analysis-panel';
+import { DeepAnalysisButton } from '@/components/deep-analysis-button';
 import { NewsChatDrawer } from '@/components/news-chat-drawer';
 import { GeneralChatDrawer } from '@/components/general-chat-drawer';
 
@@ -57,10 +60,11 @@ export default function NewsDetailPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { getToken } = useAuth();
+  const { user, loading: authLoading, getToken } = useAuth();
   const queryClient = useQueryClient();
   const id = params.id as string;
   const shouldAutoAnalyze = searchParams.get('analyze') === 'true';
+  const { profile, loading: profileLoading } = useProfile(user, authLoading, getToken);
 
   // Validate UUID format to prevent injection attacks
   const validUUID = isValidUUID(id);
@@ -127,7 +131,10 @@ export default function NewsDetailPage() {
     });
   }, [article?.content]);
 
-  const handleAnalyze = async (analysisMode: AnalysisMode = 'moderate') => {
+  const handleAnalyze = async (
+    analysisMode: AnalysisMode = 'moderate',
+    mode: AnalyzeDepthMode = 'standard'
+  ) => {
     if (!article) {
       return;
     }
@@ -135,7 +142,7 @@ export default function NewsDetailPage() {
     // Rate limiting: cooldown to prevent spam
     const now = Date.now();
     if (now - lastAnalyzeTime < ANALYSIS_COOLDOWN_MS) {
-      setAnalyzeError(`Espera ${ANALYSIS_COOLDOWN_MS / 1000} segundos antes de re-analizar`);
+      setAnalyzeError(`Espera ${ANALYSIS_COOLDOWN_MS / 1000} segundos antes de volver a analizar`);
       return;
     }
 
@@ -151,7 +158,7 @@ export default function NewsDetailPage() {
         return;
       }
 
-      const analyzeResponse = await analyzeArticleWithMode(article.id, token, analysisMode);
+      const analyzeResponse = await analyzeArticleWithMode(article.id, token, analysisMode, mode);
       setLastScrapedContentLength(analyzeResponse.data.scrapedContentLength);
 
       // Invalidate caches to refetch article and update dashboard buttons
@@ -159,6 +166,10 @@ export default function NewsDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['news'] });
     } catch (e) {
       console.error(`[page.tsx]    ❌ Analysis failed:`, e);
+      if (mode === 'deep' && e instanceof Error && /premium required/i.test(e.message)) {
+        setAnalyzeError('Disponible en Premium. Mejora tu plan para desbloquear Analisis profundo.');
+        return;
+      }
       setAnalyzeError(e instanceof Error ? e.message : 'Error al analizar');
     } finally {
       setIsAnalyzing(false);
@@ -234,6 +245,8 @@ export default function NewsDetailPage() {
   }
 
   const isAnalyzed = article.analyzedAt !== null;
+  const isPremiumForDeep = profile?.plan === 'PREMIUM';
+  const deepSections = article.analysis?.deep?.sections;
   const sentimentInfo = article.analysis?.sentiment ? getSentimentInfo(article.analysis.sentiment) : null;
   const articleLeaningLabels: Record<'progresista' | 'conservadora' | 'extremista' | 'neutral' | 'indeterminada', string> = {
     progresista: 'Progresista',
@@ -558,34 +571,24 @@ export default function NewsDetailPage() {
                       </div>
                     )}
 
-                    {/* Re-analyze button */}
-                    <Button
-                      variant="outline"
-                      className="w-full gap-2"
-                      onClick={() => handleAnalyze('moderate')}
-                      disabled={isAnalyzing || isRevealing}
-                    >
-                      {isAnalyzing || isRevealing ? (
-                        <>
-                          <span className="animate-spin">⏳</span>
-                          {isRevealing ? 'Procesando...' : 'Re-analizando...'}
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="h-4 w-4" />
-                          Re-analizar
-                        </>
-                      )}
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      className="w-full gap-2"
-                      onClick={() => handleAnalyze('standard')}
-                      disabled={isAnalyzing || isRevealing}
-                    >
-                      <Sparkles className="h-4 w-4" />
-                      Análisis profundo
-                    </Button>
+                    <DeepAnalysisPanel sections={deepSections} />
+                    <DeepAnalysisButton
+                      isPremium={isPremiumForDeep && !profileLoading}
+                      isBusy={isAnalyzing || isRevealing}
+                      onClick={() => handleAnalyze('standard', 'deep')}
+                    />
+                    {!isPremiumForDeep && !profileLoading && (
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => router.push('/pricing')}
+                      >
+                        Ver planes
+                      </Button>
+                    )}
+                    {analyzeError && (
+                      <p className="text-sm text-red-500">{analyzeError}</p>
+                    )}
                   </>
                 ) : (
                   <>
@@ -655,3 +658,4 @@ export default function NewsDetailPage() {
     </div>
   );
 }
+
