@@ -106,6 +106,20 @@ const DEFAULT_SOURCES: RssSource[] = [
   { id: 'theobjective', name: 'The Objective', url: 'https://theobjective.com/feed/', active: false, category: 'Política' },
   { id: 'moncloa', name: 'Moncloa.com', url: 'https://www.moncloa.com/feed/', active: false, category: 'Política' },
   { id: 'elplural', name: 'El Plural', url: 'https://www.elplural.com/rss', active: false, category: 'Política' },
+
+  // --- LOCAL (Diarios Regionales - TOP 12) --- Solo 4 primeras activas por defecto
+  { id: 'vozgalicia', name: 'La Voz de Galicia', url: 'https://www.lavozdegalicia.es/rss/portada.xml', active: true, category: 'Local' },
+  { id: 'elcorreo', name: 'El Correo (País Vasco)', url: 'https://www.elcorreo.com/rss/2.0/?section=portada', active: true, category: 'Local' },
+  { id: 'heraldo', name: 'Heraldo de Aragón', url: 'https://www.heraldo.es/rss/seccion/portada/', active: true, category: 'Local' },
+  { id: 'levante', name: 'Levante-EMV (Valencia)', url: 'https://www.levante-emv.com/rss/2.0/?section=portada', active: true, category: 'Local' },
+  { id: 'diariosur', name: 'Diario Sur (Málaga)', url: 'https://www.diariosur.es/rss/2.0/?section=portada', active: false, category: 'Local' },
+  { id: 'diariodesevilla', name: 'Diario de Sevilla', url: 'https://www.diariodesevilla.es/rss/2.0/?section=portada', active: false, category: 'Local' },
+  { id: 'laopinion', name: 'La Opinión de Murcia', url: 'https://www.laopiniondemurcia.es/rss/2.0/?section=portada', active: false, category: 'Local' },
+  { id: 'lasnuevecr', name: 'Las Provincias (Valencia)', url: 'https://www.lasprovincias.es/rss/2.0/?section=portada', active: false, category: 'Local' },
+  { id: 'diariovasco', name: 'El Diario Vasco', url: 'https://www.diariovasco.com/rss/2.0/?section=portada', active: false, category: 'Local' },
+  { id: 'farodevigo', name: 'Faro de Vigo', url: 'https://www.farodevigo.es/rss/2.0/?section=portada', active: false, category: 'Local' },
+  { id: 'ideal', name: 'Ideal Granada', url: 'https://www.ideal.es/rss/2.0/?section=portada', active: false, category: 'Local' },
+  { id: 'diaridebarcelona', name: 'Diari de Barcelona', url: 'https://www.diaridegirona.cat/rss/', active: false, category: 'Local' },
 ];
 
 interface SourcesDrawerProps {
