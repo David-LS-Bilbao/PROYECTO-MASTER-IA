@@ -510,9 +510,8 @@ export class NewsController {
           }
         } else {
           // SUBSEQUENT PAGES: Sequential fetch (first ciencia, then tecnología)
-          // Get total counts to know where to split
+          // Get total count of ciencia articles to know where to split
           const cienciaCount = await this.repository.countFiltered({ category: 'ciencia', onlyFavorites, userId });
-          const tecnologiaCount = await this.repository.countFiltered({ category: 'tecnologia', onlyFavorites, userId });
 
           if (resolvedOffset < cienciaCount) {
             // Still fetching from ciencia
