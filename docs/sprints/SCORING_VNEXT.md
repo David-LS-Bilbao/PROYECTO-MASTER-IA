@@ -65,3 +65,16 @@ Evitar confundir sesgo con veracidad y alinear la salida del analizador IA con u
 - Truncado inteligente de entrada:
   - Reemplaza truncado lineal por seleccion `HEAD + TAIL + QUOTES_DATA + META`.
   - Mantiene limite total `<= 8000` caracteres.
+
+## vNext.2 (Sprint 33)
+- Summary editorial:
+  - `summary` limpio y directo (sin plantillas legacy ni avisos operativos embebidos).
+  - Para input low-quality: 1-2 frases (<=45 palabras) y aviso separado en `analysis.qualityNotice` (opcional).
+- Sesgo y leaning:
+  - Para contenido suficiente (`>=600`) con menos de 2 indicadores citados:
+    - `articleLeaning=neutral`, `biasLeaning=neutral`, `leaningConfidence=baja`.
+    - `biasComment`: "No se observan indicios textuales claros de encuadre ideologico en el texto disponible (confianza baja)."
+  - `indeterminada` se reserva para snippet/paywall o contenido `<300`.
+- Fiabilidad:
+  - `reliabilityScore` y etiqueta deben ser coherentes con `factCheck.verdict`.
+  - `SupportedByArticle` se muestra como soporte interno del articulo (sin verificacion externa) y no como "no verificable".

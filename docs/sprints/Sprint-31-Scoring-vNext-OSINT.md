@@ -81,7 +81,7 @@ Archivo:
 - Documento funcional del modelo de scoring vNext.
 
 Archivo:
-- `docs/SCORING_VNEXT.md`
+- `docs/sprints/SCORING_VNEXT.md`
 
 ## Tests añadidos/actualizados
 - Unit test Zod del parser nuevo.

@@ -15,6 +15,8 @@ No se rompió contrato público. `qualityNotice` es opcional y compatible.
 ## 2) Cambios Por Archivo
 ### Commits
 - `62753bb` `fix(summary,bias,reliability): clean low-quality summaries, add qualityNotice, align UI and UTF-8 safeguards`
+- `2bd6b0d` `Polish quality notice display and bias wording`
+- `e95e14f` `Refine preliminary warning conditions in news detail UI`
 
 ### Backend
 - `backend/src/application/use-cases/analyze-article.usecase.ts`
@@ -53,6 +55,9 @@ No se rompió contrato público. `qualityNotice` es opcional y compatible.
   - tests de mapping de sesgo UI (`Neutral (confianza baja)`, `Indeterminada`, `N/A`).
 - `frontend/app/news/[id]/page.tsx`
   - render de `qualityNotice` separado del `summary`.
+  - lectura de aviso desde `article.analysis?.qualityNotice` (una sola fuente).
+  - aviso preliminar fallback solo si no hay `qualityNotice` y se cumple:
+    `contentLength < 300` o leaning `indeterminada` o `analysisModeUsed=low_cost` con `contentLength < 800`.
   - uso de `getBiasDisplayInfo`.
   - `Puntuacion` en `N/A` cuando aplica (en lugar de `0%` engañoso).
 - `frontend/components/reliability-badge.tsx`
