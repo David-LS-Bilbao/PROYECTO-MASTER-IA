@@ -133,12 +133,26 @@ export function SourcesDrawer({ isOpen, onOpenChange }: SourcesDrawerProps) {
   const [isSearching, setIsSearching] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
-  // Cargar fuentes desde localStorage al montar
+  // Cargar fuentes desde localStorage al montar + migración automática de nuevas fuentes
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       try {
-        setSources(JSON.parse(stored));
+        const storedSources: RssSource[] = JSON.parse(stored);
+
+        // Sprint 32: Auto-migration - Detectar nuevas fuentes en DEFAULT_SOURCES
+        // y añadirlas automáticamente al localStorage existente
+        const storedIds = new Set(storedSources.map(s => s.id));
+        const newSources = DEFAULT_SOURCES.filter(defaultSource => !storedIds.has(defaultSource.id));
+
+        if (newSources.length > 0) {
+          console.log(`[SourcesDrawer] 🔄 Añadiendo ${newSources.length} nuevas fuentes: ${newSources.map(s => s.name).join(', ')}`);
+          const mergedSources = [...storedSources, ...newSources];
+          setSources(mergedSources);
+          // El useEffect de guardado automático se encargará de persistir los cambios
+        } else {
+          setSources(storedSources);
+        }
       } catch {
         setSources(DEFAULT_SOURCES);
       }
