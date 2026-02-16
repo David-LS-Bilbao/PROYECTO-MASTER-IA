@@ -678,6 +678,57 @@ export async function discoverRssSource(name: string): Promise<string> {
 }
 
 /**
+ * Sprint 32: Local Source Discovery Types
+ */
+export interface DiscoveredLocalSource {
+  name: string;
+  url: string;
+  rssUrl: string;
+  region: string;
+  verified: boolean;
+}
+
+interface DiscoverLocalSourcesResponse {
+  success: boolean;
+  data?: {
+    sources: DiscoveredLocalSource[];
+    fromCache: boolean;
+    location: string;
+  };
+  error?: string;
+  message?: string;
+}
+
+/**
+ * Discover local/regional newspapers using AI with cache
+ * FEATURE: RSS AUTO-DISCOVERY LOCAL (Sprint 32)
+ *
+ * @param location Ubicación (ciudad, provincia o región)
+ * @param limit Número máximo de fuentes a descubrir (default: 10)
+ * @returns Array de fuentes descubiertas
+ */
+export async function discoverLocalSources(
+  location: string,
+  limit: number = 10
+): Promise<DiscoveredLocalSource[]> {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/sources/discover-local`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ location, limit }),
+  });
+
+  const data: DiscoverLocalSourcesResponse = await res.json();
+
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || data.message || 'No se pudieron descubrir fuentes locales');
+  }
+
+  return data.data?.sources || [];
+}
+
+/**
  * User Profile Management
  * FEATURE: USER PROFILES (Sprint 10)
  */
