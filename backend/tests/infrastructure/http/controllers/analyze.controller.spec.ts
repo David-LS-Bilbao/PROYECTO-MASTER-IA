@@ -98,41 +98,41 @@ describe('AnalyzeController', () => {
     expect(mockIncrementArticlesAnalyzed).toHaveBeenCalledWith('user-1', 1);
   });
 
-  it('analyzeArticle responde 403 en modo deep para usuario no premium', async () => {
+  it('analyzeArticle responde 403 en modo deep sin entitlement', async () => {
     const { res, statusMock, jsonMock } = createRes();
     const req = {
       body: { articleId: validArticleId, mode: 'deep' },
-      user: { uid: 'user-1', email: 'free@example.com', subscriptionPlan: 'FREE' },
+      user: {
+        uid: 'user-1',
+        email: 'free@example.com',
+        subscriptionPlan: 'FREE',
+        entitlements: { deepAnalysis: false },
+      },
     } as Request;
 
-    const originalPremiumEmails = process.env.PREMIUM_EMAILS;
-    process.env.PREMIUM_EMAILS = 'premium@example.com';
-
-    try {
-      await controller.analyzeArticle(req, res as Response);
-    } finally {
-      process.env.PREMIUM_EMAILS = originalPremiumEmails;
-    }
+    await controller.analyzeArticle(req, res as Response);
 
     expect(statusMock).toHaveBeenCalledWith(403);
     expect(jsonMock).toHaveBeenCalledWith(
       expect.objectContaining({
         success: false,
-        error: 'Premium required',
+        error: 'Deep analysis entitlement required',
       })
     );
     expect(analyzeUseCase.execute).not.toHaveBeenCalled();
   });
 
-  it('analyzeArticle responde 200 en modo deep para usuario premium y devuelve secciones deep', async () => {
+  it('analyzeArticle responde 200 en modo deep con entitlement y devuelve secciones deep', async () => {
     const { res, statusMock, jsonMock } = createRes();
     const req = {
       body: { articleId: validArticleId, mode: 'deep' },
-      user: { uid: 'user-1', email: 'premium@example.com', subscriptionPlan: 'FREE' },
+      user: {
+        uid: 'user-1',
+        email: 'premium@example.com',
+        subscriptionPlan: 'FREE',
+        entitlements: { deepAnalysis: true },
+      },
     } as Request;
-
-    const originalPremiumEmails = process.env.PREMIUM_EMAILS;
-    process.env.PREMIUM_EMAILS = 'premium@example.com';
 
     analyzeUseCase.execute.mockResolvedValueOnce({
       articleId: validArticleId,
@@ -165,11 +165,8 @@ describe('AnalyzeController', () => {
       scrapedContentLength: 1500,
     });
 
-    try {
-      await controller.analyzeArticle(req, res as Response);
-    } finally {
-      process.env.PREMIUM_EMAILS = originalPremiumEmails;
-    }
+
+    await controller.analyzeArticle(req, res as Response);
 
     expect(statusMock).toHaveBeenCalledWith(200);
     const payload = jsonMock.mock.calls[0][0];

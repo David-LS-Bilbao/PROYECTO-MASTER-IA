@@ -16,8 +16,10 @@ import { Request, Response, NextFunction } from 'express';
 import { firebaseAuth } from '../../external/firebase.admin';
 import { getPrismaClient } from '../../persistence/prisma.client';
 import {
+  safeParseUserEntitlements,
   safeParseUserPreferences,
   safeParseUserUsageStats,
+  UserEntitlements,
   UserPreferences,
   UserUsageStats,
 } from '../schemas/user-profile.schema';
@@ -41,6 +43,7 @@ declare global {
         picture: string | null;
         subscriptionPlan: 'FREE' | 'PREMIUM';
         createdAt: Date; // Sprint 30: Para cálculo de trial period
+        entitlements?: UserEntitlements; // Feature entitlements (deepAnalysis, etc.)
         preferences: UserPreferences; // ✅ Tipo seguro con Zod
         usageStats: UserUsageStats;   // ✅ Tipo seguro con Zod
       };
@@ -154,7 +157,11 @@ export async function authenticate(
         name: name || null,
         picture: picture || null,
         subscriptionPlan: 'FREE', // Plan por defecto
-        preferences: {}, // Preferencias vacías por defecto
+        preferences: {
+          entitlements: {
+            deepAnalysis: false,
+          },
+        },
         usageStats: {}, // Estadísticas vacías por defecto
       },
     });
@@ -166,6 +173,7 @@ export async function authenticate(
     // BLOQUEANTE #3: Validar preferences y usageStats con Zod (elimina `any`)
     // Sprint 30: Agregado createdAt para cálculo de trial period
     // =========================================================================
+    const safePreferences = safeParseUserPreferences(user.preferences);
     req.user = {
       uid: user.id,
       email: user.email,
@@ -173,7 +181,8 @@ export async function authenticate(
       picture: user.picture,
       subscriptionPlan: user.subscriptionPlan as 'FREE' | 'PREMIUM',
       createdAt: user.createdAt, // Sprint 30: Para cálculo de trial period
-      preferences: safeParseUserPreferences(user.preferences), // ✅ Validado con Zod
+      entitlements: safeParseUserEntitlements(safePreferences.entitlements),
+      preferences: safePreferences, // ✅ Validado con Zod
       usageStats: safeParseUserUsageStats(user.usageStats),   // ✅ Validado con Zod
     };
 
@@ -249,11 +258,16 @@ export async function optionalAuthenticate(
             name: name || null,
             picture: picture || null,
             subscriptionPlan: 'FREE',
-            preferences: {},
+            preferences: {
+              entitlements: {
+                deepAnalysis: false,
+              },
+            },
             usageStats: {},
           },
         });
 
+        const safePreferences = safeParseUserPreferences(user.preferences);
         req.user = {
           uid: user.id,
           email: user.email,
@@ -261,7 +275,8 @@ export async function optionalAuthenticate(
           picture: user.picture,
           subscriptionPlan: user.subscriptionPlan as 'FREE' | 'PREMIUM',
           createdAt: user.createdAt, // Sprint 30: Para cálculo de trial period
-          preferences: safeParseUserPreferences(user.preferences), // ✅ Validado con Zod
+          entitlements: safeParseUserEntitlements(safePreferences.entitlements),
+          preferences: safePreferences, // ✅ Validado con Zod
           usageStats: safeParseUserUsageStats(user.usageStats),   // ✅ Validado con Zod
         };
 

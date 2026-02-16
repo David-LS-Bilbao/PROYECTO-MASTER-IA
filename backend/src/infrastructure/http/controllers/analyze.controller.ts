@@ -13,7 +13,6 @@ import { Request, Response } from 'express';
 import { AnalyzeArticleUseCase } from '../../../application/use-cases/analyze-article.usecase';
 import { analyzeArticleSchema, analyzeBatchSchema } from '../schemas/analyze.schema';
 import { UserStatsTracker } from '../../monitoring/user-stats-tracker';
-import { isPremiumUser } from '../utils/premium-user';
 
 export class AnalyzeController {
   constructor(private readonly analyzeArticleUseCase: AnalyzeArticleUseCase) {}
@@ -41,12 +40,13 @@ export class AnalyzeController {
     const validatedInput = analyzeArticleSchema.parse(req.body);
     console.log(`[AnalyzeController]    ✅ Validation passed`);
 
-    if (validatedInput.mode === 'deep' && !isPremiumUser(req.user?.email)) {
+    const canUseDeepAnalysis = req.user?.entitlements?.deepAnalysis === true;
+    if (validatedInput.mode === 'deep' && !canUseDeepAnalysis) {
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.status(403).json({
         success: false,
-        error: 'Premium required',
-        message: 'Disponible en Premium',
+        error: 'Deep analysis entitlement required',
+        message: 'Activa Analisis profundo con un codigo promocional',
       });
       return;
     }

@@ -7,6 +7,11 @@ import { Request, Response } from 'express';
 import { getPrismaClient } from '../../persistence/prisma.client';
 import { GeminiClient } from '../../external/gemini.client';
 import type { Prisma } from '@prisma/client';
+import {
+  safeParseUserEntitlements,
+  safeParseUserPreferences,
+  safeParseUserUsageStats,
+} from '../schemas/user-profile.schema';
 
 type UserWithCounts = Prisma.UserGetPayload<{
   include: {
@@ -24,6 +29,10 @@ export class UserController {
   constructor(private geminiClient: GeminiClient) {}
 
   private formatUserProfile(user: UserWithCounts) {
+    const preferences = safeParseUserPreferences(user.preferences);
+    const usageStats = safeParseUserUsageStats(user.usageStats);
+    const entitlements = safeParseUserEntitlements(preferences.entitlements);
+
     return {
       id: user.id,
       email: user.email,
@@ -31,12 +40,9 @@ export class UserController {
       picture: user.picture,
       plan: user.subscriptionPlan,
       location: user.location || null, // Sprint 20: Geolocalización
-      preferences: user.preferences || {},
-      usageStats: user.usageStats || {
-        articlesAnalyzed: 0,
-        searchesPerformed: 0,
-        chatMessages: 0,
-      },
+      preferences,
+      entitlements,
+      usageStats,
       counts: {
         favorites: user._count.favorites,
         searchHistory: user._count.searchHistory,
@@ -139,7 +145,18 @@ export class UserController {
         updateData.location = location; // Sprint 20: Geolocalización
       }
       if (preferences !== undefined) {
-        updateData.preferences = preferences;
+        const currentPreferences = safeParseUserPreferences(req.user?.preferences);
+        const incomingPreferences =
+          preferences && typeof preferences === 'object'
+            ? (preferences as Record<string, unknown>)
+            : {};
+        const mergedPreferences = safeParseUserPreferences({
+          ...currentPreferences,
+          ...incomingPreferences,
+          // Entitlements se gestionan en /api/entitlements; no se permiten aquí.
+          entitlements: currentPreferences.entitlements,
+        });
+        updateData.preferences = mergedPreferences;
       }
 
       // Actualizar usuario

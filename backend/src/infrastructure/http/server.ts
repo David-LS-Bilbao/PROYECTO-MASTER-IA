@@ -11,6 +11,7 @@ import { createChatRoutes } from './routes/chat.routes';
 import { createSearchRoutes } from './routes/search.routes';
 import { createSourcesRoutes } from './routes/sources.routes';
 import { createUserRoutes } from './routes/user.routes';
+import { createEntitlementsRoutes } from './routes/entitlements.routes';
 import { createTopicRoutes } from './routes/topic.routes';
 import { createHealthRoutes } from './routes/health.routes';
 import { createSubscriptionRoutes } from './routes/subscription.routes';
@@ -77,6 +78,7 @@ export function createServer(): Application {
   app.use('/api/search', createSearchRoutes(container.searchController));
   app.use('/api/sources', createSourcesRoutes(container.sourcesController));
   app.use('/api/user', createUserRoutes(container.userController));
+  app.use('/api/entitlements', createEntitlementsRoutes(container.entitlementsController));
   app.use('/api/topics', createTopicRoutes(container.topicController));
   app.use('/api/subscription', createSubscriptionRoutes(container.subscriptionController));
 

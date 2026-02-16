@@ -30,6 +30,7 @@ import { ChatController } from '../http/controllers/chat.controller';
 import { SearchController } from '../http/controllers/search.controller';
 import { SourcesController } from '../http/controllers/sources.controller';
 import { UserController } from '../http/controllers/user.controller';
+import { EntitlementsController } from '../http/controllers/entitlements.controller';
 import { TopicController } from '../http/controllers/topic.controller';
 import { HealthController } from '../http/controllers/health.controller';
 import { SubscriptionController } from '../http/controllers/subscription.controller';
@@ -51,6 +52,7 @@ export class DependencyContainer {
   public readonly searchController: SearchController;
   public readonly sourcesController: SourcesController;
   public readonly userController: UserController;
+  public readonly entitlementsController: EntitlementsController;
   public readonly topicController: TopicController;
   public readonly healthController: HealthController;
   public readonly subscriptionController: SubscriptionController;
@@ -139,6 +141,7 @@ export class DependencyContainer {
     this.chatController = new ChatController(chatArticleUseCase, chatGeneralUseCase, quotaService);
     this.searchController = new SearchController(searchNewsUseCase);
     this.userController = new UserController(this.geminiClient);
+    this.entitlementsController = new EntitlementsController();
     this.topicController = new TopicController(this.topicRepository);
     this.sourcesController = new SourcesController(this.geminiClient);
     this.healthController = new HealthController(this.prisma);
