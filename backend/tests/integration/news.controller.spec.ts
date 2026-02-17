@@ -36,6 +36,21 @@ describe('NewsController Integration Tests (API Layer)', () => {
   // ==========================================================================
 
   describe('🏥 Health Check - Verificación de Supertest', () => {
+    it('GET / - debe devolver status 200 con payload de estado', async () => {
+      const response = await request(app).get('/');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('name', 'verity-news-api');
+      expect(response.body).toHaveProperty('status', 'ok');
+      expect(response.body).toHaveProperty('health', '/health');
+    });
+
+    it('HEAD / - debe devolver status 200', async () => {
+      const response = await request(app).head('/');
+
+      expect(response.status).toBe(200);
+    });
+
     it('GET /health/check - debe devolver status 200 (liveness probe)', async () => {
       // ACT
       const response = await request(app).get('/health/check');
@@ -63,6 +78,13 @@ describe('NewsController Integration Tests (API Layer)', () => {
       } else {
         expect(response.body.status).toBe('not_ready');
       }
+    });
+
+    it('GET /health - debe devolver status 200', async () => {
+      const response = await request(app).get('/health');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('status', 'ok');
     });
 
     it('GET /unknown-route - debe devolver 404 para rutas no existentes', async () => {

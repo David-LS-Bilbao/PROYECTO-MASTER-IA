@@ -11,6 +11,12 @@ export function createHealthRoutes(healthController: HealthController): Router {
   const router = Router();
 
   /**
+   * GET /health
+   * Alias to basic health check (for platform probes)
+   */
+  router.get('/', (req, res) => healthController.check(req, res));
+
+  /**
    * GET /health/check
    * Basic health check
    */

@@ -11,7 +11,7 @@ describe('health.routes', () => {
     return layer?.route?.stack?.[0]?.handle;
   };
 
-  it('registra rutas de check y readiness', async () => {
+  it('registra rutas de health base, check y readiness', async () => {
     const healthController = {
       check: vi.fn(),
       readiness: vi.fn(),
@@ -20,15 +20,18 @@ describe('health.routes', () => {
     const mod = await import('../../../../src/infrastructure/http/routes/health.routes');
     const router = mod.createHealthRoutes(healthController as any);
 
+    const healthHandler = getRouteHandler(router, '/');
     const checkHandler = getRouteHandler(router, '/check');
     const readinessHandler = getRouteHandler(router, '/readiness');
 
     const req = {} as any;
     const res = {} as any;
 
+    healthHandler(req, res);
     checkHandler(req, res);
     readinessHandler(req, res);
 
+    expect(healthController.check).toHaveBeenCalledTimes(2);
     expect(healthController.check).toHaveBeenCalledWith(req, res);
     expect(healthController.readiness).toHaveBeenCalledWith(req, res);
   });
