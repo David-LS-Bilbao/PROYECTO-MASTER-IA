@@ -68,6 +68,15 @@ export function createServer(): Application {
   // Health Routes - basic health check and readiness probe
   app.use('/health', createHealthRoutes(container.healthController));
 
+  // Root route for platform health checks (e.g. Render)
+  app.get('/', (_req: Request, res: Response) => {
+    res.status(200).json({
+      name: 'verity-news-api',
+      status: 'ok',
+      health: '/health',
+    });
+  });
+
   // API Routes
   console.log('📚 Registrando rutas...');
 
