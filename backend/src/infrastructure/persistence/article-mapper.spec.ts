@@ -80,7 +80,8 @@ describe('ArticleMapper', () => {
       expect(domain.publishedAt).toEqual(prisma.publishedAt);
       expect(domain.category).toBe(prisma.category);
       expect(domain.language).toBe(prisma.language);
-      expect(domain.embedding).toBe(prisma.embedding);
+      // embedding se gestiona por PgVectorClient, no por Prisma mapper.
+      expect(domain.embedding).toBeNull();
       expect(domain.summary).toBe(prisma.summary);
       expect(domain.biasScore).toBe(prisma.biasScore);
       expect(domain.analysis).toBe(prisma.analysis);
@@ -173,7 +174,7 @@ describe('ArticleMapper', () => {
       expect(update).toHaveProperty('urlToImage');
       expect(update).toHaveProperty('author');
       expect(update).toHaveProperty('category');
-      expect(update).toHaveProperty('embedding');
+      expect(update).not.toHaveProperty('embedding');
       expect(update).toHaveProperty('summary');
       expect(update).toHaveProperty('biasScore');
       expect(update).toHaveProperty('analysis');
@@ -206,7 +207,7 @@ describe('ArticleMapper', () => {
       expect(create).toHaveProperty('publishedAt');
       expect(create).toHaveProperty('category');
       expect(create).toHaveProperty('language');
-      expect(create).toHaveProperty('embedding');
+      expect(create).not.toHaveProperty('embedding');
       expect(create).toHaveProperty('summary');
       expect(create).toHaveProperty('biasScore');
       expect(create).toHaveProperty('analysis');
@@ -274,14 +275,14 @@ describe('ArticleMapper', () => {
       expect(create.internalReasoning).toBe(reasoning);
     });
 
-    it('preserva embedding data', () => {
+    it('no persiste embedding en upsert (se guarda por PgVectorClient)', () => {
       const embeddingVector = JSON.stringify(Array.from({ length: 768 }, (_, i) => i * 0.001));
       const article = createDomainArticle({ embedding: embeddingVector });
 
       const { update, create } = mapper.toUpsertData(article);
 
-      expect(update.embedding).toBe(embeddingVector);
-      expect(create.embedding).toBe(embeddingVector);
+      expect(update).not.toHaveProperty('embedding');
+      expect(create).not.toHaveProperty('embedding');
     });
   });
 
@@ -302,7 +303,7 @@ describe('ArticleMapper', () => {
       expect(create.publishedAt).toEqual(prisma.publishedAt);
       expect(create.category).toBe(prisma.category);
       expect(create.language).toBe(prisma.language);
-      expect(create.embedding).toBe(prisma.embedding);
+      expect(create.embedding).toBeUndefined();
       expect(create.summary).toBe(prisma.summary);
       expect(create.biasScore).toBe(prisma.biasScore);
       expect(create.analysis).toBe(prisma.analysis);

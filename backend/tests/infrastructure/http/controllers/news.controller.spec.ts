@@ -140,7 +140,7 @@ describe('NewsController', () => {
       const req = { query: { category: 'local' }, user: { uid: 'user-1' } } as Request;
 
       mockUserFindUnique.mockResolvedValueOnce({ location: null });
-      repository.searchLocalArticles.mockResolvedValueOnce([]);
+      repository.searchLocalArticles.mockResolvedValueOnce({ articles: [], scopeUsed: 'general' });
       repository.countLocalArticles.mockResolvedValueOnce(0);
       ingestNewsUseCase.execute.mockResolvedValueOnce({ newArticles: 0 });
 
@@ -158,21 +158,27 @@ describe('NewsController', () => {
       const req = { query: { category: 'local' }, user: { uid: 'user-1' } } as Request;
 
       mockUserFindUnique.mockResolvedValueOnce({ location: 'Bilbao, País Vasco' });
-      repository.searchLocalArticles.mockResolvedValueOnce([createArticle({ id: 'article-1' })]);
-      repository.countLocalArticles.mockResolvedValueOnce(1);
+      repository.searchLocalArticles.mockResolvedValueOnce({
+        articles: [createArticle({ id: 'article-1' })],
+        scopeUsed: 'city',
+      });
       repository.getUserUnlockedArticleIds.mockResolvedValueOnce(new Set(['article-1']));
       ingestNewsUseCase.execute.mockResolvedValueOnce({ newArticles: 0 });
 
       await controller.getNews(req, res as Response);
 
-      expect(repository.searchLocalArticles).toHaveBeenCalledWith('Bilbao', 20, 0, 'user-1');
-      expect(repository.countLocalArticles).toHaveBeenCalledWith('Bilbao');
+      expect(repository.searchLocalArticles).toHaveBeenCalledWith(
+        { city: 'Bilbao', province: 'País Vasco', region: undefined },
+        20,
+        0,
+        'user-1'
+      );
 
       const payload = jsonMock.mock.calls[0][0];
       expect(payload.meta.location).toBe('Bilbao');
     });
 
-    it('local respeta offset y calcula hasMore con total real', async () => {
+    it('local respeta offset y calcula hasMore con los articulos retornados', async () => {
       const { res, jsonMock } = createRes();
       const req = {
         query: { category: 'local', limit: '2', offset: '2' },
@@ -180,18 +186,25 @@ describe('NewsController', () => {
       } as Request;
 
       mockUserFindUnique.mockResolvedValueOnce({ location: 'Bilbao' });
-      repository.searchLocalArticles.mockResolvedValueOnce([createArticle({ id: 'article-1' })]);
-      repository.countLocalArticles.mockResolvedValueOnce(5);
+      repository.searchLocalArticles.mockResolvedValueOnce({
+        articles: [createArticle({ id: 'article-1' })],
+        scopeUsed: 'city',
+      });
       repository.getUserUnlockedArticleIds.mockResolvedValueOnce(new Set(['article-1']));
       ingestNewsUseCase.execute.mockResolvedValueOnce({ newArticles: 0 });
 
       await controller.getNews(req, res as Response);
 
-      expect(repository.searchLocalArticles).toHaveBeenCalledWith('Bilbao', 2, 2, 'user-1');
+      expect(repository.searchLocalArticles).toHaveBeenCalledWith(
+        { city: 'Bilbao', province: undefined, region: undefined },
+        2,
+        2,
+        'user-1'
+      );
 
       const payload = jsonMock.mock.calls[0][0];
-      expect(payload.pagination.total).toBe(5);
-      expect(payload.pagination.hasMore).toBe(true);
+      expect(payload.pagination.total).toBe(1);
+      expect(payload.pagination.hasMore).toBe(false);
     });
 
     it('200 en caso normal con usuario y analisis desbloqueado', async () => {

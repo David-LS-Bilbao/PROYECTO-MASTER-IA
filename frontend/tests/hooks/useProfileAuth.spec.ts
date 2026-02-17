@@ -17,10 +17,11 @@ import { useProfileAuth } from '@/hooks/useProfileAuth';
 // ============================================================================
 
 const mockPush = vi.fn();
+const mockReplace = vi.fn();
 const mockGetToken = vi.fn();
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: mockPush }),
+  useRouter: () => ({ push: mockPush, replace: mockReplace }),
 }));
 
 vi.mock('@/context/AuthContext', () => ({
@@ -49,7 +50,7 @@ describe('useProfileAuth Hook', () => {
 
     renderHook(() => useProfileAuth());
 
-    expect(mockPush).toHaveBeenCalledWith('/login');
+    expect(mockReplace).toHaveBeenCalledWith('/login');
   });
 
   // ==========================================================================
@@ -66,7 +67,7 @@ describe('useProfileAuth Hook', () => {
 
     renderHook(() => useProfileAuth());
 
-    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 
   // ==========================================================================
@@ -83,7 +84,7 @@ describe('useProfileAuth Hook', () => {
 
     renderHook(() => useProfileAuth());
 
-    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 
   // ==========================================================================

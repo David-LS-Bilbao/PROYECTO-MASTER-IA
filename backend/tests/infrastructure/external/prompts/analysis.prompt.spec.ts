@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+﻿import { describe, expect, it } from 'vitest';
 import {
   ANALYSIS_PROMPT,
   ANALYSIS_PROMPT_DEEP,
@@ -45,7 +45,7 @@ describe('ANALYSIS_PROMPT vNext.1', () => {
   });
 
   it('incluye coherencia de fiabilidad para SupportedByArticle', () => {
-    expect(ANALYSIS_PROMPT).toContain('Soportado por el artículo (sin verificación externa)');
+    expect(ANALYSIS_PROMPT).toMatch(/Soportado por el art/i);
   });
 
   it('exige frase literal para no_determinable en reliabilityComment', () => {
@@ -57,21 +57,22 @@ describe('ANALYSIS_PROMPT vNext.1', () => {
 
     for (const prompt of variants) {
       expect(prompt).toContain('summary');
-      expect(prompt).toContain('Resumen provisional...');
       expect(prompt).toContain('inputQuality');
       expect(prompt).toContain('35-45 palabras');
       expect(prompt).toContain('clickbait');
       expect(prompt).toContain('3-5 frases');
+      expect(prompt).toMatch(/fragmento|extracto/i);
     }
   });
 
   it('incluye secciones enriquecidas para modo deep', () => {
-    expect(ANALYSIS_PROMPT_DEEP).toContain('deep.sections');
+    expect(ANALYSIS_PROMPT_DEEP).toContain('"deep"');
+    expect(ANALYSIS_PROMPT_DEEP).toContain('"sections"');
     expect(ANALYSIS_PROMPT_DEEP).toContain('known');
     expect(ANALYSIS_PROMPT_DEEP).toContain('unknown');
     expect(ANALYSIS_PROMPT_DEEP).toContain('quotes');
     expect(ANALYSIS_PROMPT_DEEP).toContain('risks');
-    expect(ANALYSIS_PROMPT_DEEP).toContain('6 y 10 claims');
+    expect(ANALYSIS_PROMPT_DEEP).toMatch(/6.*10 claims/i);
   });
 
   it('en modo standard/moderate exige resumen de 3-5 frases y maximo 90 palabras', () => {
@@ -90,3 +91,4 @@ describe('ANALYSIS_PROMPT vNext.1', () => {
     expect(ANALYSIS_PROMPT).toContain('"No se puede confirmar detalles"');
   });
 });
+

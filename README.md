@@ -27,6 +27,97 @@
 
 ---
 
+## Actualizacion Pre-Merge (2026-02-17)
+
+Esta seccion resume los comandos y comportamientos vigentes del feature de analisis antes de merge a `main`.
+
+### Como Ejecutar Local (Actualizado)
+
+1. Iniciar servicios base:
+```bash
+docker compose up -d
+```
+- PostgreSQL corre en `localhost:5433` con imagen `pgvector/pgvector:pg16`.
+- `chromadb` sigue definido en `docker-compose.yml` por compatibilidad legacy, pero el backend activo usa `pgvector` (`PgVectorClient`).
+
+2. Preparar backend:
+```bash
+cd backend
+npm install
+npx prisma migrate deploy
+npm run typecheck
+npm run dev
+```
+
+3. Preparar frontend:
+```bash
+cd frontend
+npm install
+npx tsc --noEmit
+npm run dev
+```
+
+4. URLs locales:
+- Frontend: `http://localhost:3001`
+- Backend: `http://localhost:3000`
+
+### Testing (Actualizado)
+
+Comandos vigentes en esta rama:
+
+```bash
+# Backend (tipado, tests, cobertura)
+cd backend
+npm run typecheck
+npx vitest run
+npm run test:coverage
+
+# Frontend (tipado, unit, e2e)
+cd frontend
+npx tsc --noEmit
+npm run test:run
+npm run test:e2e:smoke
+npm run test:e2e
+```
+
+Referencias:
+- Estandar QA: `docs/CALIDAD.md`
+- E2E: `frontend/tests/e2e/README.md`
+
+### Limitaciones (Paywall y Calidad de Texto)
+
+- Si un articulo queda en `accessStatus=PAYWALLED|RESTRICTED` o `analysisBlocked=true`, el backend bloquea SIEMPRE el analisis (standard y deep), incluso si existe cache legacy.
+- El bloqueo responde `422` con `error.code="PAYWALL_BLOCKED"`.
+- Si no hay texto completo y solo hay snippet, el analisis se marca como estimado con menor confianza.
+- Verity no intenta bypass de paywall.
+
+### Troubleshooting Rapido
+
+#### Error 422 `PAYWALL_BLOCKED`
+- Causa: articulo detectado como de suscripcion/restringido.
+- Resultado esperado: no se ejecuta analisis y la UI muestra mensaje de bloqueo.
+
+#### Error `No se pudo procesar el formato del analisis. Reintenta.`
+- Causa: salida LLM no parseable incluso tras 1 intento de JSON repair.
+- Resultado esperado: `formatError=true`, UI muestra estado de error y oculta secciones deep.
+
+#### Error `External service error: Gemini` o `JinaReader`
+- Revisar credenciales locales (sin exponerlas), conectividad y limites del proveedor.
+- Reintentar cuando el servicio externo se estabilice.
+
+#### Error `extension "vector" is not available`
+- Verificar que el contenedor usa `pgvector/pgvector:pg16`.
+- Reaplicar migraciones:
+```bash
+cd backend
+npx prisma migrate deploy
+```
+
+#### Hydration mismatch en localhost
+- Si aparece `data-darkreader-inline-stroke`, desactivar Dark Reader en `localhost`.
+
+---
+
 ## 📖 Descripción General del Proyecto
 
 ### Contexto y Motivación
@@ -230,18 +321,20 @@ NEXT_PUBLIC_ADSENSE_CLIENT_ID=ca-pub-xxxxxxxxxxxxxxxx
 ### Paso 3: Levantar Servicios con Docker
 
 ```bash
-# Desde la raíz del proyecto Verity-News/
-docker-compose up -d
+# Desde la raiz del proyecto Verity-News/
+docker compose up -d
 ```
 
-Esto iniciará:
-- **PostgreSQL** en `localhost:5432` (con pgvector extension)
+Esto iniciara:
+- **PostgreSQL + pgvector** en `localhost:5433` (contenedor `verity-news-postgres`)
+- **Redis** en `localhost:6379`
+- **ChromaDB** como servicio legacy opcional (no requerido para el flujo principal con `pgvector`)
 
-Verifica que los servicios estén corriendo:
+Verifica que los servicios esten corriendo:
 
 ```bash
 docker ps
-# Deberías ver: postgres:17
+# Deberias ver: verity-news-postgres (pgvector/pgvector:pg16)
 ```
 
 ### Paso 4: Instalar Dependencias
@@ -332,12 +425,14 @@ npx prisma studio
 #### Error: "Cannot connect to PostgreSQL"
 
 ```bash
-# Verifica que Docker esté corriendo
+# Verifica que Docker este corriendo
 docker ps
 
-# Si no está, reinicia Docker Compose
-docker-compose down
-docker-compose up -d
+# Levanta/rehidrata servicios sin borrar volumenes
+docker compose up -d
+
+# Verifica contenedor y puerto mapeado
+docker ps | findstr verity-news-postgres
 ```
 
 #### Error: "Firebase Admin initialization failed"
@@ -992,129 +1087,40 @@ enum SubscriptionPlan {
 
 ## 🧪 Testing
 
-El proyecto implementa **TDD (Test-Driven Development)** con cobertura del 95% en código crítico.
+Los comandos vigentes (rama actual) son:
 
-### Distribución de Tests
+### Backend
 
-| Tipo | Backend | Frontend | Total |
-|------|---------|----------|-------|
-| **Unit Tests** | 154 | 98 | 252 |
-| **Integration Tests** | 52 | 24 | 76 |
-| **Total** | 206 | 122 | **328** |
-| **Coverage** | 97% | 92% | 95% |
-
-### Backend Tests (206 tests - Vitest)
-
-**Casos de Uso** (58 tests):
 ```bash
 cd backend
-npm test -- src/application/use-cases
+npm run typecheck
+npx vitest run
+npm run test:coverage
 ```
 
-Ejemplo de test TDD:
-```typescript
-describe('AnalyzeArticleUseCase', () => {
-  it('should analyze article and return credibility metrics', async () => {
-    // Arrange
-    const mockArticle = NewsArticle.reconstitute({...});
-    const mockAnalysis = { biasScore: 15, reliabilityScore: 85, ... };
+### Frontend
 
-    // Act
-    const result = await analyzeUseCase.execute({ articleId: '123' });
-
-    // Assert
-    expect(result.biasScore).toBe(15);
-    expect(result.reliabilityScore).toBe(85);
-  });
-});
-```
-
-**API REST** (85 tests):
-```bash
-npm test -- src/infrastructure/http/controllers
-```
-
-**Database (Prisma)** (42 tests):
-```bash
-npm test -- src/infrastructure/persistence
-```
-
-**Servicios Externos** (21 tests):
-```bash
-npm test -- src/infrastructure/external
-```
-
-### Frontend Tests (122 tests - Vitest + RTL)
-
-**Componentes** (71 tests):
 ```bash
 cd frontend
-npm test -- tests/components
+npx tsc --noEmit
+npm run test:run
+npm run test:e2e:smoke
+npm run test:e2e
 ```
 
-Ejemplo:
-```typescript
-describe('NewsCard', () => {
-  it('renders article title and source', () => {
-    render(<NewsCard article={mockArticle} />);
-    expect(screen.getByText('Título de noticia')).toBeInTheDocument();
-    expect(screen.getByText('El País')).toBeInTheDocument();
-  });
-});
-```
+### Qué valida la batería final
 
-**Custom Hooks** (23 tests):
-```bash
-npm test -- tests/hooks
-```
+- Auth y contratos principales de API.
+- Gate de paywall (`PAYWALL_BLOCKED`) para análisis standard y deep.
+- Parseo de respuesta Gemini con JSON repair (1 intento) y fallback seguro.
+- Limpieza de contenido antes del LLM (JSON/HTML/metadata noise).
+- Flujo smoke E2E estable sin dependencia frágil de auth.
 
-**Utilidades** (28 tests):
-```bash
-npm test -- tests/utils
-```
+### Criterio de calidad
 
-### Tests de Performance (k6)
-
-**Stress Test** (100 requests concurrentes):
-```bash
-cd tests/performance
-k6 run stress-test.js
-```
-
-Métricas objetivo:
-- P95 latency: < 500ms
-- P99 latency: < 1000ms
-- Success rate: > 99%
-
-**Latency Test**:
-```bash
-k6 run latency-test.js
-```
-
-### Comandos Útiles
-
-```bash
-# Ejecutar todos los tests
-npm test
-
-# Modo watch (desarrollo)
-npm run test:watch
-
-# Coverage report
-npm run test:coverage
-
-# Tests específicos
-npm test -- <path-pattern>
-```
-
-### Estándares de Calidad
-
-Según [CALIDAD.md](docs/CALIDAD.md):
-
-- **Coverage mínimo**: 95% en código crítico
-- **Coverage objetivo**: 100% en casos de uso
-- **Coverage aceptable**: 80% en controladores
-- **Coverage opcional**: 0% en servicios externos (se mockean)
+Según `docs/CALIDAD.md`:
+- Filosofía 100/80/0 por riesgo.
+- Cobertura global de branches en backend `>= 80%` (`npm run test:coverage`).
 
 ---
 
@@ -1239,8 +1245,13 @@ jobs:
    - Guías de testing
 
 5. [📊 Estado del Proyecto](docs/ESTADO_PROYECTO.md)
-   - Estado actual (Sprint 27.3)
+   - Estado actual pre-merge y roadmap real
    - Métricas y progreso
+
+6. [Feature Notes: Paywall + Jina + JSON Repair](docs/FEATURE_PAYWALL_JINA_JSON_REPAIR.md)
+   - Flujo real de analisis (texto, prompts, gates)
+   - Contratos de error (`PAYWALL_BLOCKED`, `formatError`)
+   - Comandos de validacion reproducibles
 
 ### Diagramas Arquitecturales
 

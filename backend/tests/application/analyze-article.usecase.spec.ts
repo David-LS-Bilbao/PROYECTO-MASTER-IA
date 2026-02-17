@@ -211,15 +211,17 @@ describe('AnalyzeArticleUseCase - LÃ³gica de OrquestaciÃ³n (ZONA CRÃTICA)
   describe('ðŸ’° Cost Optimization - Cache Hit', () => {
     it('CACHE HIT: devuelve anÃ¡lisis existente SIN llamar a Gemini si isAnalyzed=true', async () => {
       // ARRANGE - ArtÃ­culo ya analizado
+      const cachedSummary =
+        'Existing summary with enough descriptive detail to be treated as a valid cached editorial output.';
       const existingAnalysis = createMockAnalysis({
-        summary: 'Existing summary',
+        summary: cachedSummary,
         biasRaw: 5,
         biasScore: 0.5,
         biasScoreNormalized: 0.5,
       });
       const analyzedArticle = createMockArticle({
         isAnalyzed: true,
-        summary: 'Existing summary',
+        summary: cachedSummary,
         biasScore: 0.5,
         analysis: JSON.stringify(existingAnalysis),
         analyzedAt: new Date('2026-02-01T12:00:00Z'),
@@ -232,7 +234,7 @@ describe('AnalyzeArticleUseCase - LÃ³gica de OrquestaciÃ³n (ZONA CRÃTICA)
 
       // ASSERT
       expect(result).toBeDefined();
-      expect(result.summary).toBe('Existing summary');
+      expect(result.summary).toBe(cachedSummary);
       expect(result.biasScore).toBe(0.5);
       expect(result.analysis).toEqual(
         expect.objectContaining({
@@ -282,12 +284,14 @@ describe('AnalyzeArticleUseCase - LÃ³gica de OrquestaciÃ³n (ZONA CRÃTICA)
 
       // CRÃTICO: Verificar que SÃ se llamÃ³ a Gemini (cache miss)
       expect(mockGeminiClient.analyzeArticle).toHaveBeenCalledTimes(1);
-      expect(mockGeminiClient.analyzeArticle).toHaveBeenCalledWith({
-        title: unanalyzedArticle.title,
-        content: unanalyzedArticle.content,
-        language: unanalyzedArticle.language,
-        source: unanalyzedArticle.source,
-      });
+      expect(mockGeminiClient.analyzeArticle).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: unanalyzedArticle.title,
+          content: unanalyzedArticle.content,
+          language: unanalyzedArticle.language,
+          source: unanalyzedArticle.source,
+        })
+      );
     });
   });
 
@@ -323,12 +327,14 @@ describe('AnalyzeArticleUseCase - LÃ³gica de OrquestaciÃ³n (ZONA CRÃTICA)
 
       // ASSERT
       expect(mockJinaReaderClient.scrapeUrl).toHaveBeenCalledWith(articleWithShortContent.url);
-      expect(mockGeminiClient.analyzeArticle).toHaveBeenCalledWith({
-        title: articleWithShortContent.title,
-        content: scrapedContent, // Debe usar el contenido scrapeado
-        language: articleWithShortContent.language,
-        source: articleWithShortContent.source,
-      });
+      expect(mockGeminiClient.analyzeArticle).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: articleWithShortContent.title,
+          content: scrapedContent, // Debe usar el contenido scrapeado
+          language: articleWithShortContent.language,
+          source: articleWithShortContent.source,
+        })
+      );
       expect(result.scrapedContentLength).toBe(scrapedContent.length);
     });
 

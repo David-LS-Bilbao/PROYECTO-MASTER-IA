@@ -205,6 +205,57 @@ describe('firebase.admin initialization (non-test env)', () => {
     expect(mockVerifyIdToken).toHaveBeenCalledWith('token-3');
   });
 
+  it('usa service-account.json cuando las env vars son placeholders', async () => {
+    process.env.FIREBASE_PROJECT_ID = 'your-firebase-project-id';
+    process.env.FIREBASE_PRIVATE_KEY =
+      '-----BEGIN PRIVATE KEY-----\\nYOUR_PRIVATE_KEY_HERE\\n-----END PRIVATE KEY-----\\n';
+    process.env.FIREBASE_CLIENT_EMAIL =
+      'firebase-adminsdk-xxxxx@your-project.iam.gserviceaccount.com';
+
+    const mockVerifyIdToken = vi.fn().mockResolvedValue({ uid: 'u4' });
+    const mockApp = {
+      auth: () => ({
+        verifyIdToken: mockVerifyIdToken,
+        getUser: vi.fn(),
+        getUserByEmail: vi.fn(),
+        createUser: vi.fn(),
+        updateUser: vi.fn(),
+        deleteUser: vi.fn(),
+      }),
+    };
+
+    const adminMock = {
+      apps: [],
+      initializeApp: vi.fn(() => {
+        adminMock.apps.push(mockApp as any);
+        return mockApp as any;
+      }),
+      credential: { cert: vi.fn(() => ({ mocked: true })) },
+    };
+
+    vi.doMock('firebase-admin', () => adminMock);
+    vi.doMock('fs', () => ({
+      existsSync: vi.fn(() => true),
+      readFileSync: vi.fn(() =>
+        JSON.stringify({
+          project_id: 'local-project',
+          private_key: 'local-key',
+          client_email: 'local@test.com',
+        })
+      ),
+    }));
+
+    const mod = await import('../../../src/infrastructure/external/firebase.admin');
+    await mod.firebaseAuth.verifyIdToken('token-4');
+
+    expect(adminMock.credential.cert).toHaveBeenCalledWith({
+      project_id: 'local-project',
+      private_key: 'local-key',
+      client_email: 'local@test.com',
+    });
+    expect(mockVerifyIdToken).toHaveBeenCalledWith('token-4');
+  });
+
   it('lanza error si no hay credenciales ni archivo local', async () => {
     const adminMock = {
       apps: [],

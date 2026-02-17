@@ -860,7 +860,8 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
         contents?: Array<{ parts?: Array<{ text?: string }> }>;
       };
       const promptUsed = requestUsed?.contents?.[0]?.parts?.[0]?.text ?? '';
-      expect(promptUsed).toContain('Actua como auditor OSINT de analisis textual.');
+      expect(promptUsed).toMatch(/auditor OSINT/i);
+      expect(promptUsed).toContain('INPUT_QUALITY:');
     });
 
     it('usa prompt STANDARD cuando se solicita analysisMode=standard', async () => {

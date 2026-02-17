@@ -5,6 +5,7 @@ Este directorio esta organizado por tipo de documento para facilitar busqueda y 
 ## Estructura recomendada
 
 - `docs/` (core): documentos principales del proyecto (`MemoriaTFM.md`, `ESTADO_PROYECTO.md`, `CALIDAD.md`, `AI_RULES.md`, etc.).
+- `docs/` (core): documentos principales del proyecto (`MemoriaTFM.md`, `ESTADO_PROYECTO.md`, `CALIDAD.md`, `FEATURE_PAYWALL_JINA_JSON_REPAIR.md`, `AI_RULES.md`, etc.).
 - `docs/architecture/`: arquitectura tecnica e integraciones (API interceptor, smart ingestion, metadata extractor).
 - `docs/incidents/`: analisis de incidencias, fixes y validaciones tecnicas.
 - `docs/runbooks/`: procedimientos operativos y guias manuales.

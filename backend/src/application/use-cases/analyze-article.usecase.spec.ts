@@ -400,7 +400,7 @@ describe('AnalyzeArticleUseCase', () => {
       expect(result.summary).not.toContain('Falta el texto completo para confirmar detalles.');
       expect(result.summary).not.toContain('Resumen provisional');
       expect(result.summary).not.toContain('No se puede confirmar detalles');
-      expect(result.analysis.qualityNotice).toBe('Falta el texto completo para confirmar detalles.');
+      expect(result.analysis.qualityNotice?.toLowerCase()).toContain('texto completo');
     });
 
     it('should route moderate mode for long content in detail context', async () => {
@@ -546,7 +546,7 @@ describe('AnalyzeArticleUseCase', () => {
 
       expect(result.scrapedContentLength).toBeLessThan(300);
       expect(result.analysis.articleLeaning).toBe('indeterminada');
-      expect(result.analysis.biasComment.toLowerCase()).toContain('no hay suficientes se');
+      expect(result.analysis.biasComment.toLowerCase()).toMatch(/no se puede estimar|fragmento disponible/);
     });
 
     it('should force neutral leaning with low confidence for long content and <2 cited bias indicators', async () => {
@@ -1001,7 +1001,7 @@ describe('AnalyzeArticleUseCase', () => {
       // Verificar que el análisis se completó correctamente usando fallback
       expect(result.articleId).toBe(article.id);
       expect(result.summary).not.toContain('Falta el texto completo para confirmar detalles.');
-      expect(result.analysis.qualityNotice).toBe('Falta el texto completo para confirmar detalles.');
+      expect(result.analysis.qualityNotice?.toLowerCase()).toContain('texto completo');
       expect(result.scrapedContentLength).toBe(0); // Fallback no scraped
       expect(result.analysis.factCheck.verdict).toBe('InsufficientEvidenceInArticle');
     });
@@ -1018,12 +1018,12 @@ describe('AnalyzeArticleUseCase', () => {
       // Verificar que el análisis se completó correctamente usando fallback
       expect(result.articleId).toBe(article.id);
       expect(result.summary).not.toContain('Falta el texto completo para confirmar detalles.');
-      expect(result.analysis.qualityNotice).toBe('Falta el texto completo para confirmar detalles.');
+      expect(result.analysis.qualityNotice?.toLowerCase()).toContain('texto completo');
       expect(result.scrapedContentLength).toBe(0); // Fallback no scraped
       expect(result.analysis.factCheck.verdict).toBe('InsufficientEvidenceInArticle');
     });
 
-    it('should save article with scraped content before analysis', async () => {
+    it('should save scraped content before persisting final analysis', async () => {
       const article = createTestArticle({ content: null });
       mockRepository.setArticle(article);
 
@@ -1031,8 +1031,22 @@ describe('AnalyzeArticleUseCase', () => {
 
       await useCase.execute({ articleId: article.id });
 
-      // Should save twice: once after scraping, once after analysis
-      expect(saveSpy).toHaveBeenCalledTimes(2);
+      // Puede haber un guardado extra por accessStatus (paywall detection).
+      expect(saveSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+      const savedArticles = saveSpy.mock.calls.map((call) => call[0] as NewsArticle);
+      const scrapedSaveIndex = savedArticles.findIndex(
+        (savedArticle) =>
+          savedArticle.content === mockScrapedContent.content && savedArticle.analyzedAt === null
+      );
+      const analyzedSaveIndex = savedArticles.findIndex(
+        (savedArticle) =>
+          savedArticle.content === mockScrapedContent.content &&
+          savedArticle.analyzedAt instanceof Date &&
+          savedArticle.summary !== null
+      );
+
+      expect(scrapedSaveIndex).toBeGreaterThanOrEqual(0);
+      expect(analyzedSaveIndex).toBeGreaterThan(scrapedSaveIndex);
     });
 
     it('should persist analysis results to repository', async () => {

@@ -3,21 +3,24 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Home from '@/app/page';
 import type { NewsArticle } from '@/lib/api';
+import { BackendStatusProvider } from '@/hooks/useBackendStatus';
 
 // =========================================================================
 // MOCKS
 // =========================================================================
 
 const mockPush = vi.fn();
+const mockReplace = vi.fn();
 const mockSearchParams = new URLSearchParams();
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
     push: mockPush,
-    replace: vi.fn(),
+    replace: mockReplace,
     prefetch: vi.fn(),
   }),
   useSearchParams: () => ({
@@ -155,6 +158,23 @@ const buildInfiniteData = (articles: NewsArticle[], total?: number) => ({
 describe('Home Page - Infinite Scroll', () => {
   const originalFetch = global.fetch;
 
+  const renderWithProviders = () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <BackendStatusProvider>
+          <Home />
+        </BackendStatusProvider>
+      </QueryClientProvider>
+    );
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockSearchParams.delete('topic');
@@ -210,25 +230,27 @@ describe('Home Page - Infinite Scroll', () => {
       loading: true,
     });
 
-    render(<Home />);
+    renderWithProviders();
 
     expect(screen.getByText(/Cargando Verity/i)).toBeInTheDocument();
     expect(screen.getByText(/Verificando sesi[oó]n/i)).toBeInTheDocument();
   });
 
-  it('redirige a /login si no hay usuario autenticado', () => {
+  it('redirige a /login si no hay usuario autenticado', async () => {
     mockUseAuth.mockReturnValue({
       user: null,
       loading: false,
     });
 
-    render(<Home />);
+    renderWithProviders();
 
-    expect(mockPush).toHaveBeenCalledWith('/login');
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith('/login');
+    });
     expect(screen.queryByText(/Verity News/i)).not.toBeInTheDocument();
   });
 
-  it('muestra estado de error cuando falla la carga', () => {
+  it('muestra estado de error cuando falla la carga', async () => {
     mockUseNewsInfinite.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -240,14 +262,14 @@ describe('Home Page - Infinite Scroll', () => {
       hasNextPage: false,
     });
 
-    render(<Home />);
+    renderWithProviders();
 
-    expect(screen.getByText(/Error al cargar las noticias/i)).toBeInTheDocument();
-    expect(screen.getByText(/Failed to fetch news/i)).toBeInTheDocument();
-    expect(screen.getByText(/http:\/\/localhost:3000/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Error al cargar las noticias/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Failed to fetch news/i)).toBeInTheDocument();
+    expect(await screen.findByText(/http:\/\/localhost:3000/i)).toBeInTheDocument();
   });
 
-  it('muestra empty state para topic general', () => {
+  it('muestra empty state para topic general', async () => {
     mockUseNewsInfinite.mockReturnValue({
       data: buildInfiniteData([], 0),
       isLoading: false,
@@ -259,12 +281,12 @@ describe('Home Page - Infinite Scroll', () => {
       hasNextPage: false,
     });
 
-    render(<Home />);
+    renderWithProviders();
 
-    expect(screen.getByText(/No hay noticias de/i)).toBeInTheDocument();
+    expect(await screen.findByText(/No hay noticias de/i)).toBeInTheDocument();
   });
 
-  it('muestra empty state para favoritos', () => {
+  it('muestra empty state para favoritos', async () => {
     mockSearchParams.set('topic', 'favorites');
 
     mockUseNewsInfinite.mockReturnValue({
@@ -278,10 +300,10 @@ describe('Home Page - Infinite Scroll', () => {
       hasNextPage: false,
     });
 
-    render(<Home />);
+    renderWithProviders();
 
-    expect(screen.getByText(/No tienes favoritos todav[ií]a/i)).toBeInTheDocument();
-    expect(screen.getByText(/Marca noticias como favoritas/i)).toBeInTheDocument();
+    expect(await screen.findByText(/No tienes favoritos todav[ií]a/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Marca noticias como favoritas/i)).toBeInTheDocument();
   });
 
   it('renderiza noticias agrupadas y contador', () => {
@@ -309,7 +331,7 @@ describe('Home Page - Infinite Scroll', () => {
       },
     ]);
 
-    render(<Home />);
+    renderWithProviders();
 
     expect(screen.getByText(/Mostrando 2 de 2/i)).toBeInTheDocument();
 
@@ -324,7 +346,7 @@ describe('Home Page - Infinite Scroll', () => {
   it('usa el topic de la URL en useNewsInfinite', () => {
     mockSearchParams.set('topic', 'economia');
 
-    render(<Home />);
+    renderWithProviders();
 
     expect(mockUseNewsInfinite).toHaveBeenCalledWith(
       expect.objectContaining({

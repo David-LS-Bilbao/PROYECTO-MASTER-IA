@@ -1,82 +1,108 @@
-# Estándares de Calidad y Testing - Verity News
+# Estandares de Calidad y Testing - Verity News
 
-> **Rol de la IA:** Actúa como un Arquitecto de Software Senior y QA Lead. Tu prioridad es la robustez, la seguridad y el valor de negocio, no las métricas vanidosas.
+## Objetivo
+Definir gates de calidad reproducibles antes de merge a `main`, siguiendo la filosofia 100/80/0 y la piramide de testing del proyecto.
 
----
+## 1) Filosofia 100/80/0
 
-## 1. Filosofía de Testing: Cobertura Estratégica (100/80/0)
+### Zona Critica (100%)
+Cobertura y casos exhaustivos en:
+- Auth y autorizacion.
+- Quota/coste (`quota.service.ts`, `token-taximeter.ts`).
+- Gate de paywall (`paywall-detector.ts`, `analyze-article.usecase.ts`).
+- Parseo/repair de salida LLM (Gemini) y limpieza de contenido.
 
-No buscamos el 100% de cobertura global ("coverage ciego"), sino una cobertura basada en el riesgo y el valor.
+### Zona Estandar (80%)
+Cobertura fuerte (minimo 80%) en:
+- Controladores HTTP y contratos API.
+- Use cases de negocio no financieros.
+- Hooks/componentes UI con estado.
 
-### 🔴 Zona Crítica (Cobertura 100%)
-*Lógica que maneja dinero, seguridad o el núcleo del negocio. Aquí no se permiten fallos.*
-- **Cálculo de Tokens y Costes:** `TokenUsage`, `TokenTaximeter`.
-- **Lógica de Autenticación:** `AuthMiddleware`, `UserDomain`.
-- **Algoritmos Core:** Detección de sesgo, cálculo de `reliabilityScore`, lógica de análisis de Gemini.
-- **Validación de Datos:** Schemas de Zod.
+### Zona Trivial (0%)
+Sin obligacion de cobertura en:
+- Configuracion sin logica.
+- Tipos/DTOs pasivos.
+- Presentacion puramente estetica.
 
-### 🟡 Zona Estándar (Cobertura 80%)
-*Flujos principales de usuario y lógica de aplicación.*
-- **Controladores API:** Verificar códigos de respuesta (200, 400, 401, 500).
-- **Casos de Uso (Use Cases):** Orquestación entre servicios.
-- **Componentes UI Complejos:** Dashboards, Gráficos, Formularios con estado.
+## 2) Piramide de Testing
 
-### ⚪ Zona Trivial (Cobertura 0% - Opcional)
-*Código de configuración o "glue code" sin lógica.*
-- Archivos de configuración (`next.config.js`, `tailwind.config.ts`).
-- DTOs simples o interfaces sin métodos.
-- UI puramente visual sin lógica condicional (ej. un botón estático).
+### Unit (base)
+- Runner: `vitest`.
+- Regla: mockear servicios externos (Gemini, Firebase, DB remota, Jina).
+- Deben validar ramas de negocio, no solo happy path.
 
----
+### Integracion (capa media)
+- Validar contratos API reales (200/401/403/422/500 segun caso).
+- Incluir escenarios de frontera (paywall, formatError, entitlement gating).
 
-## 2. La Pirámide de Testing en Verity News
+### E2E (cuspide)
+- Playwright para smoke y flujos completos.
+- Smoke no debe depender de auth fragil.
 
-### 🏗️ Unit Tests (Vitest) - La Base
-- **Objetivo:** Probar funciones y clases en aislamiento.
-- **Regla:** Mockear TODAS las dependencias externas (Gemini, Base de Datos, Firebase).
-- **Velocidad:** Deben ejecutarse en milisegundos.
-- **Herramienta:** `vitest`.
+## 3) Gates Obligatorios Pre-Merge
 
-### 🔗 Integration Tests - La Capa Media
-- **Objetivo:** Verificar que los componentes hablan bien entre sí (ej. Controller -> UseCase -> Repository).
-- **Regla:** Usar una base de datos de prueba (Docker/In-Memory) si es posible, o mocks de alto nivel para APIs externas (Gemini no se llama realmente).
-- **Foco:** Rutas de API y consultas complejas a Prisma.
+Ejecutar exactamente:
 
-### 🌍 E2E & Load Tests (k6 / Playwright) - La Cúspide
-- **Objetivo:** Validar flujos críticos de usuario y resistencia.
-- **Herramienta:** `k6` para carga y `Playwright` (futuro) para flujos de navegador.
+```bash
+# Backend
+cd backend
+npm run typecheck
+npx vitest run
+npm run test:coverage
+```
 
----
+```bash
+# Frontend
+cd frontend
+npx tsc --noEmit
+npm run test:run
+npm run test:e2e:smoke
+```
 
-## 3. Workflow de Calidad (TDD & Refactoring)
+`npm run test:e2e` completo es recomendado cuando haya cambios de UI/routing/auth.
 
-### 🚦 Ciclo TDD (Red-Green-Refactor)
-Cuando se pida corregir un bug o añadir una feature crítica:
-1.  **RED:** Crear un test que replique el fallo (o defina la feature) y verlo fallar.
-2.  **GREEN:** Implementar la solución mínima para pasar el test.
-3.  **REFACTOR:** Mejorar el código sin romper el test (Clean Code).
+## 4) Umbrales y criterios PASS/FAIL
 
-### 🧹 Refactorización Segura
-- Identificar **Code Smells** (funciones largas, números mágicos, `any` en TypeScript).
-- Aplicar patrones de diseño solo si simplifican el código, no para añadir complejidad innecesaria.
-- Mantener la inmutabilidad de los ADRs (Architectural Decision Records).
+- Backend coverage: `branches >= 80%` (global), sin bajar umbrales.
+- Cualquier fallo en zona critica implica **FAIL** global.
+- No se acepta "coverage ciego": los tests deben cubrir reglas reales de negocio.
+- Un merge es **PASS** solo si:
+  - comandos obligatorios pasan,
+  - no quedan tests flaky conocidos sin mitigacion,
+  - no hay regresiones en contratos API criticos.
 
----
+## 5) Casos Criticos Minimos a validar
 
-## 4. Seguridad por Diseño (Security First)
-- **OWASP Top 10:** Proteger contra inyección (usar ORM/Prisma correctamente), XSS (sanitización en frontend) y Broken Auth.
-- **Inputs:** NUNCA confiar en el usuario. Validar todo con `Zod` antes de procesar.
-- **Secretos:** Nunca commitear credenciales. Usar variables de entorno.
+- Auth:
+  - token valido/invalido.
+  - respuestas 401/403 correctas.
+- Paywall:
+  - `PAYWALL_BLOCKED` devuelve 422.
+  - bloquea incluso con analisis cacheado legacy.
+- Gemini resiliencia:
+  - parse ok.
+  - parse fail -> repair ok.
+  - parse fail -> repair fail -> fallback seguro con `formatError`.
+- Content cleaning:
+  - elimina ruido JSON/HTML/flags internos.
+  - evita citas basura y metadatos internos en salida final.
 
----
+## 6) Evidencia de ejecucion (plantilla)
 
-## 5. Instrucciones para Generación de Tests (Prompting)
+Registrar en informe final:
 
-Cuando el usuario pida "Generar tests para X":
-1.  **Clasificar:** Determinar si es Zona Crítica (100%), Estándar (80%) o Trivial.
-2.  **Estrategia:** Decidir si requiere Unitario o Integración.
-3.  **Código:** Generar el archivo `.spec.ts` completo usando las convenciones del proyecto (`describe`, `it`, `expect`).
-4.  **Casos Borde:** No testear solo el "Happy Path". Testear errores, nulos, límites y excepciones.
+| Area | Comando | Resultado | Evidencia |
+|------|---------|-----------|-----------|
+| Backend typecheck | `cd backend && npm run typecheck` | PASS/FAIL | resumen salida |
+| Backend tests | `cd backend && npx vitest run` | PASS/FAIL | archivos fallidos o 0 fallos |
+| Backend coverage | `cd backend && npm run test:coverage` | PASS/FAIL | % branches global |
+| Frontend typecheck | `cd frontend && npx tsc --noEmit` | PASS/FAIL | resumen salida |
+| Frontend unit | `cd frontend && npm run test:run` | PASS/FAIL | resumen salida |
+| E2E smoke | `cd frontend && npm run test:e2e:smoke` | PASS/FAIL | resumen salida |
 
----
-*Documento basado en la filosofía de "Calidad en el Desarrollo v1.0"*
+## 7) Politica de cambios durante QA
+
+- Cambios minimos y enfocados.
+- No tocar credenciales ni `.env`.
+- No comandos destructivos sobre datos/volumenes en QA regular.
+- Si un test falla por harness desalineado, primero corregir harness; luego validar bug real.

@@ -7,10 +7,10 @@ import { BackendStatusProvider } from "@/hooks/useBackendStatus";
 import { GlobalErrorBoundary } from "@/components/providers/global-error-boundary";
 import { ThemeProvider } from "@/components/providers/theme-provider"; // Sprint 19.8: Theme support
 import { Toaster } from "@/components/ui/sonner";
-import { ScrollToTop } from "@/components/ui/scroll-to-top";
 import { SentryProvider } from "@/components/providers/sentry-provider"; // Sprint 15: Sentry initialization
 import Footer from "@/components/layout/footer";
 import CookieBanner from "@/components/ui/cookie-banner";
+import { ClientOnlyScrollToTop } from "@/components/ui/client-only-scroll-to-top";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -47,7 +47,7 @@ export default function RootLayout({
                   <AuthProvider>
                    {children}
                    <Toaster />
-                   <ScrollToTop />
+                   <ClientOnlyScrollToTop />
                    {/* Footer global */}
                    <Footer />
                    {/* Cookie Banner */}

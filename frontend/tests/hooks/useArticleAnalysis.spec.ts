@@ -121,14 +121,15 @@ describe('useArticleAnalysis', () => {
       // Verificar fetch llamado correctamente
       expect(mockFetch).toHaveBeenCalledWith(
         'http://localhost:3000/api/analyze/article',
-        {
+        expect.objectContaining({
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${mockToken}`,
           },
           body: JSON.stringify({ articleId: mockArticleId }),
-        }
+          signal: expect.any(Object),
+        })
       );
     });
 

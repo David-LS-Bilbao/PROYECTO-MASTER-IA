@@ -13,6 +13,9 @@ export interface AnalyzeContentInput {
   source: string;
   language: string;
   analysisMode?: AnalysisMode;
+  inputQuality?: 'full' | 'snippet_rss' | 'paywall_o_vacio' | 'unknown';
+  textSource?: string;
+  contentChars?: number;
 }
 
 export interface ChatMessage {
