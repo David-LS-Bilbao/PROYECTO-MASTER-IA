@@ -14,6 +14,16 @@
 import { z } from 'zod';
 
 /**
+ * Schema para Entitlements de funcionalidades
+ *
+ * Diseñado para desacoplar desbloqueos de la lógica de pago.
+ * Hoy se activa por promo code; mañana podrá activarse por pasarela.
+ */
+export const UserEntitlementsSchema = z.object({
+  deepAnalysis: z.boolean().default(false),
+}).strict();
+
+/**
  * Schema para User Preferences
  *
  * Define estructura válida para preferencias de usuario.
@@ -34,6 +44,9 @@ export const UserPreferencesSchema = z.object({
 
   // Modo compacto de visualización
   compactMode: z.boolean().default(false).optional(),
+
+  // Entitlements (feature flags desbloqueables por backend)
+  entitlements: UserEntitlementsSchema.optional(),
 }).strict(); // Rechaza campos adicionales no definidos
 
 /**
@@ -88,6 +101,9 @@ export function safeParseUserPreferences(data: unknown): z.infer<typeof UserPref
   return {
     theme: 'light',
     categories: [],
+    entitlements: {
+      deepAnalysis: false,
+    },
   };
 }
 
@@ -118,7 +134,23 @@ export function safeParseUserUsageStats(data: unknown): z.infer<typeof UserUsage
 }
 
 /**
+ * Safe parse para entitlements con fallback.
+ */
+export function safeParseUserEntitlements(data: unknown): z.infer<typeof UserEntitlementsSchema> {
+  const result = UserEntitlementsSchema.safeParse(data);
+
+  if (result.success) {
+    return result.data;
+  }
+
+  return {
+    deepAnalysis: false,
+  };
+}
+
+/**
  * Type exports para uso en TypeScript
  */
 export type UserPreferences = z.infer<typeof UserPreferencesSchema>;
 export type UserUsageStats = z.infer<typeof UserUsageStatsSchema>;
+export type UserEntitlements = z.infer<typeof UserEntitlementsSchema>;

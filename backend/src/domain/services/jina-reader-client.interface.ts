@@ -10,6 +10,7 @@ export interface ScrapedContent {
   author: string | null;
   publishedDate: string | null;
   imageUrl: string | null;
+  metadataFlags?: Record<string, unknown>;
 }
 
 export interface IJinaReaderClient {

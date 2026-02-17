@@ -26,12 +26,20 @@ export class ArticleMapper {
       category: prismaArticle.category,
       topicId: prismaArticle.topicId, // Sprint 23: Topic relation
       language: prismaArticle.language,
-      embedding: prismaArticle.embedding,
+      // embedding: Managed separately via PgVectorClient raw SQL (Unsupported type)
+      embedding: null,
       summary: prismaArticle.summary,
       biasScore: prismaArticle.biasScore,
       analysis: prismaArticle.analysis,
       analyzedAt: prismaArticle.analyzedAt,
       internalReasoning: prismaArticle.internalReasoning,
+      accessStatus:
+        (prismaArticle as PrismaArticle & { accessStatus?: NewsArticleProps['accessStatus'] })
+          .accessStatus ?? 'UNKNOWN',
+      accessReason:
+        (prismaArticle as PrismaArticle & { accessReason?: string | null }).accessReason ?? null,
+      analysisBlocked:
+        (prismaArticle as PrismaArticle & { analysisBlocked?: boolean }).analysisBlocked ?? false,
       isFavorite: prismaArticle.isFavorite ?? false,
       fetchedAt: prismaArticle.fetchedAt,
       updatedAt: prismaArticle.updatedAt,
@@ -64,12 +72,15 @@ export class ArticleMapper {
         urlToImage: article.urlToImage,
         author: article.author,
         category: article.category, // ✅ CRÍTICO: Actualizar categoría si la noticia aparece en otro feed
-        embedding: article.embedding,
+        // embedding: Managed separately via PgVectorClient raw SQL (Unsupported type)
         summary: article.summary,
         biasScore: article.biasScore,
         analysis: article.analysis,
         analyzedAt: article.analyzedAt,
         internalReasoning: article.internalReasoning,
+        accessStatus: article.accessStatus,
+        accessReason: article.accessReason,
+        analysisBlocked: article.analysisBlocked,
         isFavorite: article.isFavorite,
 
         // Sprint 23: Update topic relation if provided
@@ -89,12 +100,15 @@ export class ArticleMapper {
         publishedAt: article.publishedAt,
         category: article.category,
         language: article.language,
-        embedding: article.embedding,
+        // embedding: Managed separately via PgVectorClient raw SQL (Unsupported type)
         summary: article.summary,
         biasScore: article.biasScore,
         analysis: article.analysis,
         analyzedAt: article.analyzedAt,
         internalReasoning: article.internalReasoning,
+        accessStatus: article.accessStatus,
+        accessReason: article.accessReason,
+        analysisBlocked: article.analysisBlocked,
         isFavorite: article.isFavorite,
         fetchedAt: article.fetchedAt,
         updatedAt: new Date(),

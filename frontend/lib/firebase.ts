@@ -15,7 +15,7 @@
  */
 
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
-import { getAuth, Auth } from 'firebase/auth';
+import { getAuth, Auth, setPersistence, browserLocalPersistence } from 'firebase/auth';
 
 /**
  * Configuración de Firebase desde variables de entorno
@@ -100,22 +100,40 @@ function initializeFirebase(): FirebaseApp {
 export const firebaseApp = initializeFirebase();
 
 /**
- * Instancia de Firebase Auth
- * 
+ * Instancia de Firebase Auth con persistencia local configurada
+ *
+ * IMPORTANTE: browserLocalPersistence guarda el token en localStorage,
+ * permitiendo que el usuario permanezca autenticado entre sesiones
+ * (cierre de pestaña, reinicio del navegador).
+ *
  * Uso:
  * ```typescript
  * import { auth } from '@/lib/firebase';
  * import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
- * 
+ *
  * // Login
  * const userCredential = await signInWithEmailAndPassword(auth, email, password);
  * const token = await userCredential.user.getIdToken();
- * 
+ *
  * // Logout
  * await signOut(auth);
  * ```
  */
 export const auth = getAuth(firebaseApp);
+
+// =========================================================================
+// PERSISTENCIA: Configurar sesiones persistentes (Keep Me Logged In)
+// Sprint 29 Fix: Exportar promesa para que AuthContext espere antes de
+// registrar onAuthStateChanged. Evita race condition donde el listener
+// se registra antes de que la persistencia esté lista.
+// =========================================================================
+export const authReady: Promise<void> = setPersistence(auth, browserLocalPersistence)
+  .then(() => {
+    console.log('✅ Firebase Auth: Persistencia LOCAL activada (sesiones permanentes)');
+  })
+  .catch((error) => {
+    console.error('❌ Error configurando persistencia de Firebase:', error);
+  });
 
 /**
  * Helper: Obtener token JWT del usuario actual

@@ -1,15 +1,16 @@
 /**
  * General Chat Drawer Component
  * Sprint 19.6 - Tarea 3: Chat General
+ * Sprint 27.4 - Refactorización: Usa conocimiento general completo (NO RAG)
  *
- * Permite a los usuarios hacer preguntas generales sobre todas las noticias
- * usando RAG (Retrieval-Augmented Generation) sobre toda la base de datos.
+ * Permite a los usuarios hacer preguntas generales sobre cualquier tema
+ * usando el conocimiento completo de Gemini (sin restricciones de RAG).
  */
 
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { MessageCircle, Send, Loader2, Bot, User, X } from 'lucide-react';
+import { MessageCircle, Send, Loader2, Bot, User, X, Crown } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -20,20 +21,31 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { chatGeneral, ChatMessage } from '@/lib/api';
+import { useCanAccessChat } from '@/hooks/useCanAccessChat';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/context/AuthContext';
 
 interface GeneralChatDrawerProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * Sprint 29 (Graceful Degradation): Pre-fill input with question from News Chat fallback
+   */
+  initialQuestion?: string;
 }
 
-export function GeneralChatDrawer({ isOpen, onOpenChange }: GeneralChatDrawerProps) {
+export function GeneralChatDrawer({ isOpen, onOpenChange, initialQuestion }: GeneralChatDrawerProps) {
+  const router = useRouter();
+  const { getToken } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sourcesCount, setSourcesCount] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
+
+  // Sprint 30: Check if user can access Chat (PREMIUM or trial)
+  const chatAccess = useCanAccessChat();
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -54,11 +66,17 @@ export function GeneralChatDrawer({ isOpen, onOpenChange }: GeneralChatDrawerPro
         setMessages([]);
         setInputValue('');
         setError(null);
-        setSourcesCount(null);
       }, 300);
       return () => clearTimeout(timer);
     }
   }, [isOpen]);
+
+  // Sprint 29: Pre-fill input when opened with initialQuestion (fallback from News Chat)
+  useEffect(() => {
+    if (isOpen && initialQuestion) {
+      setInputValue(initialQuestion);
+    }
+  }, [isOpen, initialQuestion]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,7 +95,15 @@ export function GeneralChatDrawer({ isOpen, onOpenChange }: GeneralChatDrawerPro
     setIsLoading(true);
 
     try {
-      const response = await chatGeneral(newMessages);
+      // Sprint 30: Get auth token for Premium verification
+      const token = await getToken();
+      if (!token) {
+        setError('Debes iniciar sesión para usar el Chat');
+        setIsLoading(false);
+        return;
+      }
+
+      const response = await chatGeneral(newMessages, token);
 
       // Add assistant response
       const assistantMessage: ChatMessage = {
@@ -85,10 +111,16 @@ export function GeneralChatDrawer({ isOpen, onOpenChange }: GeneralChatDrawerPro
         content: response.data.response,
       };
       setMessages([...newMessages, assistantMessage]);
-      setSourcesCount(response.data.sourcesCount);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Error al enviar mensaje';
-      setError(errorMessage);
+    } catch (err: any) {
+      // =========================================================================
+      // PREMIUM GATE (Sprint 30): Detect CHAT_FEATURE_LOCKED error
+      // =========================================================================
+      if (err.errorCode === 'CHAT_FEATURE_LOCKED') {
+        setError('Tu periodo de prueba ha expirado. Actualiza a Premium para continuar usando el Chat.');
+      } else {
+        const errorMessage = err instanceof Error ? err.message : 'Error al enviar mensaje';
+        setError(errorMessage);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -113,13 +145,8 @@ export function GeneralChatDrawer({ isOpen, onOpenChange }: GeneralChatDrawerPro
             </Button>
           </div>
           <SheetDescription className="text-xs">
-            Pregunta sobre cualquier tema de las noticias disponibles
+            Pregunta sobre cualquier tema usando conocimiento general
           </SheetDescription>
-          {sourcesCount !== null && (
-            <div className="text-xs text-muted-foreground mt-2">
-              📰 Consultando {sourcesCount} artículos relevantes
-            </div>
-          )}
         </SheetHeader>
 
         {/* Messages area */}
@@ -133,12 +160,12 @@ export function GeneralChatDrawer({ isOpen, onOpenChange }: GeneralChatDrawerPro
               {messages.length === 0 && (
                 <div className="text-center text-muted-foreground text-sm py-8">
                   <img src="/boticon.png" alt="Bot" className="w-32 h-32 mx-auto mb-3 opacity-80" />
-                  <p className="font-medium">Haz una pregunta sobre las noticias</p>
+                  <p className="font-medium">Pregunta sobre cualquier tema</p>
                   <div className="text-xs mt-3 space-y-1">
                     <p className="font-semibold">Ejemplos:</p>
-                    <p>&quot;¿Cuáles son las noticias más importantes de hoy?&quot;</p>
-                    <p>&quot;¿Qué se dice sobre tecnología?&quot;</p>
-                    <p>&quot;Resume las noticias de política&quot;</p>
+                    <p>&quot;¿Qué es la inteligencia artificial?&quot;</p>
+                    <p>&quot;Explícame cómo funciona el cambio climático&quot;</p>
+                    <p>&quot;Dame consejos sobre alimentación saludable&quot;</p>
                   </div>
                 </div>
               )}
@@ -184,7 +211,7 @@ export function GeneralChatDrawer({ isOpen, onOpenChange }: GeneralChatDrawerPro
                     <div className="flex items-center gap-2">
                       <Loader2 className="size-4 animate-spin" />
                       <span className="text-xs text-muted-foreground">
-                        Analizando noticias...
+                        Pensando...
                       </span>
                     </div>
                   </div>
@@ -204,23 +231,49 @@ export function GeneralChatDrawer({ isOpen, onOpenChange }: GeneralChatDrawerPro
         </div>
 
         {/* Input area */}
-        <form onSubmit={handleSubmit} className="border-t pt-4 pb-6 px-2 flex gap-2">
-          <Input
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            placeholder="Pregunta sobre las noticias..."
-            disabled={isLoading}
-            className="flex-1"
-            autoFocus
-          />
-          <Button type="submit" size="icon" disabled={isLoading || !inputValue.trim()}>
-            {isLoading ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Send className="size-4" />
-            )}
-          </Button>
-        </form>
+        {chatAccess.canAccess ? (
+          <form onSubmit={handleSubmit} className="border-t pt-4 pb-6 px-2 flex gap-2">
+            <Input
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              placeholder="Pregunta sobre cualquier tema..."
+              disabled={isLoading}
+              className="flex-1"
+              autoFocus
+            />
+            <Button type="submit" size="icon" disabled={isLoading || !inputValue.trim()}>
+              {isLoading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Send className="size-4" />
+              )}
+            </Button>
+          </form>
+        ) : (
+          // Sprint 30: Locked state - show upgrade CTA
+          <div className="border-t pt-4 pb-6 px-4">
+            <div className="bg-linear-to-r from-purple-50 to-blue-50 dark:from-purple-950 dark:to-blue-950 rounded-lg p-4 border border-purple-200 dark:border-purple-800">
+              <div className="flex items-center gap-2 mb-2">
+                <Crown className="size-5 text-purple-600 dark:text-purple-400" />
+                <h3 className="font-semibold text-purple-900 dark:text-purple-100">
+                  {chatAccess.reason === 'TRIAL_EXPIRED' ? 'Periodo de prueba finalizado' : 'Funcionalidad Premium'}
+                </h3>
+              </div>
+              <p className="text-sm text-purple-700 dark:text-purple-300 mb-3">
+                {chatAccess.reason === 'TRIAL_EXPIRED'
+                  ? 'Tu periodo de prueba de 7 días ha expirado. Actualiza a Premium para seguir usando el Chat con IA.'
+                  : 'El acceso al Chat con IA es exclusivo para usuarios Premium.'}
+              </p>
+              <Button
+                onClick={() => router.push('/pricing')}
+                className="w-full bg-linear-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white gap-2"
+              >
+                <Crown className="size-4" />
+                Actualizar a Premium
+              </Button>
+            </div>
+          </div>
+        )}
       </SheetContent>
     </Sheet>
   );

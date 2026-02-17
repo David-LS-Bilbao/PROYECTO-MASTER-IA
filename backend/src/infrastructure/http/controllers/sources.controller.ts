@@ -1,17 +1,25 @@
 /**
  * Sources Controller (Infrastructure Layer)
- * 
- * FEATURE: RSS AUTO-DISCOVERY (Sprint 9)
- * Controlador simple para descubrimiento automático de fuentes RSS usando IA.
+ *
+ * FEATURE: RSS AUTO-DISCOVERY (Sprint 9 & 32)
+ * Controlador para descubrimiento automático de fuentes RSS usando IA.
+ * Sprint 32: Descubrimiento de fuentes locales con caché.
  */
 
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { IGeminiClient } from '../../../domain/services/gemini-client.interface';
+import { DiscoverLocalSourcesUseCase } from '../../../application/use-cases/discover-local-sources.usecase';
 
 // Validación de entrada con Zod (Security: Input Validation)
 const discoverSchema = z.object({
   query: z.string().min(2, 'El nombre del medio debe tener al menos 2 caracteres').max(100, 'Máximo 100 caracteres'),
+});
+
+// Sprint 32: Validación para descubrimiento local
+const discoverLocalSchema = z.object({
+  location: z.string().min(2, 'La ubicación debe tener al menos 2 caracteres').max(100, 'Máximo 100 caracteres'),
+  limit: z.number().min(1).max(20).default(10),
 });
 
 export class SourcesController {
@@ -60,6 +68,82 @@ export class SourcesController {
       res.status(500).json({
         success: false,
         error: 'Error interno al buscar el RSS',
+      });
+    }
+  }
+
+  /**
+   * POST /api/sources/discover-local
+   * Descubre fuentes locales/regionales usando Gemini + Caché (Sprint 32)
+   */
+  async discoverLocal(req: Request, res: Response): Promise<void> {
+    try {
+      const validation = discoverLocalSchema.safeParse(req.body);
+
+      if (!validation.success) {
+        res.status(400).json({
+          success: false,
+          error: 'VALIDATION_ERROR',
+          details: validation.error.issues,
+        });
+        return;
+      }
+
+      const { location, limit } = validation.data;
+
+      // Execute use case
+      const useCase = new DiscoverLocalSourcesUseCase(this.geminiClient);
+      const result = await useCase.execute({ location, limit });
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      console.error('❌ Error en discover-local:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Error al descubrir fuentes locales',
+      });
+    }
+  }
+
+  /**
+   * GET /api/sources/cache-stats
+   * Obtiene estadísticas del caché de descubrimiento local
+   */
+  async getCacheStats(_req: Request, res: Response): Promise<void> {
+    try {
+      const stats = DiscoverLocalSourcesUseCase.getCacheStats();
+      res.json({
+        success: true,
+        data: stats,
+      });
+    } catch (error) {
+      console.error('❌ Error obteniendo cache stats:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Error al obtener estadísticas',
+      });
+    }
+  }
+
+  /**
+   * POST /api/sources/clear-cache
+   * Limpia el caché de descubrimiento local (admin/debugging)
+   */
+  async clearCache(_req: Request, res: Response): Promise<void> {
+    try {
+      DiscoverLocalSourcesUseCase.clearCache();
+      res.json({
+        success: true,
+        message: 'Caché limpiado correctamente',
+      });
+    } catch (error) {
+      console.error('❌ Error limpiando caché:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Error al limpiar caché',
       });
     }
   }

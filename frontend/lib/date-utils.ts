@@ -12,6 +12,10 @@ export interface DateGroup {
   articles: NewsArticle[];
 }
 
+function isValidDate(date: Date): boolean {
+  return !Number.isNaN(date.getTime());
+}
+
 /**
  * Formatea una fecha relativa (Hoy, Ayer, o fecha absoluta)
  *
@@ -25,6 +29,10 @@ export interface DateGroup {
  */
 export function formatRelativeDate(dateString: string): string {
   const date = new Date(dateString);
+  if (!isValidDate(date)) {
+    return 'Fecha desconocida';
+  }
+
   const today = new Date();
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
@@ -84,7 +92,7 @@ export function groupArticlesByDate(articles: NewsArticle[]): DateGroup[] {
 
   for (const article of articles) {
     const date = new Date(article.publishedAt);
-    const dateKey = date.toISOString().split('T')[0]; // YYYY-MM-DD
+    const dateKey = isValidDate(date) ? date.toISOString().split('T')[0] : 'sin-fecha';
 
     if (!grouped.has(dateKey)) {
       grouped.set(dateKey, []);

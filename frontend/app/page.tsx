@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useInView } from 'react-intersection-observer';
+import { Menu } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { type NewsArticle, type BiasDistribution } from '@/lib/api';
 import { NewsGrid } from '@/components/news/news-grid';
@@ -11,22 +12,20 @@ import { SourcesDrawer } from '@/components/sources-drawer';
 import { GeneralChatDrawer } from '@/components/general-chat-drawer';
 import { SearchBar } from '@/components/search-bar';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { LocalScopeBadge } from '@/components/ui/local-scope-badge';
 import { DateSeparator } from '@/components/date-separator';
 import { ScrollToTop } from '@/components/ui/scroll-to-top';
+import { WarmUpBanner } from '@/components/ui/warm-up-banner';
+import { useQueryClient } from '@tanstack/react-query';
 import { useNewsInfinite } from '@/hooks/useNewsInfinite';
 import { useInvalidateNews } from '@/hooks/useNews';
+import { useBackendStatus } from '@/hooks/useBackendStatus';
 import { useDashboardStats } from '@/hooks/useDashboardStats';
 import { groupArticlesByDate } from '@/lib/date-utils';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 const INFINITE_PAGE_SIZE = 20;
-const INGEST_PAGE_SIZE = 50;
 const INFINITE_SCROLL_ROOT_MARGIN = '100px';
-const HEALTH_CHECK_TIMEOUT_MS = 2000;
-const INGEST_TIMEOUT_MS = 5000;
-const AUTO_INGEST_TTL_MS = 60 * 60 * 1000;
-const AUTO_INGEST_DEBOUNCE_MS = 300;
-const AUTO_INGEST_INITIAL_DELAY_MS = 500;
 const SKELETON_CARD_COUNT = 6;
 
 
@@ -51,7 +50,6 @@ function InfiniteScrollSentinel({ hasNextPage, isFetchingNextPage, fetchNextPage
   // Auto-fetch when sentinel comes into view
   useEffect(() => {
     if (inView && hasNextPage && !isFetchingNextPage) {
-      console.log('[InfiniteScroll] 📄 Sentinel in view - Fetching next page...');
       fetchNextPage();
     }
   }, [inView, hasNextPage, isFetchingNextPage, fetchNextPage]);
@@ -119,6 +117,28 @@ function HomeContent() {
   const { user, loading: authLoading } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { status: backendStatus, retryCount, retry: retryBackend } = useBackendStatus();
+  const queryClient = useQueryClient();
+  const prevBackendStatus = useRef(backendStatus);
+
+  // =========================================================================
+  // BACKEND READY: Invalidar queries cuando el backend pasa a 'ready'
+  // Esto fuerza un refetch fresco tras el cold start
+  // =========================================================================
+  useEffect(() => {
+    if (prevBackendStatus.current !== 'ready' && backendStatus === 'ready') {
+      queryClient.invalidateQueries({
+        predicate: (query) => {
+          const [base] = query.queryKey;
+          return base === 'news' || base === 'news-infinite' || base === 'dashboard' || base === 'article';
+        },
+      });
+    }
+    prevBackendStatus.current = backendStatus;
+  }, [backendStatus, queryClient]);
+
+  // Detectar si hay datos cacheados (localStorage persist) para decidir banner mode
+  const hasCachedData = queryClient.getQueriesData({ queryKey: ['news-infinite'] }).length > 0;
 
   // Sprint 22: Leer 'topic' en lugar de 'category' (conectado con Sidebar)
   const urlTopic = searchParams.get('topic');
@@ -129,6 +149,7 @@ function HomeContent() {
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
   const [isSourcesOpen, setIsSourcesOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   // Topic state (UI state, synced with URL)
   // Si no hay topic en URL, mostrar 'general' (portada)
@@ -139,12 +160,6 @@ function HomeContent() {
   // Track if we're actively changing topics (for smooth UX without flashing old data)
   const [isChangingTopic, setIsChangingTopic] = useState(false);
   const previousTopicRef = useRef<string>(topic);
-
-  // Sprint 16: Track si es la primera carga para evitar ingesta innecesaria
-  const isFirstMount = useRef(true);
-
-  // Sprint 16: Track si el backend está disponible para auto-ingesta
-  const [isBackendAvailable, setIsBackendAvailable] = useState(true);
 
   // =========================================================================
   // REACT QUERY: Infinite Scroll con useInfiniteQuery
@@ -186,6 +201,7 @@ function HomeContent() {
       limit: INFINITE_PAGE_SIZE,
       offset: 0,
     },
+    meta: data.pages[0]?.meta, // Sprint 32: Include meta from first page (localMeta, etc)
   } : null;
 
   // =========================================================================
@@ -212,8 +228,7 @@ function HomeContent() {
   // =========================================================================
   useEffect(() => {
     if (!authLoading && !user) {
-      console.log('🔒 Usuario no autenticado. Redirigiendo a /login...');
-      router.push('/login');
+      router.replace('/login');
     }
   }, [authLoading, user, router]);
 
@@ -226,256 +241,25 @@ function HomeContent() {
 
     // Solo actualizar si el topic cambió (evitar loops infinitos)
     if (targetTopic !== topic) {
-      console.log(`🔗 [URL SYNC] URL cambió: Actualizando topic de "${topic}" a "${targetTopic}"`);
       setTopic(targetTopic);
     }
   }, [urlTopic, topic]);
 
   // =========================================================================
-  // SPRINT 16: Health Check del Backend (una sola vez al montar)
-  // Verifica si el backend está disponible para habilitar auto-ingesta
+  // Invalidar caché de React Query al cambiar de topic
+  // El backend auto-fill se encarga de ingestar si la categoría está vacía
   // =========================================================================
+  const isFirstMount = useRef(true);
   useEffect(() => {
-    const checkBackendHealth = async () => {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), HEALTH_CHECK_TIMEOUT_MS);
-
-        const response = await fetch(`${API_BASE_URL}/health/check`, {
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (response.ok) {
-          console.log('✅ [HEALTH CHECK] Backend disponible para auto-ingesta');
-          setIsBackendAvailable(true);
-        } else {
-          console.warn('⚠️ [HEALTH CHECK] Backend respondió con error:', response.status);
-          setIsBackendAvailable(false);
-        }
-      } catch (error) {
-        console.warn('🔌 [HEALTH CHECK] Backend no disponible - Auto-ingesta deshabilitada');
-        setIsBackendAvailable(false);
-      }
-    };
-
-    checkBackendHealth();
-  }, []); // Solo ejecutar una vez al montar
-
-  // =========================================================================
-  // FIX: Auto-Ingesta al RECARGAR página (F5) con TTL de 1 hora
-  // Solo se ejecuta una vez al montar, usa localStorage para TTL
-  // Sprint 22: Actualizado para usar 'topic' en lugar de 'category'
-  // =========================================================================
-  useEffect(() => {
-    // Solo ejecutar en primera carga (cuando isFirstMount es true)
-    if (!isFirstMount.current) return;
-
-    // Skip favoritos - no necesitan ingesta RSS
-    if (topic === 'favorites') {
-      console.log('⭐ [AUTO-RELOAD] Topic FAVORITOS: sin ingesta RSS');
-      return;
-    }
-
-    // Skip si backend no disponible
-    if (!isBackendAvailable) {
-      console.log('🔌 [AUTO-RELOAD] Backend no disponible - Sin ingesta');
-      return;
-    }
-
-    // Verificar TTL con localStorage
-    const autoIngestWithTTL = async () => {
-      const storageKey = `last-ingest-${topic}`;
-      const lastIngestStr = localStorage.getItem(storageKey);
-      const now = Date.now();
-
-      // Si existe timestamp y no ha pasado 1 hora, saltar
-      if (lastIngestStr) {
-        const lastIngest = parseInt(lastIngestStr, 10);
-        const timeSinceIngest = now - lastIngest;
-        const minutesSince = Math.round(timeSinceIngest / (60 * 1000));
-
-        if (timeSinceIngest < AUTO_INGEST_TTL_MS) {
-          console.log(`💰 [AUTO-RELOAD] Última ingesta hace ${minutesSince}min - SALTANDO (TTL: 60min)`);
-          return;
-        }
-        console.log(`🔄 [AUTO-RELOAD] Última ingesta hace ${minutesSince}min - Actualizando...`);
-      } else {
-        console.log('📥 [AUTO-RELOAD] Primera ingesta para topic:', topic);
-      }
-
-      // Skip ingestion for special topics that don't have RSS feeds
-      if (topic === 'local' || topic === 'favorites') {
-        console.log(`⏭️ [AUTO-RELOAD] Skipping ingestion for special topic: ${topic}`);
-        return; // Exit early, these topics use search/favorites, not RSS
-      }
-
-      try {
-        const requestBody: { pageSize: number; category: string } = {
-          pageSize: INGEST_PAGE_SIZE,
-          category: topic, // Backend espera 'category', pero le pasamos el topic
-        };
-
-        console.log(`📡 [AUTO-RELOAD] POST /api/ingest/news (topic: ${topic})`);
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), INGEST_TIMEOUT_MS);
-
-        const response = await fetch(`${API_BASE_URL}/api/ingest/news`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestBody),
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (response.ok) {
-          const data = await response.json();
-          console.log('✅ [AUTO-RELOAD] Ingesta completada:', data.data?.newArticles || 0, 'nuevos artículos');
-
-          // Guardar timestamp de última ingesta
-          localStorage.setItem(storageKey, now.toString());
-
-          // Invalidar cache para mostrar datos actualizados
-          invalidateNews(topic);
-        } else {
-          console.warn('⚠️ [AUTO-RELOAD] Error en ingesta:', response.status);
-        }
-      } catch (error) {
-        console.error('❌ [AUTO-RELOAD] Error:', error);
-      }
-    };
-
-    // Delay de 500ms para que el health check termine primero
-    const timeoutId = setTimeout(() => {
-      autoIngestWithTTL();
-    }, AUTO_INGEST_INITIAL_DELAY_MS);
-
-    return () => clearTimeout(timeoutId);
-  }, [topic, isBackendAvailable, invalidateNews]); // Ejecutar cuando cambie el topic inicial
-
-  // =========================================================================
-  // SPRINT 16: Auto-Ingesta al cambiar de topic
-  // Dispara ingesta RSS + invalidación + refetch (como botón "Últimas noticias")
-  // Solo se ejecuta en cambios de topic, NO en primera carga
-  // Sprint 22: Actualizado para usar 'topic' en lugar de 'category'
-  // =========================================================================
-  useEffect(() => {
-    // Skip primera carga - solo queremos ingesta en cambios de topic
+    // Skip primera carga - useNewsInfinite ya hace el fetch inicial
     if (isFirstMount.current) {
       isFirstMount.current = false;
-      console.log(`🚀 [AUTO-INGESTA] Primera carga de topic: ${topic} (sin ingesta)`);
       return;
     }
 
-    // Skip favoritos - no necesitan ingesta RSS, solo invalidar para refetch
-    if (topic === 'favorites') {
-      console.log('⭐ [AUTO-INGESTA] Topic FAVORITOS: invalidando para refetch (sin ingesta RSS)');
-      invalidateNews(topic);
-      return;
-    }
-
-    // Skip si backend no está disponible - solo hacer refetch de BD
-    if (!isBackendAvailable) {
-      console.log('🔌 [AUTO-INGESTA] Backend no disponible - Solo refetch de BD');
-      invalidateNews(topic);
-      return;
-    }
-
-    // Debounce: Esperar 300ms para evitar múltiples ingestas rápidas al cambiar topics
-    const timeoutId = setTimeout(async () => {
-      // =========================================================================
-      // SMART INGESTION: Verificar TTL de 1 hora antes de disparar ingesta
-      // Optimización de costes - Solo ingestar si no hay datos o son antiguos
-      // =========================================================================
-      const latestArticle = newsData?.data?.[0]; // Artículo más reciente (ordenado por fecha desc)
-      const lastUpdate = latestArticle?.publishedAt
-        ? new Date(latestArticle.publishedAt).getTime()
-        : 0;
-      const now = Date.now();
-      const ageInMinutes = Math.round((now - lastUpdate) / (60 * 1000));
-
-      const shouldAutoRefresh = !latestArticle || (now - lastUpdate > AUTO_INGEST_TTL_MS);
-
-      if (!shouldAutoRefresh) {
-        console.log(`💰 [SMART INGESTION] Datos frescos en BD (${ageInMinutes} min) - SALTANDO ingesta automática`);
-        console.log(`   → Ahorro: ~50 artículos × análisis IA no procesados innecesariamente`);
-        console.log(`   → Última noticia: "${latestArticle?.title?.substring(0, 60)}..."`);
-        // Solo invalidar caché para refetch de BD, sin ingesta RSS
-        invalidateNews(topic);
-        return;
-      }
-
-      console.log(`📥 [AUTO-INGESTA] Iniciando ingesta (datos > 1h o vacíos)`);
-      console.log(`   → Antigüedad: ${ageInMinutes > 60 ? `${Math.round(ageInMinutes / 60)}h` : `${ageInMinutes}min`}`);
-
-      try {
-        const requestBody: { pageSize: number; category: string } = {
-          pageSize: INGEST_PAGE_SIZE, // Aumentado de 20 a 50 para mejor cobertura y más artículos frescos
-          category: topic, // Backend espera 'category', pero le pasamos el topic
-        };
-
-        // ✅ CAMBIO: 'general' ahora es un topic INDEPENDIENTE (no un agregador)
-        // Se envía explícitamente para que backend filtre solo noticias de fuentes de portada
-
-        // Fetch con timeout de 5 segundos para evitar hangs
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), INGEST_TIMEOUT_MS);
-
-        const response = await fetch(`${API_BASE_URL}/api/ingest/news`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestBody),
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (response.ok) {
-          const data = await response.json();
-          console.log('✅ [AUTO-INGESTA] Completada:', data.message);
-          console.log('📊 [AUTO-INGESTA] Nuevos artículos:', data.data?.newArticles || 0);
-          console.log('♻️  [AUTO-INGESTA] Artículos actualizados:', data.data?.duplicates || 0);
-
-          if (data.data?.newArticles === 0) {
-            console.log('💰 [SMART INGESTION] Sin artículos nuevos - próxima vez se saltará por TTL');
-          } else {
-            console.log('🔄 [SMART INGESTION] Artículos frescos ingresados - BD actualizada');
-          }
-
-          // CRÍTICO: Invalidar TODOS los topics, no solo el actual
-          // Razón: Una noticia puede aparecer en múltiples feeds RSS y actualizarse
-          // Ejemplo: Noticia de inflación aparece en "general" y "economia"
-          invalidateNews(topic, true); // true = invalidateAll
-        } else {
-          console.warn(`⚠️ [AUTO-INGESTA] Error HTTP ${response.status}:`, response.statusText);
-          // Aún así, invalidar todos los topics por si hay cambios previos
-          invalidateNews(topic, true);
-        }
-      } catch (error) {
-        // Manejo de errores más específico
-        if (error instanceof Error) {
-          if (error.name === 'AbortError') {
-            console.warn('⏱️ [AUTO-INGESTA] Timeout (5s) - Backend puede estar lento o no disponible');
-          } else if (error.message.includes('fetch')) {
-            console.warn('🔌 [AUTO-INGESTA] Backend no disponible - Mostrando datos de BD actual');
-          } else {
-            console.warn('❌ [AUTO-INGESTA] Error:', error.message);
-          }
-        } else {
-          console.warn('❌ [AUTO-INGESTA] Error desconocido:', error);
-        }
-
-        // Siempre invalidar TODOS los topics, incluso si falla ingesta
-        // Esto asegura refetch de BD con los últimos datos disponibles
-        invalidateNews(topic, true);
-      }
-    }, AUTO_INGEST_DEBOUNCE_MS); // Debounce para evitar cambios rápidos
-
-    return () => clearTimeout(timeoutId);
-  }, [topic, invalidateNews, isBackendAvailable]); // Ejecutar cada vez que cambia el topic o disponibilidad del backend
+    // Invalidar caché para que React Query re-fetch con el nuevo topic
+    invalidateNews(topic);
+  }, [topic, invalidateNews]);
 
   // =========================================================================
   // Sprint 22: Ya no necesitamos handleCategoryChange - el Sidebar usa Links directos
@@ -484,7 +268,6 @@ function HomeContent() {
   useEffect(() => {
     if (isChangingTopic && !isLoading && !isFetching) {
       // Datos nuevos cargados, desactivar loading state
-      console.log('✅ [TOPIC CHANGE] Datos nuevos cargados, ocultando loading');
       setIsChangingTopic(false);
       previousTopicRef.current = topic;
     }
@@ -561,6 +344,8 @@ function HomeContent() {
         onOpenDashboard={() => setIsDashboardOpen(true)}
         onOpenSources={() => setIsSourcesOpen(true)}
         onOpenChat={() => setIsChatOpen(true)}
+        isMobileOpen={isMobileSidebarOpen}
+        onMobileOpenChange={setIsMobileSidebarOpen}
       />
 
       {/* Dashboard Drawer */}
@@ -593,17 +378,28 @@ function HomeContent() {
         {/* Header - Google News Style */}
         <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/95 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-900/95">
           <div className="px-4 sm:px-6 py-3">
-            <div className="flex items-center gap-4">
-              {/* Logo/Brand */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+              {/* Brand Row (Mobile) */}
               <div className="flex items-center gap-3 shrink-0">
-                <h1 className="text-xl font-bold text-zinc-900 dark:text-white">
-                  Verity News
-                </h1>
-                <Badge variant="secondary" className="hidden sm:inline-flex">Beta</Badge>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setIsMobileSidebarOpen(true)}
+                  className="lg:hidden h-9 w-9 rounded-full bg-white/90 dark:bg-zinc-900/90 border-zinc-200 dark:border-zinc-800 shadow-sm mt-1 sm:mt-0"
+                  aria-label="Abrir menú"
+                >
+                  <Menu className="h-5 w-5" />
+                </Button>
+                <div className="flex items-center gap-3">
+                  <h1 className="text-xl font-bold text-zinc-900 dark:text-white">
+                    Verity News
+                  </h1>
+                  <Badge variant="secondary" className="hidden sm:inline-flex">Beta</Badge>
+                </div>
               </div>
 
-              {/* Search Bar - Center/Flexible */}
-              <div className="flex-1 max-w-2xl">
+              {/* Search Bar - Full Width on Mobile */}
+              <div className="w-full sm:flex-1 sm:max-w-2xl -mx-4 sm:mx-0 px-4 sm:px-0 sm:min-w-0">
                 <SearchBar
                   placeholder="Buscar temas, noticias..."
                   className="w-full"
@@ -628,9 +424,18 @@ function HomeContent() {
 
         {/* Scrollable Content Area */}
         <div className="flex-1 overflow-y-auto">
+          {/* WarmUp Banner (inline) - visible cuando hay datos cacheados + backend warming */}
+          {backendStatus !== 'ready' && backendStatus !== 'checking' && newsData && newsData.data.length > 0 && (
+            <WarmUpBanner
+              status={backendStatus}
+              retryCount={retryCount}
+              onRetry={retryBackend}
+            />
+          )}
+
           <div className="px-4 sm:px-6 py-8">
-            {/* Error State */}
-            {error && (
+            {/* Error State - solo mostrar si backend está ready (errores reales, no cold start) */}
+            {error && backendStatus === 'ready' && (
               <div className="max-w-2xl mx-auto p-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
                 <h2 className="text-lg font-semibold text-red-800 dark:text-red-400 mb-2">
                   Error al cargar las noticias
@@ -646,7 +451,7 @@ function HomeContent() {
             )}
 
             {/* Empty State */}
-            {!error && newsData && newsData.data.length === 0 && !isFetching && (
+            {!error && newsData && newsData.data.length === 0 && !isFetching && backendStatus === 'ready' && (
               <div className="max-w-2xl mx-auto text-center py-16">
                 <div className="text-6xl mb-4">
                   {topic === 'favorites' ? '❤️' : '📰'}
@@ -668,29 +473,37 @@ function HomeContent() {
 
             {/* Loading State - Carga inicial O cambio de topic */}
             {(isLoading || isChangingTopic) && (
-              <div className="max-w-7xl mx-auto">
-                {/* Loading message */}
-                <div className="flex items-center justify-center gap-3 mb-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-3 border-blue-600 border-t-transparent"></div>
-                  <p className="text-lg font-medium text-zinc-900 dark:text-white">
-                    {isChangingTopic ? 'Cargando noticias frescas...' : 'Cargando noticias...'}
-                  </p>
-                </div>
-
-                {/* Skeleton cards */}
-                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                  {[...Array(SKELETON_CARD_COUNT)].map((_, i) => (
-                    <div key={i} className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden animate-pulse">
-                      <div className="h-48 bg-zinc-200 dark:bg-zinc-800" />
-                      <div className="p-4 space-y-3">
-                        <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded w-3/4" />
-                        <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded w-1/2" />
-                        <div className="h-3 bg-zinc-200 dark:bg-zinc-800 rounded w-1/4" />
+              backendStatus !== 'ready' && !isChangingTopic && !hasCachedData ? (
+                /* Backend warming/down + sin cache → WarmUpScreen completa */
+                <WarmUpBanner
+                  status={backendStatus}
+                  retryCount={retryCount}
+                  onRetry={retryBackend}
+                  fullScreen
+                />
+              ) : (
+                /* Backend ready o cambio de topic → skeleton normal */
+                <div className="max-w-7xl mx-auto">
+                  <div className="flex items-center justify-center gap-3 mb-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-3 border-blue-600 border-t-transparent"></div>
+                    <p className="text-lg font-medium text-zinc-900 dark:text-white">
+                      {isChangingTopic ? 'Cargando noticias frescas...' : 'Cargando noticias...'}
+                    </p>
+                  </div>
+                  <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                    {[...Array(SKELETON_CARD_COUNT)].map((_, i) => (
+                      <div key={i} className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden animate-pulse">
+                        <div className="h-48 bg-zinc-200 dark:bg-zinc-800" />
+                        <div className="p-4 space-y-3">
+                          <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded w-3/4" />
+                          <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded w-1/2" />
+                          <div className="h-3 bg-zinc-200 dark:bg-zinc-800 rounded w-1/4" />
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )
             )}
 
             {/* News Grid - Solo mostrar cuando NO estamos cambiando topic */}
@@ -701,6 +514,10 @@ function HomeContent() {
                     <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">
                       {getTopicTitle(topic)}
                     </h2>
+                    {/* Sprint 32: Local scope badge */}
+                    {topic === 'local' && newsData?.meta?.localMeta && (
+                      <LocalScopeBadge localMeta={newsData.meta.localMeta} />
+                    )}
                     {/* Indicador discreto de refetch en background */}
                     {isFetching && (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -739,8 +556,8 @@ function HomeContent() {
         </div>
 
         {/* Footer */}
-        <footer className="border-t border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-          <div className="px-4 sm:px-6 py-4 text-center text-sm text-muted-foreground">
+        <footer className="hidden sm:block border-t border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="px-4 sm:px-6 py-0.5 text-center text-[10px] leading-tight sm:text-xs text-muted-foreground">
             <p>
               Verity News - Análisis de sesgo en noticias con IA{' '}
               <span className="text-zinc-400 dark:text-zinc-600">|</span>{' '}

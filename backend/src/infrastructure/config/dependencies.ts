@@ -11,7 +11,7 @@ import { DirectSpanishRssClient } from '../external/direct-spanish-rss.client';
 import { GeminiClient } from '../external/gemini.client';
 import { JinaReaderClient } from '../external/jina-reader.client';
 import { MetadataExtractor } from '../external/metadata-extractor';
-import { ChromaClient } from '../external/chroma.client';
+import { PgVectorClient } from '../external/pgvector.client';
 import { TokenTaximeter } from '../monitoring/token-taximeter';
 import { PrismaNewsArticleRepository } from '../persistence/prisma-news-article.repository';
 import { PrismaTopicRepository } from '../persistence/prisma-topic.repository';
@@ -30,6 +30,7 @@ import { ChatController } from '../http/controllers/chat.controller';
 import { SearchController } from '../http/controllers/search.controller';
 import { SourcesController } from '../http/controllers/sources.controller';
 import { UserController } from '../http/controllers/user.controller';
+import { EntitlementsController } from '../http/controllers/entitlements.controller';
 import { TopicController } from '../http/controllers/topic.controller';
 import { HealthController } from '../http/controllers/health.controller';
 import { SubscriptionController } from '../http/controllers/subscription.controller';
@@ -40,7 +41,7 @@ export class DependencyContainer {
   private static instance: DependencyContainer;
 
   public readonly prisma: PrismaClient;
-  public readonly chromaClient: ChromaClient;
+  public readonly vectorClient: PgVectorClient;
   public readonly geminiClient: GeminiClient;
   public readonly newsRepository: PrismaNewsArticleRepository;
   public readonly topicRepository: PrismaTopicRepository;
@@ -51,6 +52,7 @@ export class DependencyContainer {
   public readonly searchController: SearchController;
   public readonly sourcesController: SourcesController;
   public readonly userController: UserController;
+  public readonly entitlementsController: EntitlementsController;
   public readonly topicController: TopicController;
   public readonly healthController: HealthController;
   public readonly subscriptionController: SubscriptionController;
@@ -79,7 +81,7 @@ export class DependencyContainer {
     this.geminiClient = new GeminiClient(process.env.GEMINI_API_KEY || '', tokenTaximeter);
     const jinaReaderClient = new JinaReaderClient(process.env.JINA_API_KEY || '');
     const metadataExtractor = new MetadataExtractor();
-    this.chromaClient = new ChromaClient();
+    this.vectorClient = new PgVectorClient(this.prisma);
     this.newsRepository = new PrismaNewsArticleRepository(this.prisma);
     this.topicRepository = new PrismaTopicRepository(this.prisma);
 
@@ -106,26 +108,24 @@ export class DependencyContainer {
       this.geminiClient,
       jinaReaderClient,
       metadataExtractor,
-      this.chromaClient,
+      this.vectorClient,
       quotaService
     );
 
     const chatArticleUseCase = new ChatArticleUseCase(
       this.newsRepository,
       this.geminiClient,
-      this.chromaClient // Añadido para RAG
+      this.vectorClient // Añadido para RAG
     );
 
     const chatGeneralUseCase = new ChatGeneralUseCase(
-      this.geminiClient,
-      this.chromaClient, // Sprint 19.6: RAG sobre toda la base de datos
-      this.newsRepository // Fallback cuando ChromaDB no está disponible
+      this.geminiClient // Sprint 27.4: Chat general usa conocimiento completo de Gemini (sin RAG)
     );
 
     const searchNewsUseCase = new SearchNewsUseCase(
       this.newsRepository,
       this.geminiClient,
-      this.chromaClient
+      this.vectorClient
     );
 
     const toggleFavoriteUseCase = new ToggleFavoriteUseCase(this.newsRepository);
@@ -138,9 +138,10 @@ export class DependencyContainer {
       toggleFavoriteUseCase,
       ingestNewsUseCase // Sprint 19: Inject for reactive ingestion in search
     );
-    this.chatController = new ChatController(chatArticleUseCase, chatGeneralUseCase);
+    this.chatController = new ChatController(chatArticleUseCase, chatGeneralUseCase, quotaService);
     this.searchController = new SearchController(searchNewsUseCase);
     this.userController = new UserController(this.geminiClient);
+    this.entitlementsController = new EntitlementsController();
     this.topicController = new TopicController(this.topicRepository);
     this.sourcesController = new SourcesController(this.geminiClient);
     this.healthController = new HealthController(this.prisma);

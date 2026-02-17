@@ -99,8 +99,10 @@ describe('NewsController', () => {
       findAll: vi.fn(),
       count: vi.fn(),
       countFiltered: vi.fn(),
+      countLocalArticles: vi.fn(),
       findById: vi.fn(),
       searchArticles: vi.fn(),
+      searchLocalArticles: vi.fn(),
       getUserUnlockedArticleIds: vi.fn(),
       getUserFavoriteArticleIds: vi.fn(),
     };
@@ -133,15 +135,76 @@ describe('NewsController', () => {
       expect(statusMock).toHaveBeenCalledWith(401);
     });
 
-    it('400 si local sin ubicacion', async () => {
-      const { res, statusMock } = createRes();
+    it('fallback a Madrid si local sin ubicacion', async () => {
+      const { res, jsonMock } = createRes();
       const req = { query: { category: 'local' }, user: { uid: 'user-1' } } as Request;
 
       mockUserFindUnique.mockResolvedValueOnce({ location: null });
+      repository.searchLocalArticles.mockResolvedValueOnce({ articles: [], scopeUsed: 'general' });
+      repository.countLocalArticles.mockResolvedValueOnce(0);
+      ingestNewsUseCase.execute.mockResolvedValueOnce({ newArticles: 0 });
 
       await controller.getNews(req, res as Response);
 
-      expect(statusMock).toHaveBeenCalledWith(400);
+      // Should use fallback city 'Madrid' and return 200 with empty data + message
+      const payload = jsonMock.mock.calls[0][0];
+      expect(payload.success).toBe(true);
+      expect(payload.data).toEqual([]);
+      expect(payload.meta.message).toContain('Madrid');
+    });
+
+    it('normaliza ubicacion compuesta para busqueda local', async () => {
+      const { res, jsonMock } = createRes();
+      const req = { query: { category: 'local' }, user: { uid: 'user-1' } } as Request;
+
+      mockUserFindUnique.mockResolvedValueOnce({ location: 'Bilbao, País Vasco' });
+      repository.searchLocalArticles.mockResolvedValueOnce({
+        articles: [createArticle({ id: 'article-1' })],
+        scopeUsed: 'city',
+      });
+      repository.getUserUnlockedArticleIds.mockResolvedValueOnce(new Set(['article-1']));
+      ingestNewsUseCase.execute.mockResolvedValueOnce({ newArticles: 0 });
+
+      await controller.getNews(req, res as Response);
+
+      expect(repository.searchLocalArticles).toHaveBeenCalledWith(
+        { city: 'Bilbao', province: 'País Vasco', region: undefined },
+        20,
+        0,
+        'user-1'
+      );
+
+      const payload = jsonMock.mock.calls[0][0];
+      expect(payload.meta.location).toBe('Bilbao');
+    });
+
+    it('local respeta offset y calcula hasMore con los articulos retornados', async () => {
+      const { res, jsonMock } = createRes();
+      const req = {
+        query: { category: 'local', limit: '2', offset: '2' },
+        user: { uid: 'user-1' },
+      } as Request;
+
+      mockUserFindUnique.mockResolvedValueOnce({ location: 'Bilbao' });
+      repository.searchLocalArticles.mockResolvedValueOnce({
+        articles: [createArticle({ id: 'article-1' })],
+        scopeUsed: 'city',
+      });
+      repository.getUserUnlockedArticleIds.mockResolvedValueOnce(new Set(['article-1']));
+      ingestNewsUseCase.execute.mockResolvedValueOnce({ newArticles: 0 });
+
+      await controller.getNews(req, res as Response);
+
+      expect(repository.searchLocalArticles).toHaveBeenCalledWith(
+        { city: 'Bilbao', province: undefined, region: undefined },
+        2,
+        2,
+        'user-1'
+      );
+
+      const payload = jsonMock.mock.calls[0][0];
+      expect(payload.pagination.total).toBe(1);
+      expect(payload.pagination.hasMore).toBe(false);
     });
 
     it('200 en caso normal con usuario y analisis desbloqueado', async () => {
@@ -156,6 +219,8 @@ describe('NewsController', () => {
       await controller.getNews(req, res as Response);      const payload = jsonMock.mock.calls[0][0];
       expect(payload.data[0].analysis).toEqual({ summary: 'Summary', biasScore: 0.2 });
       expect(payload.pagination.total).toBe(1);
+      expect(typeof payload.data[0].publishedAt).toBe('string');
+      expect(payload.data[0].publishedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     });
   });
 
@@ -281,4 +346,3 @@ describe('NewsController', () => {
     });
   });
 });
-

@@ -5,7 +5,7 @@
  * Flow:
  * 1. Receive articleId and user message
  * 2. Generate embedding of the question
- * 3. Query ChromaDB for relevant context
+ * 3. Query pgvector for relevant context
  * 4. Combine retrieved documents as context
  * 5. Generate response using Gemini with context
  *
@@ -18,8 +18,8 @@
 
 import { INewsArticleRepository } from '../../domain/repositories/news-article.repository';
 import { IGeminiClient, ChatMessage } from '../../domain/services/gemini-client.interface';
-import { IChromaClient, QueryResult } from '../../domain/services/chroma-client.interface';
-import { EntityNotFoundError, ValidationError } from '../../domain/errors/domain.error';
+import { IVectorClient, QueryResult } from '../../domain/services/vector-client.interface';
+import { EntityNotFoundError, ValidationError, LowRelevanceError } from '../../domain/errors/domain.error';
 import { GeminiErrorMapper } from '../../infrastructure/external/gemini-error-mapper';
 
 // ============================================================================
@@ -27,7 +27,7 @@ import { GeminiErrorMapper } from '../../infrastructure/external/gemini-error-ma
 // ============================================================================
 
 /**
- * Máximo de documentos recuperados de ChromaDB.
+ * Máximo de documentos recuperados del vector store.
  * Más documentos = más contexto = más tokens = más coste.
  * 3 documentos es suficiente para la mayoría de preguntas.
  */
@@ -41,9 +41,25 @@ const MAX_DOCUMENT_CHARS = 2000;
 
 /**
  * Máximo de caracteres para contenido de fallback.
- * Cuando ChromaDB no está disponible, limitar el contenido del artículo.
+ * Cuando el vector store no está disponible, limitar el contenido del artículo.
  */
 const MAX_FALLBACK_CONTENT_CHARS = 3000;
+
+// ============================================================================
+// GRACEFUL DEGRADATION CONSTANTS (Sprint 29)
+// ============================================================================
+
+/**
+ * Threshold de similitud de coseno para considerar contexto relevante.
+ * Score < 0.25 indica que la pregunta está fuera del dominio del artículo.
+ *
+ * Valores típicos:
+ * - 0.8-1.0: Muy similar (mismas palabras clave)
+ * - 0.5-0.8: Relacionado (mismo tema)
+ * - 0.25-0.5: Vagamente relacionado
+ * - < 0.25: No relacionado (Out-of-Domain)
+ */
+const SIMILARITY_THRESHOLD = 0.25;
 
 export interface ChatArticleInput {
   articleId: string;
@@ -60,7 +76,7 @@ export class ChatArticleUseCase {
   constructor(
     private readonly articleRepository: INewsArticleRepository,
     private readonly geminiClient: IGeminiClient,
-    private readonly chromaClient: IChromaClient
+    private readonly vectorClient: IVectorClient
   ) {}
 
   /**
@@ -155,16 +171,35 @@ export class ChatArticleUseCase {
     }
 
     // COST OPTIMIZATION: Límite de documentos recuperados
-    console.log(`   🔎 Buscando en ChromaDB (max ${MAX_RAG_DOCUMENTS} docs)...`);
-    const results: QueryResult[] = await this.chromaClient.querySimilarWithDocuments(
+    console.log(`   🔎 Buscando en pgvector (max ${MAX_RAG_DOCUMENTS} docs)...`);
+    const results: QueryResult[] = await this.vectorClient.querySimilarWithDocuments(
       questionEmbedding,
       MAX_RAG_DOCUMENTS
     );
 
+    // =========================================================================
+    // GRACEFUL DEGRADATION (Sprint 29): Detectar preguntas fuera de contexto
+    // =========================================================================
+    // Si no hay resultados O el mejor resultado tiene score muy bajo:
+    // - NO llamar a Gemini (ahorra tokens)
+    // - Lanzar LowRelevanceError para trigger fallback a Chat General
     if (results.length === 0) {
-      console.log(`   ℹ️ No se encontraron documentos similares en ChromaDB`);
-      return '';
+      console.log(`   ⚠️ Sin resultados RAG → Pregunta fuera de contexto`);
+      throw new LowRelevanceError('No encuentro información sobre eso en esta noticia.');
     }
+
+    // Score de similitud = 1 - distance (pgvector usa distancia coseno)
+    // distance=0 → 100% similar, distance=1 → 0% similar
+    const bestDistance = results[0].distance ?? 1;
+    const bestScore = 1 - bestDistance;
+
+    if (bestScore < SIMILARITY_THRESHOLD) {
+      console.log(`   ⚠️ Score bajo (${bestScore.toFixed(3)} < ${SIMILARITY_THRESHOLD}) → Pregunta fuera de contexto`);
+      throw new LowRelevanceError('No encuentro información sobre eso en esta noticia.');
+    }
+
+    console.log(`   ✅ Contexto relevante encontrado (score: ${bestScore.toFixed(3)})`);
+
 
     // Prioritize the requested article if found in results
     const sortedResults = this.prioritizeArticle(results, articleId);

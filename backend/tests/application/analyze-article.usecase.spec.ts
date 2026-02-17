@@ -1,14 +1,14 @@
-/**
- * AnalyzeArticleUseCase Unit Tests - ZONA CRÍTICA (100% Coverage)
+﻿/**
+ * AnalyzeArticleUseCase Unit Tests - ZONA CRÃTICA (100% Coverage)
  *
- * Este archivo testea la lógica de orquestación del caso de uso de análisis,
- * clasificada como "Zona Roja" según docs/CALIDAD.md
+ * Este archivo testea la lÃ³gica de orquestaciÃ³n del caso de uso de anÃ¡lisis,
+ * clasificada como "Zona Roja" segÃºn docs/CALIDAD.md
  *
  * ESTRATEGIA:
  * - Mock COMPLETO de todas las dependencias (GeminiClient, Repository, JinaReader, Chroma, MetadataExtractor)
- * - Tests de flujos principales: cache hit, análisis nuevo, scraping
- * - Tests de edge cases: artículo no encontrado, contenido inválido, errores de API
- * - Verificación de cost optimization: que NO se llame a Gemini si ya está analizado
+ * - Tests de flujos principales: cache hit, anÃ¡lisis nuevo, scraping
+ * - Tests de edge cases: artÃ­culo no encontrado, contenido invÃ¡lido, errores de API
+ * - VerificaciÃ³n de cost optimization: que NO se llame a Gemini si ya estÃ¡ analizado
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -25,6 +25,8 @@ const mockGeminiClient = {
   analyzeArticle: vi.fn(),
   chatWithContext: vi.fn(),
   chatWithGrounding: vi.fn(),
+  generateChatResponse: vi.fn(),
+  generateGeneralResponse: vi.fn(),
   generateEmbedding: vi.fn(),
   getSessionCostReport: vi.fn(),
 };
@@ -79,7 +81,10 @@ function createMockArticle(overrides?: Partial<any>): NewsArticle {
     publishedAt: new Date('2026-02-01T10:00:00Z'),
     source: 'Test Source',
     author: 'Test Author',
-    content: 'This is a test article with enough content to pass validation requirements. It has more than 100 characters to ensure it can be analyzed properly.',
+    content:
+      'This is a test article with enough content to pass validation requirements. It has more than 100 characters to ensure it can be analyzed properly. '.repeat(
+        12
+      ),
     category: 'technology',
     language: 'es',
     embedding: null,
@@ -104,14 +109,23 @@ function createMockAnalysis(overrides?: Partial<ArticleAnalysis>): ArticleAnalys
     summary: 'Test summary of the article',
     biasScore: 0,
     biasRaw: 0,
-    biasIndicators: [],
+    biasScoreNormalized: 0,
+    biasIndicators: [
+      'Loaded wording: "total failure"',
+      'Generalization: "everyone knows"',
+      'Selective framing: "only this side"',
+    ],
     clickbaitScore: 20,
     reliabilityScore: 80,
+    traceabilityScore: 80,
+    factualityStatus: 'no_determinable',
+    evidence_needed: [],
+    should_escalate: false,
     sentiment: 'neutral',
     mainTopics: ['technology', 'AI'],
     factCheck: {
       claims: ['AI is advancing rapidly'],
-      verdict: 'Verified',
+      verdict: 'SupportedByArticle',
       reasoning: 'Based on recent research publications',
     },
     ...overrides,
@@ -137,7 +151,7 @@ function createMockGeminiResponse(analysis?: Partial<ArticleAnalysis>) {
 // TEST SUITE
 // ============================================================================
 
-describe('AnalyzeArticleUseCase - Lógica de Orquestación (ZONA CRÍTICA)', () => {
+describe('AnalyzeArticleUseCase - LÃ³gica de OrquestaciÃ³n (ZONA CRÃTICA)', () => {
   let useCase: AnalyzeArticleUseCase;
 
   beforeEach(() => {
@@ -159,11 +173,11 @@ describe('AnalyzeArticleUseCase - Lógica de Orquestación (ZONA CRÍTICA)', () 
   });
 
   // ==========================================================================
-  // GRUPO 1: VALIDACIÓN DE INPUTS (ZONA ROJA - 100%)
+  // GRUPO 1: VALIDACIÃ“N DE INPUTS (ZONA ROJA - 100%)
   // ==========================================================================
 
-  describe('🔒 Validación de Inputs', () => {
-    it('VALIDACIÓN: lanza ValidationError si articleId está vacío', async () => {
+  describe('ðŸ”’ ValidaciÃ³n de Inputs', () => {
+    it('VALIDACIÃ“N: lanza ValidationError si articleId estÃ¡ vacÃ­o', async () => {
       // ACT & ASSERT
       await expect(
         useCase.execute({ articleId: '' })
@@ -173,11 +187,11 @@ describe('AnalyzeArticleUseCase - Lógica de Orquestación (ZONA CRÍTICA)', () 
         useCase.execute({ articleId: '   ' })
       ).rejects.toThrow('Article ID is required');
 
-      // Verificar que NO se llamó al repositorio
+      // Verificar que NO se llamÃ³ al repositorio
       expect(mockArticleRepository.findById).not.toHaveBeenCalled();
     });
 
-    it('ENTIDAD NO ENCONTRADA: lanza EntityNotFoundError si el artículo no existe', async () => {
+    it('ENTIDAD NO ENCONTRADA: lanza EntityNotFoundError si el artÃ­culo no existe', async () => {
       // ARRANGE
       mockArticleRepository.findById.mockResolvedValueOnce(null);
 
@@ -194,14 +208,21 @@ describe('AnalyzeArticleUseCase - Lógica de Orquestación (ZONA CRÍTICA)', () 
   // GRUPO 2: COST OPTIMIZATION - CACHE HIT (ZONA ROJA - 100%)
   // ==========================================================================
 
-  describe('💰 Cost Optimization - Cache Hit', () => {
-    it('CACHE HIT: devuelve análisis existente SIN llamar a Gemini si isAnalyzed=true', async () => {
-      // ARRANGE - Artículo ya analizado
-      const existingAnalysis = createMockAnalysis();
+  describe('ðŸ’° Cost Optimization - Cache Hit', () => {
+    it('CACHE HIT: devuelve anÃ¡lisis existente SIN llamar a Gemini si isAnalyzed=true', async () => {
+      // ARRANGE - ArtÃ­culo ya analizado
+      const cachedSummary =
+        'Existing summary with enough descriptive detail to be treated as a valid cached editorial output.';
+      const existingAnalysis = createMockAnalysis({
+        summary: cachedSummary,
+        biasRaw: 5,
+        biasScore: 0.5,
+        biasScoreNormalized: 0.5,
+      });
       const analyzedArticle = createMockArticle({
         isAnalyzed: true,
-        summary: 'Existing summary',
-        biasScore: 5,
+        summary: cachedSummary,
+        biasScore: 0.5,
         analysis: JSON.stringify(existingAnalysis),
         analyzedAt: new Date('2026-02-01T12:00:00Z'),
       });
@@ -213,20 +234,28 @@ describe('AnalyzeArticleUseCase - Lógica de Orquestación (ZONA CRÍTICA)', () 
 
       // ASSERT
       expect(result).toBeDefined();
-      expect(result.summary).toBe('Existing summary');
-      expect(result.biasScore).toBe(5);
-      expect(result.analysis).toEqual(existingAnalysis);
+      expect(result.summary).toBe(cachedSummary);
+      expect(result.biasScore).toBe(0.5);
+      expect(result.analysis).toEqual(
+        expect.objectContaining({
+          summary: existingAnalysis.summary,
+          biasScore: existingAnalysis.biasScore,
+          biasRaw: existingAnalysis.biasRaw,
+          reliabilityScore: expect.any(Number),
+          traceabilityScore: expect.any(Number),
+        })
+      );
 
-      // CRÍTICO: Verificar que NO se llamó a Gemini (cost optimization)
+      // CRÃTICO: Verificar que NO se llamÃ³ a Gemini (cost optimization)
       expect(mockGeminiClient.analyzeArticle).not.toHaveBeenCalled();
       expect(mockJinaReaderClient.scrapeUrl).not.toHaveBeenCalled();
 
-      // Verificar que NO se guardó nada (cache hit = solo lectura)
+      // Verificar que NO se guardÃ³ nada (cache hit = solo lectura)
       expect(mockArticleRepository.update).not.toHaveBeenCalled();
     });
 
     it('CACHE MISS: llama a Gemini si isAnalyzed=false aunque tenga contenido', async () => {
-      // ARRANGE - Artículo sin analizar pero con contenido válido
+      // ARRANGE - ArtÃ­culo sin analizar pero con contenido vÃ¡lido
       const unanalyzedArticle = createMockArticle({
         isAnalyzed: false,
         content: 'Valid content with more than 100 characters for testing purposes. This should trigger Gemini analysis.',
@@ -241,7 +270,7 @@ describe('AnalyzeArticleUseCase - Lógica de Orquestación (ZONA CRÍTICA)', () 
         ...unanalyzedArticle,
         isAnalyzed: true,
         summary: geminiResponse.summary,
-        biasScore: geminiResponse.biasScore,
+        biasScore: geminiResponse.biasScoreNormalized,
         analysis: JSON.stringify(geminiResponse),
       });
       mockChromaClient.addDocument.mockResolvedValueOnce(undefined);
@@ -253,14 +282,16 @@ describe('AnalyzeArticleUseCase - Lógica de Orquestación (ZONA CRÍTICA)', () 
       expect(result).toBeDefined();
       expect(result.summary).toBe(geminiResponse.summary);
 
-      // CRÍTICO: Verificar que SÍ se llamó a Gemini (cache miss)
+      // CRÃTICO: Verificar que SÃ se llamÃ³ a Gemini (cache miss)
       expect(mockGeminiClient.analyzeArticle).toHaveBeenCalledTimes(1);
-      expect(mockGeminiClient.analyzeArticle).toHaveBeenCalledWith({
-        title: unanalyzedArticle.title,
-        content: unanalyzedArticle.content,
-        language: unanalyzedArticle.language,
-        source: unanalyzedArticle.source,
-      });
+      expect(mockGeminiClient.analyzeArticle).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: unanalyzedArticle.title,
+          content: unanalyzedArticle.content,
+          language: unanalyzedArticle.language,
+          source: unanalyzedArticle.source,
+        })
+      );
     });
   });
 
@@ -268,7 +299,7 @@ describe('AnalyzeArticleUseCase - Lógica de Orquestación (ZONA CRÍTICA)', () 
   // GRUPO 3: FLUJO DE SCRAPING (ZONA ROJA - 100%)
   // ==========================================================================
 
-  describe('🌐 Flujo de Scraping con Jina Reader', () => {
+  describe('ðŸŒ Flujo de Scraping con Jina Reader', () => {
     it('SCRAPING: llama a JinaReader si content es muy corto (<100 chars)', async () => {
       // ARRANGE
       const articleWithShortContent = createMockArticle({
@@ -296,12 +327,14 @@ describe('AnalyzeArticleUseCase - Lógica de Orquestación (ZONA CRÍTICA)', () 
 
       // ASSERT
       expect(mockJinaReaderClient.scrapeUrl).toHaveBeenCalledWith(articleWithShortContent.url);
-      expect(mockGeminiClient.analyzeArticle).toHaveBeenCalledWith({
-        title: articleWithShortContent.title,
-        content: scrapedContent, // Debe usar el contenido scrapeado
-        language: articleWithShortContent.language,
-        source: articleWithShortContent.source,
-      });
+      expect(mockGeminiClient.analyzeArticle).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: articleWithShortContent.title,
+          content: scrapedContent, // Debe usar el contenido scrapeado
+          language: articleWithShortContent.language,
+          source: articleWithShortContent.source,
+        })
+      );
       expect(result.scrapedContentLength).toBe(scrapedContent.length);
     });
 
@@ -326,7 +359,7 @@ describe('AnalyzeArticleUseCase - Lógica de Orquestación (ZONA CRÍTICA)', () 
       // ASSERT
       expect(mockJinaReaderClient.scrapeUrl).toHaveBeenCalled();
       
-      // Verificar que se llamó a Gemini (con fallback message)
+      // Verificar que se llamÃ³ a Gemini (con fallback message)
       expect(mockGeminiClient.analyzeArticle).toHaveBeenCalledTimes(1);
       const geminiCall = mockGeminiClient.analyzeArticle.mock.calls[0][0];
       expect(geminiCall.title).toBe(articleWithShortContent.title);
@@ -336,16 +369,18 @@ describe('AnalyzeArticleUseCase - Lógica de Orquestación (ZONA CRÍTICA)', () 
   });
 
   // ==========================================================================
-  // GRUPO 4: PERSISTENCIA Y ACTUALIZACIÓN (ZONA ROJA - 100%)
+  // GRUPO 4: PERSISTENCIA Y ACTUALIZACIÃ“N (ZONA ROJA - 100%)
   // ==========================================================================
 
-  describe('💾 Persistencia y Actualización', () => {
-    it('GUARDADO: actualiza el artículo en BD con el análisis de Gemini', async () => {
+  describe('ðŸ’¾ Persistencia y ActualizaciÃ³n', () => {
+    it('GUARDADO: actualiza el artÃ­culo en BD con el anÃ¡lisis de Gemini', async () => {
       // ARRANGE
       const article = createMockArticle({ isAnalyzed: false });
       const geminiResponse = createMockGeminiResponse({
         summary: 'Generated summary',
-        biasScore: 3,
+        biasRaw: 3,
+        biasScore: 0.3,
+        biasScoreNormalized: 0.3,
       });
 
       mockArticleRepository.findById.mockResolvedValueOnce(article);
@@ -355,20 +390,20 @@ describe('AnalyzeArticleUseCase - Lógica de Orquestación (ZONA CRÍTICA)', () 
         ...article,
         isAnalyzed: true,
         summary: geminiResponse.summary,
-        biasScore: geminiResponse.biasScore,
+        biasScore: geminiResponse.biasScoreNormalized,
       });
       mockChromaClient.addDocument.mockResolvedValueOnce(undefined);
 
       // ACT
       const result = await useCase.execute({ articleId: 'test-article-id-123' });
 
-      // ASSERT - Verificar que Gemini fue llamado y el resultado contiene el análisis
+      // ASSERT - Verificar que Gemini fue llamado y el resultado contiene el anÃ¡lisis
       expect(mockGeminiClient.analyzeArticle).toHaveBeenCalledTimes(1);
       expect(result.summary).toBe(geminiResponse.summary);
-      expect(result.biasScore).toBe(geminiResponse.biasScore);
+      expect(result.biasScore).toBe(geminiResponse.biasScoreNormalized);
     });
 
-    it('VECTOR DB: almacena embedding en ChromaDB después del análisis', async () => {
+    it('VECTOR DB: almacena embedding en ChromaDB despuÃ©s del anÃ¡lisis', async () => {
       // ARRANGE
       const article = createMockArticle({ isAnalyzed: false });
       const geminiResponse = createMockGeminiResponse();
@@ -382,7 +417,7 @@ describe('AnalyzeArticleUseCase - Lógica de Orquestación (ZONA CRÍTICA)', () 
       // ACT
       const result = await useCase.execute({ articleId: 'test-article-id-123' });
 
-      // ASSERT - Verificar que el análisis se completó correctamente
+      // ASSERT - Verificar que el anÃ¡lisis se completÃ³ correctamente
       expect(mockGeminiClient.analyzeArticle).toHaveBeenCalledTimes(1);
       expect(result).toBeDefined();
       expect(result.summary).toBe(geminiResponse.summary);
@@ -390,11 +425,11 @@ describe('AnalyzeArticleUseCase - Lógica de Orquestación (ZONA CRÍTICA)', () 
   });
 
   // ==========================================================================
-  // GRUPO 5: METADATA EXTRACTION (ZONA ESTÁNDAR - 80%)
+  // GRUPO 5: METADATA EXTRACTION (ZONA ESTÃNDAR - 80%)
   // ==========================================================================
 
-  describe('📊 Metadata Extraction', () => {
-    it('METADATA: extrae y actualiza metadata del artículo', async () => {
+  describe('ðŸ“Š Metadata Extraction', () => {
+    it('METADATA: extrae y actualiza metadata del artÃ­culo', async () => {
       // ARRANGE
       const article = createMockArticle({ isAnalyzed: false });
       const geminiResponse = createMockGeminiResponse();
@@ -412,7 +447,7 @@ describe('AnalyzeArticleUseCase - Lógica de Orquestación (ZONA CRÍTICA)', () 
       // ACT
       const result = await useCase.execute({ articleId: 'test-article-id-123' });
 
-      // ASSERT - Verificar que el análisis se completó
+      // ASSERT - Verificar que el anÃ¡lisis se completÃ³
       expect(mockGeminiClient.analyzeArticle).toHaveBeenCalledTimes(1);
       expect(result).toBeDefined();
       expect(result.summary).toBe(geminiResponse.summary);

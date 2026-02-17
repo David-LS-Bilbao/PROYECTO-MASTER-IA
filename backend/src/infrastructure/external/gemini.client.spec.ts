@@ -1,4 +1,4 @@
-/**
+﻿/**
  * GeminiClient Unit Tests - ZONA CRÍTICA (100% Coverage)
  *
  * Este archivo testea la lógica de cálculo de costes y tracking de tokens,
@@ -119,7 +119,7 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
             mainTopics: ['test'],
             factCheck: {
               claims: ['Test claim'],
-              verdict: 'Verified',
+              verdict: 'SupportedByArticle',
               reasoning: 'Test reasoning',
             },
           }),
@@ -161,7 +161,7 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
             mainTopics: ['test'],
             factCheck: {
               claims: [],
-              verdict: 'Unproven',
+              verdict: 'InsufficientEvidenceInArticle',
               reasoning: 'No data',
             },
           }),
@@ -205,7 +205,7 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
             mainTopics: ['economics'],
             factCheck: {
               claims: ['Test claim'],
-              verdict: 'Mixed',
+              verdict: 'InsufficientEvidenceInArticle',
               reasoning: 'Partial verification',
             },
           }),
@@ -249,7 +249,7 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
             mainTopics: ['politics'],
             factCheck: {
               claims: ['Fact 1'],
-              verdict: 'Verified',
+              verdict: 'SupportedByArticle',
               reasoning: 'Official source',
             },
           }),
@@ -304,7 +304,7 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
               mainTopics: ['test'],
               factCheck: {
                 claims: [],
-                verdict: 'Unproven',
+                verdict: 'InsufficientEvidenceInArticle',
                 reasoning: 'Test',
               },
             }),
@@ -385,7 +385,7 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
             mainTopics: ['test'],
             factCheck: {
               claims: [],
-              verdict: 'Unproven',
+              verdict: 'InsufficientEvidenceInArticle',
               reasoning: 'Test',
             },
           }),
@@ -483,7 +483,7 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
               mainTopics: ['test'],
               factCheck: {
                 claims: [],
-                verdict: 'Unproven',
+                verdict: 'InsufficientEvidenceInArticle',
                 reasoning: 'Test',
               },
             }),
@@ -669,7 +669,7 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
             mainTopics: ['test'],
             factCheck: {
               claims: [],
-              verdict: 'Unproven',
+              verdict: 'InsufficientEvidenceInArticle',
               reasoning: 'Test',
             },
           }),
@@ -747,7 +747,7 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
             reliabilityScore: 50,
             sentiment: 'neutral',
             mainTopics: ['test'],
-            factCheck: { claims: [], verdict: 'Unproven', reasoning: 'Test' },
+            factCheck: { claims: [], verdict: 'InsufficientEvidenceInArticle', reasoning: 'Test' },
           }),
           usageMetadata: {
             promptTokenCount: 2000,
@@ -780,6 +780,144 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
       }
 
       consoleLogSpy.mockRestore();
+    });
+  });
+
+  describe('🧭 Selección automática de prompt de análisis', () => {
+    it('usa prompt low-cost cuando el contenido es corto (<800 chars)', async () => {
+      mockGenerateContent.mockResolvedValueOnce({
+        response: {
+          text: () => JSON.stringify({ summary: 'Resumen breve' }),
+          usageMetadata: {
+            promptTokenCount: 100,
+            candidatesTokenCount: 50,
+            totalTokenCount: 150,
+          },
+        },
+      });
+
+      await geminiClient.analyzeArticle({
+        title: 'Articulo corto',
+        content: 'Contenido breve sin demasiada longitud para activar modo economico. '.repeat(4),
+        source: 'Fuente test',
+        language: 'es',
+      });
+
+      const requestUsed = mockGenerateContent.mock.calls[0][0] as {
+        contents?: Array<{ parts?: Array<{ text?: string }> }>;
+      };
+      const promptUsed = requestUsed?.contents?.[0]?.parts?.[0]?.text ?? '';
+      expect(promptUsed).toContain('Analiza SOLO el texto dado en <ARTICLE>');
+    });
+
+    it('usa low-cost por defecto cuando no se solicita modo explícito', async () => {
+      mockGenerateContent.mockResolvedValueOnce({
+        response: {
+          text: () => JSON.stringify({ summary: 'Resumen largo' }),
+          usageMetadata: {
+            promptTokenCount: 120,
+            candidatesTokenCount: 60,
+            totalTokenCount: 180,
+          },
+        },
+      });
+
+      await geminiClient.analyzeArticle({
+        title: 'Articulo largo',
+        content: 'Contenido largo con trazabilidad potencial. '.repeat(30),
+        source: 'Fuente test',
+        language: 'es',
+      });
+
+      const requestUsed = mockGenerateContent.mock.calls[0][0] as {
+        contents?: Array<{ parts?: Array<{ text?: string }> }>;
+      };
+      const promptUsed = requestUsed?.contents?.[0]?.parts?.[0]?.text ?? '';
+      expect(promptUsed).toContain('Analiza SOLO el texto dado en <ARTICLE>');
+    });
+
+    it('usa prompt MODERATE cuando se solicita analysisMode=moderate', async () => {
+      mockGenerateContent.mockResolvedValueOnce({
+        response: {
+          text: () => JSON.stringify({ summary: 'Resumen moderate' }),
+          usageMetadata: {
+            promptTokenCount: 120,
+            candidatesTokenCount: 60,
+            totalTokenCount: 180,
+          },
+        },
+      });
+
+      await geminiClient.analyzeArticle({
+        title: 'Articulo moderate',
+        content: 'Contenido largo con trazabilidad potencial. '.repeat(30),
+        source: 'Fuente test',
+        language: 'es',
+        analysisMode: 'moderate',
+      });
+
+      const requestUsed = mockGenerateContent.mock.calls[0][0] as {
+        contents?: Array<{ parts?: Array<{ text?: string }> }>;
+      };
+      const promptUsed = requestUsed?.contents?.[0]?.parts?.[0]?.text ?? '';
+      expect(promptUsed).toMatch(/auditor OSINT/i);
+      expect(promptUsed).toContain('INPUT_QUALITY:');
+    });
+
+    it('usa prompt STANDARD cuando se solicita analysisMode=standard', async () => {
+      mockGenerateContent.mockResolvedValueOnce({
+        response: {
+          text: () => JSON.stringify({ summary: 'Resumen standard' }),
+          usageMetadata: {
+            promptTokenCount: 120,
+            candidatesTokenCount: 60,
+            totalTokenCount: 180,
+          },
+        },
+      });
+
+      await geminiClient.analyzeArticle({
+        title: 'Articulo standard',
+        content: 'Contenido largo con trazabilidad potencial. '.repeat(30),
+        source: 'Fuente test',
+        language: 'es',
+        analysisMode: 'standard',
+      });
+
+      const requestUsed = mockGenerateContent.mock.calls[0][0] as {
+        contents?: Array<{ parts?: Array<{ text?: string }> }>;
+      };
+      const promptUsed = requestUsed?.contents?.[0]?.parts?.[0]?.text ?? '';
+      expect(promptUsed).toContain('FEW-SHOT 1');
+    });
+
+    it('usa prompt low-cost cuando detecta fallback title+description aunque el contenido sea largo', async () => {
+      mockGenerateContent.mockResolvedValueOnce({
+        response: {
+          text: () => JSON.stringify({ summary: 'Resumen fallback' }),
+          usageMetadata: {
+            promptTokenCount: 130,
+            candidatesTokenCount: 70,
+            totalTokenCount: 200,
+          },
+        },
+      });
+
+      const fallbackContent = `ADVERTENCIA: No se pudo acceder al artículo completo. Realiza el análisis basándote ÚNICAMENTE en el título y el resumen disponibles. Indica explícitamente en tu respuesta que el análisis es preliminar por falta de acceso a la fuente original.\n\n${'Texto sin atribuciones directas. '.repeat(45)}`;
+
+      await geminiClient.analyzeArticle({
+        title: 'Articulo fallback',
+        content: fallbackContent,
+        source: 'Fuente test',
+        language: 'es',
+        analysisMode: 'moderate',
+      });
+
+      const requestUsed = mockGenerateContent.mock.calls[0][0] as {
+        contents?: Array<{ parts?: Array<{ text?: string }> }>;
+      };
+      const promptUsed = requestUsed?.contents?.[0]?.parts?.[0]?.text ?? '';
+      expect(promptUsed).toContain('Analiza SOLO el texto dado en <ARTICLE>');
     });
   });
 
@@ -816,7 +954,7 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
             reliabilityScore: 50,
             sentiment: 'neutral',
             mainTopics: ['test'],
-            factCheck: { claims: [], verdict: 'Unproven', reasoning: 'Test' },
+            factCheck: { claims: [], verdict: 'InsufficientEvidenceInArticle', reasoning: 'Test' },
           }),
           usageMetadata: {
             promptTokenCount: 1000,

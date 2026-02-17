@@ -100,7 +100,7 @@ Ambos bloqueadores de seguridad críticos identificados en la auditoría post-vu
 | `backend/src/infrastructure/http/routes/ingest.routes.ts` | Modified | +20 |
 | `backend/tests/integration/rate-limiting.spec.ts` | Created | 370 |
 
-**Documentation**: [RATE-LIMIT-FIX-SUMMARY.md](RATE-LIMIT-FIX-SUMMARY.md)
+**Documentation**: [RATE-LIMIT-FIX-SUMMARY.md](../incidents/RATE-LIMIT-FIX-SUMMARY.md)
 
 ---
 
@@ -330,8 +330,8 @@ curl -i -X POST http://localhost:4000/api/ingest/all
 ## 🔗 Related Documentation
 
 - [SSRF-FIX-SUMMARY.md](SSRF-FIX-SUMMARY.md) - Detailed SSRF implementation
-- [RATE-LIMIT-FIX-SUMMARY.md](RATE-LIMIT-FIX-SUMMARY.md) - Detailed rate limiting implementation
-- [auditoria_post_vuelo.md](auditoria_post_vuelo.md) - Original security audit
+- [RATE-LIMIT-FIX-SUMMARY.md](../incidents/RATE-LIMIT-FIX-SUMMARY.md) - Detailed rate limiting implementation
+- [auditoria_post_vuelo.md](../audits/auditoria_post_vuelo.md) - Original security audit
 - [OWASP SSRF Prevention Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html)
 - [OWASP API Security: Rate Limiting](https://owasp.org/www-project-api-security/)
 

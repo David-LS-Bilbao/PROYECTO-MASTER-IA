@@ -7,7 +7,7 @@
  */
 
 import { Request, Response } from 'express';
-import { INewsArticleRepository } from '../../../domain/repositories/news-article.repository';
+import { INewsArticleRepository, ParsedLocation } from '../../../domain/repositories/news-article.repository';
 import { ToggleFavoriteUseCase } from '../../../application/use-cases/toggle-favorite.usecase';
 import { IngestNewsUseCase } from '../../../application/use-cases/ingest-news.usecase';
 import { NewsArticle } from '../../../domain/entities/news-article.entity';
@@ -40,16 +40,41 @@ const CATEGORY_TO_TOPIC_SLUG: Record<string, string> = {
 
 /**
  * Sprint 24: TTL cache for local ingestion
- * Prevents re-fetching Google News RSS for the same city within 1 hour
+ * Prevents re-fetching Google News RSS for the same city too frequently
  * Key: city name (lowercase), Value: timestamp of last ingestion
  */
-const LOCAL_INGEST_TTL = 60 * 60 * 1000; // 1 hour
+const DEFAULT_LOCAL_INGEST_TTL_MINUTES = 15;
+const parsedLocalIngestTtlMinutes = Number(
+  process.env.LOCAL_INGEST_TTL_MINUTES ?? DEFAULT_LOCAL_INGEST_TTL_MINUTES
+);
+const LOCAL_INGEST_TTL =
+  Number.isFinite(parsedLocalIngestTtlMinutes) && parsedLocalIngestTtlMinutes > 0
+    ? parsedLocalIngestTtlMinutes * 60 * 1000
+    : DEFAULT_LOCAL_INGEST_TTL_MINUTES * 60 * 1000;
+const DEFAULT_LOCAL_INGEST_TIMEOUT_MS = 6000;
+const parsedLocalIngestTimeoutMs = Number(
+  process.env.LOCAL_INGEST_TIMEOUT_MS ?? DEFAULT_LOCAL_INGEST_TIMEOUT_MS
+);
+const LOCAL_INGEST_TIMEOUT_MS =
+  Number.isFinite(parsedLocalIngestTimeoutMs) && parsedLocalIngestTimeoutMs > 0
+    ? parsedLocalIngestTimeoutMs
+    : DEFAULT_LOCAL_INGEST_TIMEOUT_MS;
+const DEFAULT_LOCAL_FORCE_REFRESH_TIMEOUT_MS = 15000;
+const parsedLocalForceRefreshTimeoutMs = Number(
+  process.env.LOCAL_FORCE_REFRESH_TIMEOUT_MS ?? DEFAULT_LOCAL_FORCE_REFRESH_TIMEOUT_MS
+);
+const LOCAL_FORCE_REFRESH_TIMEOUT_MS =
+  Number.isFinite(parsedLocalForceRefreshTimeoutMs) && parsedLocalForceRefreshTimeoutMs > 0
+    ? parsedLocalForceRefreshTimeoutMs
+    : DEFAULT_LOCAL_FORCE_REFRESH_TIMEOUT_MS;
 const localIngestCache = new Map<string, number>();
 
 const newsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional(),
   offset: z.coerce.number().int().min(0).optional(),
   category: z.string().trim().min(1).optional(),
+  location: z.string().trim().min(1).optional(),
+  refresh: z.enum(['true', 'false']).optional(),
   favorite: z.enum(['true', 'false']).optional(),
 }).passthrough();
 
@@ -67,6 +92,92 @@ function shouldIngestLocal(city: string): boolean {
 
 function markLocalIngested(city: string): void {
   localIngestCache.set(city.toLowerCase().trim(), Date.now());
+}
+
+function parseLocationInput(input: string): ParsedLocation {
+  const trimmed = input.trim();
+  if (!trimmed) return { city: 'Madrid' };
+
+  const parts = trimmed.split(',').map(p => p.trim()).filter(Boolean);
+
+  return {
+    city: parts[0] || 'Madrid',
+    province: parts[1],
+    region: undefined, // TODO: provincia→región mapping
+  };
+}
+
+function buildLocalIngestQuery(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return '';
+
+  // Expand "City, Region" into "City Region" to broaden RSS matching.
+  return trimmed
+    .split(',')
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function setOptionalHeader(res: Response, name: string, value: string): void {
+  if (typeof res.setHeader === 'function') {
+    res.setHeader(name, value);
+  }
+}
+
+function sanitizePotentialMojibake(text: string): string {
+  const compact = text.replace(/\s+/g, ' ').trim();
+  if (!compact || !/[ÃÂâ]/.test(compact)) {
+    return compact;
+  }
+
+  try {
+    let repaired = compact;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      if (!/[ÃÂâ]/.test(repaired)) {
+        break;
+      }
+      repaired = Buffer.from(repaired, 'latin1').toString('utf8').trim();
+    }
+    if (repaired && !repaired.includes('Ã')) {
+      return repaired;
+    }
+  } catch {
+    return compact;
+  }
+
+  return compact.replace(/Ã/g, '');
+}
+
+function sanitizeResponsePayload<T>(value: T): T {
+  const sanitize = (entry: unknown): unknown => {
+    if (entry instanceof Date) {
+      const timestamp = entry.getTime();
+      return Number.isNaN(timestamp) ? null : entry.toISOString();
+    }
+
+    if (typeof entry === 'string') {
+      return sanitizePotentialMojibake(entry);
+    }
+    if (Array.isArray(entry)) {
+      return entry.map((nestedEntry) => sanitize(nestedEntry));
+    }
+    if (entry && typeof entry === 'object') {
+      const prototype = Object.getPrototypeOf(entry);
+      if (prototype !== Object.prototype && prototype !== null) {
+        return entry;
+      }
+
+      const sanitizedRecord: Record<string, unknown> = {};
+      for (const [key, nestedValue] of Object.entries(entry as Record<string, unknown>)) {
+        sanitizedRecord[key] = sanitize(nestedValue);
+      }
+      return sanitizedRecord;
+    }
+    return entry;
+  };
+
+  return sanitize(value) as T;
 }
 
 /**
@@ -89,7 +200,7 @@ function toHttpResponse(article: NewsArticle, maskAnalysis = false) {
 
   // PRIVACY: If user hasn't favorited, mask sensitive AI data
   if (maskAnalysis) {
-    return {
+    return sanitizeResponsePayload({
       ...json,
       // Mask AI fields (null indicates not available to this user)
       analysis: null,
@@ -97,15 +208,15 @@ function toHttpResponse(article: NewsArticle, maskAnalysis = false) {
       biasScore: null,
       // Signal that analysis exists and is ready for instant retrieval
       hasAnalysis,
-    };
+    });
   }
 
   // Normal response with full analysis (user has favorited or analysis doesn't exist)
-  return {
+  return sanitizeResponsePayload({
     ...json,
     analysis: json.analysis ? JSON.parse(json.analysis) : null,
     hasAnalysis,
-  };
+  });
 }
 
 export class NewsController {
@@ -129,11 +240,12 @@ export class NewsController {
         throw new ValidationError(parsed.error.issues.map(issue => issue.message).join('; '));
       }
 
-      const { limit, offset, category, favorite } = parsed.data;
+      const { limit, offset, category, favorite, location, refresh } = parsed.data;
       const resolvedLimit = limit ?? 20;
       const resolvedOffset = offset ?? 0;
       let resolvedCategory = category;
       const onlyFavorites = favorite === 'true';
+      const forceRefresh = refresh === 'true';
 
       // Per-user favorites require authentication
       const userId = req.user?.uid;
@@ -167,48 +279,122 @@ export class NewsController {
           select: { location: true },
         });
 
-        if (!user || !user.location) {
-          res.status(400).json({
-            success: false,
-            error: 'Debes configurar tu ubicación en el perfil para ver noticias locales',
-            hint: 'Actualiza tu perfil en /api/user/me con el campo "location"',
-          });
-          return;
-        }
+        const requestedInput = location || user?.location || 'Madrid';
+        const parsed = parseLocationInput(requestedInput);
+        const city = parsed.city; // Para compatibilidad con código existente
+        const ingestQuery = requestedInput ? buildLocalIngestQuery(requestedInput) : city;
+        const refreshMeta: {
+          forced: boolean;
+          attempted: boolean;
+          status: 'skipped_ttl' | 'completed' | 'timeout' | 'error';
+          timeoutMs: number;
+          durationMs: number;
+          pending: boolean;
+          queryUsed: string;
+          ingest: null | {
+            totalFetched: number;
+            newArticles: number;
+            duplicates: number;
+            errors: number;
+            source: string;
+            timestamp: string;
+          };
+        } = {
+          forced: forceRefresh,
+          attempted: false,
+          status: 'skipped_ttl',
+          timeoutMs: forceRefresh ? LOCAL_FORCE_REFRESH_TIMEOUT_MS : LOCAL_INGEST_TIMEOUT_MS,
+          durationMs: 0,
+          pending: false,
+          queryUsed: ingestQuery,
+          ingest: null,
+        };
 
         // Sprint 24: Active Local Ingestion - fetch fresh news about the city via Google News RSS
-        console.log(`[NewsController.getNews] 📍 Local news requested for location: ${user.location}`);
+        if (forceRefresh || shouldIngestLocal(city)) {
+          refreshMeta.attempted = true;
+          const ingestStartedAt = Date.now();
 
-        if (shouldIngestLocal(user.location)) {
-          console.log(`[NewsController.getNews] 🌐 Triggering local ingestion for "${user.location}" (TTL expired or first request)`);
-          try {
-            const ingestionResult = await this.ingestNewsUseCase.execute({
-              category: 'local',
-              topicSlug: 'local',
-              query: user.location,
-              pageSize: 20,
-              language: 'es',
-            });
-            markLocalIngested(user.location);
-            console.log(`[NewsController.getNews] 📍 Local ingestion: ${ingestionResult.newArticles} new articles for "${user.location}"`);
-          } catch (ingestionError) {
-            console.error(`[NewsController.getNews] ❌ Local ingestion failed for "${user.location}":`, ingestionError);
+          const ingestionPromise = this.ingestNewsUseCase.execute({
+            category: 'local',
+            topicSlug: 'local',
+            query: ingestQuery,
+            pageSize: 20,
+            language: 'es',
+          })
+            .then((result) => ({ kind: 'completed' as const, result }))
+            .catch((ingestionError) => ({ kind: 'error' as const, error: ingestionError }));
+
+          const timeoutPromise = new Promise<{ kind: 'timeout' }>((resolve) => {
+            setTimeout(() => resolve({ kind: 'timeout' }), refreshMeta.timeoutMs);
+          });
+
+          const ingestionResult = await Promise.race([ingestionPromise, timeoutPromise]);
+          refreshMeta.durationMs = Date.now() - ingestStartedAt;
+
+          if (ingestionResult.kind === 'timeout') {
+            refreshMeta.status = 'timeout';
+            refreshMeta.pending = true;
+            console.warn(
+              `[NewsController.getNews] ⏱️ Local ingestion timeout after ${refreshMeta.timeoutMs}ms for "${city}". Returning cached DB data.`
+            );
+          } else if (ingestionResult.kind === 'error') {
+            refreshMeta.status = 'error';
+            console.error(`[NewsController.getNews] ❌ Local ingestion failed for "${city}":`, ingestionResult.error);
+          } else {
+            refreshMeta.status = 'completed';
+            const result = ingestionResult.result as Partial<{
+              totalFetched: number;
+              newArticles: number;
+              duplicates: number;
+              errors: number;
+              source: string;
+              timestamp: Date;
+            }>;
+            refreshMeta.ingest = {
+              totalFetched: result.totalFetched ?? 0,
+              newArticles: result.newArticles ?? 0,
+              duplicates: result.duplicates ?? 0,
+              errors: result.errors ?? 0,
+              source: result.source ?? 'local',
+              timestamp:
+                result.timestamp instanceof Date
+                  ? result.timestamp.toISOString()
+                  : new Date().toISOString(),
+            };
+            console.log(
+              `[NewsController.getNews] ✅ Local ingestion "${city}" (query="${ingestQuery}"): fetched=${refreshMeta.ingest.totalFetched}, new=${refreshMeta.ingest.newArticles}, duplicates=${refreshMeta.ingest.duplicates}, errors=${refreshMeta.ingest.errors}`
+            );
           }
-        } else {
-          console.log(`[NewsController.getNews] 💰 Local ingestion skipped for "${user.location}" (TTL active)`);
+
+          // Avoid repeated blocking attempts during TTL window.
+          markLocalIngested(city);
         }
 
-        // Search DB for articles mentioning the location
-        const localNews = await this.repository.searchArticles(user.location, resolvedLimit, userId);
+        // Sprint 28 BUG #1 FIX + vNext: searchLocalArticles con fallback progresivo
+        const { articles: localNews, scopeUsed } = await this.repository.searchLocalArticles(
+          parsed,
+          resolvedLimit,
+          resolvedOffset,
+          userId
+        );
+        const localTotal = localNews.length; // Total basado en scopeUsed real
 
         // If no results, suggest fallback
         if (localNews.length === 0) {
+          setOptionalHeader(res, 'x-local-refresh-status', refreshMeta.status);
+          setOptionalHeader(res, 'x-local-refresh-forced', String(refreshMeta.forced));
+          setOptionalHeader(res, 'x-local-refresh-attempted', String(refreshMeta.attempted));
+          if (refreshMeta.ingest) {
+            setOptionalHeader(res, 'x-local-refresh-new-articles', String(refreshMeta.ingest.newArticles));
+          }
           res.json({
             success: true,
             data: [],
-            pagination: { total: 0, limit: resolvedLimit, offset: resolvedOffset, hasMore: false },
+            pagination: { total: localTotal, limit: resolvedLimit, offset: resolvedOffset, hasMore: false },
             meta: {
-              message: `No hay noticias recientes sobre ${user.location}. Intenta con una búsqueda manual.`,
+              message: `No hay noticias recientes sobre ${city}. Intenta con una búsqueda manual.`,
+              refresh: refreshMeta,
             },
           });
           return;
@@ -224,18 +410,40 @@ export class NewsController {
           return toHttpResponse(article, shouldMask);
         });
 
+        setOptionalHeader(res, 'x-local-refresh-status', refreshMeta.status);
+        setOptionalHeader(res, 'x-local-refresh-forced', String(refreshMeta.forced));
+        setOptionalHeader(res, 'x-local-refresh-attempted', String(refreshMeta.attempted));
+        if (refreshMeta.ingest) {
+          setOptionalHeader(res, 'x-local-refresh-new-articles', String(refreshMeta.ingest.newArticles));
+        }
         res.json({
           success: true,
           data,
           pagination: {
-            total: localNews.length,
+            total: localTotal,
             limit: resolvedLimit,
             offset: resolvedOffset,
-            hasMore: localNews.length >= resolvedLimit, // Si devolvió el límite completo, puede haber más
+            hasMore: resolvedOffset + localNews.length < localTotal,
           },
           meta: {
-            location: user.location,
-            message: `Noticias locales para ${user.location}`,
+            location: city,
+            message: scopeUsed === 'city'
+              ? `Noticias locales para ${city}`
+              : scopeUsed === 'province'
+              ? `Noticias de ${parsed.province || 'la provincia'} (cobertura local limitada)`
+              : 'Noticias locales de España',
+            localMeta: {
+              requested: requestedInput,
+              resolved: {
+                city: parsed.city,
+                province: parsed.province,
+                region: parsed.region,
+              },
+              scopeUsed,
+              ttlMinutes: Number(process.env.LOCAL_INGEST_TTL_MINUTES) || 15,
+              fetchedAt: new Date().toISOString(),
+            },
+            refresh: refreshMeta,
           },
         });
         return;
@@ -243,69 +451,118 @@ export class NewsController {
 
       // SPECIAL CASE 2: 'ciencia-tecnologia' topic (unified category)
       // Search for both 'ciencia' AND 'tecnologia' articles
+      // Sprint 34 FIX: Only interleave on first page to avoid duplicates
       if (resolvedCategory === 'ciencia-tecnologia') {
         // Normalize to search both categories (will be handled by repository if supported)
         // For now, we'll search for 'ciencia' and 'tecnologia' separately and merge
-        let cienciaNews = await this.repository.findAll({
-          limit: Math.ceil(resolvedLimit / 2),
-          offset: Math.floor(resolvedOffset / 2),
-          category: 'ciencia',
-          onlyFavorites,
-          userId,
-        });
+        const useInterleaving = resolvedOffset === 0;
 
-        let tecnologiaNews = await this.repository.findAll({
-          limit: Math.ceil(resolvedLimit / 2),
-          offset: Math.floor(resolvedOffset / 2),
-          category: 'tecnologia',
-          onlyFavorites,
-          userId,
-        });
+        let cienciaNews: NewsArticle[] = [];
+        let tecnologiaNews: NewsArticle[] = [];
 
-        // Sprint 22 FIX: Auto-fill if both categories are empty
-        if (cienciaNews.length === 0 && tecnologiaNews.length === 0 && !onlyFavorites && resolvedOffset === 0) {
-          console.log(`[NewsController.getNews] 📭 Ciencia-Tecnologia categories empty - triggering auto-ingestion`);
+        if (useInterleaving) {
+          // FIRST PAGE: Fetch half from each category and interleave
+          cienciaNews = await this.repository.findAll({
+            limit: Math.ceil(resolvedLimit / 2),
+            offset: 0,
+            category: 'ciencia',
+            onlyFavorites,
+            userId,
+          });
 
-          try {
-            // Ingest both categories in parallel
-            // Sprint 23: Pass topicSlug to assign articles to correct Topic
-            await Promise.all([
-              this.ingestNewsUseCase.execute({ category: 'ciencia', topicSlug: 'ciencia-tecnologia', pageSize: 15, language: 'es' }),
-              this.ingestNewsUseCase.execute({ category: 'tecnologia', topicSlug: 'ciencia-tecnologia', pageSize: 15, language: 'es' }),
-            ]);
+          tecnologiaNews = await this.repository.findAll({
+            limit: Math.ceil(resolvedLimit / 2),
+            offset: 0,
+            category: 'tecnologia',
+            onlyFavorites,
+            userId,
+          });
 
-            console.log(`[NewsController.getNews] ✅ Auto-ingestion completed for ciencia-tecnologia`);
+          // Sprint 22 FIX: Auto-fill if both categories are empty
+          if (cienciaNews.length === 0 && tecnologiaNews.length === 0 && !onlyFavorites) {
+            try {
+              // Ingest both categories in parallel
+              // Sprint 23: Pass topicSlug to assign articles to correct Topic
+              await Promise.all([
+                this.ingestNewsUseCase.execute({ category: 'ciencia', topicSlug: 'ciencia-tecnologia', pageSize: 15, language: 'es' }),
+                this.ingestNewsUseCase.execute({ category: 'tecnologia', topicSlug: 'ciencia-tecnologia', pageSize: 15, language: 'es' }),
+              ]);
 
-            // Re-query both categories
+              // Re-query both categories
+              cienciaNews = await this.repository.findAll({
+                limit: Math.ceil(resolvedLimit / 2),
+                offset: 0,
+                category: 'ciencia',
+                onlyFavorites,
+                userId,
+              });
+
+              tecnologiaNews = await this.repository.findAll({
+                limit: Math.ceil(resolvedLimit / 2),
+                offset: 0,
+                category: 'tecnologia',
+                onlyFavorites,
+                userId,
+              });
+            } catch (ingestionError) {
+              console.error(`[NewsController.getNews] ❌ Auto-ingestion failed for ciencia-tecnologia:`, ingestionError);
+            }
+          }
+        } else {
+          // SUBSEQUENT PAGES: Sequential fetch (first ciencia, then tecnología)
+          // Get total count of ciencia articles to know where to split
+          const cienciaCount = await this.repository.countFiltered({ category: 'ciencia', onlyFavorites, userId });
+
+          if (resolvedOffset < cienciaCount) {
+            // Still fetching from ciencia
+            const cienciaRemaining = cienciaCount - resolvedOffset;
+            const cienciaToFetch = Math.min(resolvedLimit, cienciaRemaining);
+
             cienciaNews = await this.repository.findAll({
-              limit: Math.ceil(resolvedLimit / 2),
-              offset: Math.floor(resolvedOffset / 2),
+              limit: cienciaToFetch,
+              offset: resolvedOffset,
               category: 'ciencia',
               onlyFavorites,
               userId,
             });
 
+            // If we need more articles, fetch from tecnología
+            if (cienciaToFetch < resolvedLimit) {
+              tecnologiaNews = await this.repository.findAll({
+                limit: resolvedLimit - cienciaToFetch,
+                offset: 0, // Start from beginning of tecnología
+                category: 'tecnologia',
+                onlyFavorites,
+                userId,
+              });
+            }
+          } else {
+            // Offset beyond ciencia, fetch only from tecnología
+            const tecnologiaOffset = resolvedOffset - cienciaCount;
             tecnologiaNews = await this.repository.findAll({
-              limit: Math.ceil(resolvedLimit / 2),
-              offset: Math.floor(resolvedOffset / 2),
+              limit: resolvedLimit,
+              offset: tecnologiaOffset,
               category: 'tecnologia',
               onlyFavorites,
               userId,
             });
-
-            console.log(`[NewsController.getNews] 📰 Re-queried: ${cienciaNews.length} ciencia + ${tecnologiaNews.length} tecnologia`);
-          } catch (ingestionError) {
-            console.error(`[NewsController.getNews] ❌ Auto-ingestion failed for ciencia-tecnologia:`, ingestionError);
           }
         }
 
-        // Merge and interleave results
-        const mergedNews: NewsArticle[] = [];
-        const maxLength = Math.max(cienciaNews.length, tecnologiaNews.length);
-        for (let i = 0; i < maxLength; i++) {
-          if (i < cienciaNews.length) mergedNews.push(cienciaNews[i]);
-          if (i < tecnologiaNews.length) mergedNews.push(tecnologiaNews[i]);
-          if (mergedNews.length >= resolvedLimit) break;
+        // Merge results
+        let mergedNews: NewsArticle[];
+        if (useInterleaving) {
+          // Interleave for first page (diversity)
+          mergedNews = [];
+          const maxLength = Math.max(cienciaNews.length, tecnologiaNews.length);
+          for (let i = 0; i < maxLength; i++) {
+            if (i < cienciaNews.length) mergedNews.push(cienciaNews[i]);
+            if (i < tecnologiaNews.length) mergedNews.push(tecnologiaNews[i]);
+            if (mergedNews.length >= resolvedLimit) break;
+          }
+        } else {
+          // Sequential for subsequent pages (no duplicates)
+          mergedNews = [...cienciaNews, ...tecnologiaNews];
         }
 
         const news = mergedNews.slice(0, resolvedLimit);
@@ -358,8 +615,6 @@ export class NewsController {
       // If category is specified but DB is empty, trigger automatic ingestion
       // =========================================================================
       if (news.length === 0 && resolvedCategory && !onlyFavorites && resolvedOffset === 0) {
-        console.log(`[NewsController.getNews] 📭 Category "${resolvedCategory}" is empty - triggering auto-ingestion`);
-
         try {
           // Trigger ingestion for this category
           // Sprint 23: Pass topicSlug to assign articles to correct Topic
@@ -371,8 +626,6 @@ export class NewsController {
             language: 'es',
           });
 
-          console.log(`[NewsController.getNews] ✅ Auto-ingestion completed: ${ingestionResult.newArticles} new articles`);
-
           // Re-query the database after ingestion
           if (ingestionResult.newArticles > 0) {
             news = await this.repository.findAll({
@@ -382,7 +635,6 @@ export class NewsController {
               onlyFavorites,
               userId,
             });
-            console.log(`[NewsController.getNews] 📰 Re-queried DB: Found ${news.length} articles`);
           }
         } catch (ingestionError) {
           // Log error but don't break the request - return empty array with helpful message
@@ -444,8 +696,6 @@ export class NewsController {
   async getNewsById(req: Request, res: Response): Promise<void> {
     try {
       const id = req.params.id as string;
-      console.log(`\n[NewsController] 🔵 GET /api/news/${id.substring(0, 8)}...`);
-      console.log(`[NewsController]    User: ${req.user?.email || 'anonymous'}`);
 
       if (!id) {
         res.status(400).json({
@@ -458,20 +708,12 @@ export class NewsController {
       const article = await this.repository.findById(id);
 
       if (!article) {
-        console.log(`[NewsController]    ❌ Article not found in DB`);
         res.status(404).json({
           success: false,
           error: 'Article not found',
         });
         return;
       }
-
-      console.log(`[NewsController]    ✅ Article found:`, {
-        title: article.title.substring(0, 40),
-        analyzedAt: article.analyzedAt ? 'YES' : 'NO',
-        biasScore: article.biasScore,
-        summary: article.summary ? `${article.summary.substring(0, 30)}...` : 'NO',
-      });
 
       // Enrich with per-user favorite status
       const userId = req.user?.uid;
@@ -480,7 +722,6 @@ export class NewsController {
       if (userId) {
         const favoriteIds = await this.repository.getUserFavoriteArticleIds(userId, [id]);
         const isFav = favoriteIds.has(id);
-        console.log(`[NewsController]    🔍 Per-user favorite check: ${isFav ? 'YES' : 'NO'}`);
         enrichedArticle = NewsArticle.reconstitute({
           ...article.toJSON(),
           isFavorite: isFav,
@@ -492,17 +733,12 @@ export class NewsController {
         });
       }
 
-      console.log(`[NewsController]    📤 Sending enriched article (isFavorite: ${enrichedArticle.isFavorite})`);
-
       // Sprint 18.2: PRIVACY - Mask analysis if user hasn't UNLOCKED it
       // (user can favorite ❤️ without unlocking analysis ✨)
       let shouldMask = true;
       if (userId) {
         const unlockedIds = await this.repository.getUserUnlockedArticleIds(userId, [id]);
         shouldMask = !unlockedIds.has(id);
-        console.log(`[NewsController]    🔒 Analysis unlocked: ${!shouldMask ? 'YES' : 'NO'}`);
-      } else {
-        console.log(`[NewsController]    🔒 Analysis masking: YES (no user)`);
       }
 
       res.json({
@@ -543,8 +779,6 @@ export class NewsController {
         });
         return;
       }
-
-      console.log(`[Favorites] Toggle: user=${userId.substring(0, 8)}... article=${articleId.substring(0, 8)}...`);
 
       const result = await this.toggleFavoriteUseCase.execute({ articleId, userId });
 
@@ -597,29 +831,14 @@ export class NewsController {
         throw new ValidationError(parsed.error.issues.map(issue => issue.message).join('; '));
       }
 
-      const { q, limit, offset } = parsed.data;
+      const { q, limit } = parsed.data;
       const resolvedLimit = limit ?? 20;
-      const resolvedOffset = offset ?? 0;
       const userId = req.user?.uid;
-
-      console.log(`\n========================================`);
-      console.log(`🔍 SEARCH REQUEST:`, {
-        query: q,
-        limit: resolvedLimit,
-        offset: resolvedOffset,
-        userId: userId ? userId.substring(0, 8) + '...' : 'anonymous',
-        timestamp: new Date().toISOString(),
-      });
-      console.log(`========================================`);
 
       // =====================================================================
       // LEVEL 1: QUICK DB SEARCH (Full-Text Search)
       // =====================================================================
-      console.log(`[NewsController.search]    📊 LEVEL 1: Quick DB Search...`);
-
       let results = await this.repository.searchArticles(q, resolvedLimit, userId);
-
-      console.log(`[NewsController.search]    📊 LEVEL 1: Found ${results.length} results`);
 
       // If NO results, log warning
       if (results.length === 0) {
@@ -656,8 +875,6 @@ export class NewsController {
       // =====================================================================
       // LEVEL 2: REACTIVE INGESTION ("Deep Search")
       // =====================================================================
-      console.log(`[NewsController.search]    📡 LEVEL 2: No results, triggering reactive ingestion...`);
-
       try {
         // Trigger quick RSS ingestion (limited to general category)
         // Timeout: 8 seconds maximum
@@ -674,8 +891,6 @@ export class NewsController {
             setTimeout(() => reject(new Error('Ingestion timeout')), INGESTION_TIMEOUT)
           ),
         ]);
-
-        console.log(`[NewsController.search]    ✅ LEVEL 2: Ingestion completed`);
       } catch (ingestionError) {
         if (ingestionError instanceof Error && ingestionError.message === 'Ingestion timeout') {
           console.warn(`[NewsController.search]    ⏱️ LEVEL 2: Ingestion timed out after 8s`);
@@ -686,9 +901,7 @@ export class NewsController {
       }
 
       // Retry DB search after ingestion
-      console.log(`[NewsController.search]    🔄 LEVEL 2: Retrying DB search...`);
       results = await this.repository.searchArticles(q, resolvedLimit, userId);
-      console.log(`[NewsController.search]    📊 LEVEL 2: Found ${results.length} results after ingestion`);
 
       // If results found after ingestion, return with isFresh flag
       if (results.length > 0) {
@@ -721,8 +934,6 @@ export class NewsController {
       // =====================================================================
       // LEVEL 3: FALLBACK WITH EXTERNAL SUGGESTION
       // =====================================================================
-      console.log(`[NewsController.search]    🌐 LEVEL 3: No results found, returning fallback`);
-
       const encodedQuery = encodeURIComponent(q);
 
       res.json({

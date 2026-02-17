@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ChatArticleUseCase Unit Tests - ZONA CRÍTICA (100% Coverage)
  *
  * Este archivo testea la lógica RAG (Retrieval-Augmented Generation),
@@ -26,6 +26,7 @@ import type { QueryResult } from '../../src/domain/services/chroma-client.interf
 const mockGeminiClient = {
   analyzeArticle: vi.fn(),
   generateChatResponse: vi.fn(),
+  generateGeneralResponse: vi.fn(),
   generateEmbedding: vi.fn(),
   getSessionCostReport: vi.fn(),
 };
@@ -88,7 +89,7 @@ function createMockArticle(overrides?: Partial<any>): NewsArticle {
       mainTopics: ['AI', 'technology'],
       factCheck: {
         claims: ['AI is advancing rapidly'],
-        verdict: 'Verified',
+        verdict: 'SupportedByArticle',
         reasoning: 'Based on research',
       },
     }),

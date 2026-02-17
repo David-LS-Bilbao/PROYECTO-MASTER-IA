@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { LocationButton } from '@/components/ui/location-button';
 
 export interface ProfileHeaderProps {
   name: string;
@@ -93,18 +94,26 @@ export function ProfileHeader({
           </div>
         </div>
 
-        {/* Sprint 20: Ubicación (Geolocalización) */}
+        {/* Sprint 20+28: Ubicación (Geolocalización Automática) */}
         <div>
           <Label htmlFor="location" className="text-sm font-medium">
-            Ubicación (Ciudad, País)
+            Ubicación (Ciudad, Provincia)
           </Label>
-          <Input
-            id="location"
-            value={location}
-            onChange={(e) => onLocationChange(e.target.value)}
-            placeholder="Ej: Madrid, España"
-            className="mt-1"
-          />
+          <div className="flex items-center gap-2 mt-1">
+            <Input
+              id="location"
+              value={location}
+              onChange={(e) => onLocationChange(e.target.value)}
+              placeholder="Ej: Móstoles, Madrid"
+              className="flex-1"
+            />
+            <LocationButton
+              onLocationFound={onLocationChange}
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+            />
+          </div>
         </div>
       </div>
 

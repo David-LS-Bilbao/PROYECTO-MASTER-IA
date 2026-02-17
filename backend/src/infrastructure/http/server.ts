@@ -11,6 +11,7 @@ import { createChatRoutes } from './routes/chat.routes';
 import { createSearchRoutes } from './routes/search.routes';
 import { createSourcesRoutes } from './routes/sources.routes';
 import { createUserRoutes } from './routes/user.routes';
+import { createEntitlementsRoutes } from './routes/entitlements.routes';
 import { createTopicRoutes } from './routes/topic.routes';
 import { createHealthRoutes } from './routes/health.routes';
 import { createSubscriptionRoutes } from './routes/subscription.routes';
@@ -31,26 +32,34 @@ export function createServer(): Application {
   // Security middleware
   app.use(helmet());
 
-  // Rate limiting - prevent abuse
-  // 🔧 Sprint 16 FIX: Relajar rate limit en desarrollo
+  // CORS configuration - ANTES del rate limiter para que las respuestas 429 incluyan headers CORS
+  const defaultOrigins = ['http://localhost:3001', 'http://localhost:5173'];
+  const envOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean)
+    : defaultOrigins;
+  const allowedOrigins = envOrigins.length > 0 ? envOrigins : defaultOrigins;
+
+  app.use(cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error('Not allowed by CORS'));
+    },
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization', 'sentry-trace', 'baggage', 'x-cron-secret'],
+    exposedHeaders: ['sentry-trace'],
+  }));
+
+  // Rate limiting - prevent abuse (DESPUÉS de CORS para que 429 tenga headers CORS)
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: process.env.NODE_ENV === 'production' ? 100 : 10000, // 10k en dev, 100 en prod
+    max: process.env.NODE_ENV === 'production' ? 300 : 10000, // 300 en prod, 10k en dev
     message: { error: 'Too many requests, please try again later.' },
     standardHeaders: true,
     legacyHeaders: false,
   });
   app.use('/api/', limiter);
-
-  // CORS configuration - Allow frontend origins with explicit methods
-  app.use(cors({
-    origin: process.env.CORS_ORIGIN || ['http://localhost:3001', 'http://localhost:5173'],
-    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    credentials: true,
-    // 🔍 Sprint 15 - Paso 3: Allow Sentry trace headers for distributed tracing
-    allowedHeaders: ['Content-Type', 'Authorization', 'sentry-trace', 'baggage', 'x-cron-secret'],
-    exposedHeaders: ['sentry-trace'],
-  }));
 
   // Body parser
   app.use(express.json());
@@ -69,6 +78,7 @@ export function createServer(): Application {
   app.use('/api/search', createSearchRoutes(container.searchController));
   app.use('/api/sources', createSourcesRoutes(container.sourcesController));
   app.use('/api/user', createUserRoutes(container.userController));
+  app.use('/api/entitlements', createEntitlementsRoutes(container.entitlementsController));
   app.use('/api/topics', createTopicRoutes(container.topicController));
   app.use('/api/subscription', createSubscriptionRoutes(container.subscriptionController));
 

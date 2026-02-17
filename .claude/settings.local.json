@@ -40,7 +40,13 @@
       "Bash(cmd //c \"taskkill /PID 33308 /F\")",
       "Bash(git remote set-url:*)",
       "Bash(git restore:*)",
-      "Bash(npx prisma migrate deploy:*)"
+      "Bash(npx prisma migrate deploy:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(gh api:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(npx next build:*)",
+      "Bash(grep:*)",
+      "Bash(npm ls:*)"
     ]
   }
 }

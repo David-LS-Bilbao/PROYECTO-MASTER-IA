@@ -1,13 +1,14 @@
 // Prisma Schema - Verity News
-// Database: PostgreSQL
+// Database: PostgreSQL with pgvector extension
 
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["fullTextSearchPostgres"]
+  previewFeatures = ["fullTextSearchPostgres", "postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
+  provider   = "postgresql"
+  extensions = [vector]
 }
 
 // ==========================================
@@ -17,6 +18,13 @@ datasource db {
 enum SubscriptionPlan {
   FREE
   PREMIUM
+}
+
+enum AccessStatus {
+  PUBLIC
+  PAYWALLED
+  RESTRICTED
+  UNKNOWN
 }
 
 model User {
@@ -60,8 +68,8 @@ model Article {
   topicId String? // Foreign key to Topic
   topic   Topic?  @relation(fields: [topicId], references: [id], onDelete: SetNull)
 
-  // RAG fields
-  embedding String? @db.Text // JSON string of vector embedding
+  // RAG fields - pgvector (768 dimensions for Gemini text-embedding-004)
+  embedding Unsupported("vector(768)")?
 
   // AI Analysis fields
   summary           String?   @db.Text // AI-generated summary
@@ -69,6 +77,9 @@ model Article {
   analysis          String?   @db.Text // JSON string with detailed analysis
   analyzedAt        DateTime? // When the article was analyzed
   internalReasoning String?   @db.Text // Chain-of-Thought for XAI auditing (NOT sent to client)
+  accessStatus      AccessStatus @default(UNKNOWN) @map("access_status")
+  accessReason      String?      @db.VarChar(180) @map("access_reason")
+  analysisBlocked   Boolean      @default(false) @map("analysis_blocked")
 
   // User features
   isFavorite Boolean @default(false) // Quick favorite toggle (no auth for MVP)
@@ -85,6 +96,8 @@ model Article {
   @@index([category])
   @@index([topicId]) // Sprint 23: Index for topic filtering
   @@index([analyzedAt])
+  @@index([accessStatus])
+  @@index([analysisBlocked])
   @@map("articles")
 }
 

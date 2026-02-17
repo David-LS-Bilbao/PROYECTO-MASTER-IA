@@ -3,6 +3,8 @@
  * Pure domain entity - NO external dependencies
  */
 
+export type ArticleAccessStatus = 'PUBLIC' | 'PAYWALLED' | 'RESTRICTED' | 'UNKNOWN';
+
 export interface NewsArticleProps {
   id: string;
   title: string;
@@ -23,6 +25,10 @@ export interface NewsArticleProps {
   analysis: string | null;
   analyzedAt: Date | null;
   internalReasoning: string | null; // Chain-of-Thought for XAI auditing
+  // Content access control (paywall/restrictions)
+  accessStatus?: ArticleAccessStatus;
+  accessReason?: string | null;
+  analysisBlocked?: boolean;
   // User features
   isFavorite: boolean;
   // Metadata
@@ -35,7 +41,10 @@ export interface NewsArticleProps {
  */
 export interface FactCheck {
   claims: string[];
-  verdict: 'Verified' | 'Mixed' | 'Unproven' | 'False';
+  verdict:
+    | 'SupportedByArticle'
+    | 'NotSupportedByArticle'
+    | 'InsufficientEvidenceInArticle';
   reasoning: string;
 }
 
@@ -54,23 +63,55 @@ export interface TokenUsage {
  */
 export interface ArticleAnalysis {
   internal_reasoning?: string; // Chain-of-Thought (XAI auditing only, excluded from client response)
+  formatError?: boolean; // True when model output could not be parsed to valid analysis JSON
   summary: string;
+  qualityNotice?: string;
   category?: string; // AI-suggested category for the article
-  // biasScore: -10 (Extrema Izquierda) a +10 (Extrema Derecha), 0 es Neutral
-  // Stored normalized to 0-1 for UI compatibility (abs(biasScore)/10)
+  analysisModeUsed?: 'low_cost' | 'moderate' | 'standard' | 'deep';
+
+  // Legacy normalized score alias (0-1), kept for compatibility
   biasScore: number;
-  // Raw bias score from -10 to +10 for detailed display
-  biasRaw: number;
-  biasType?: string; // Tipo de sesgo: encuadre|omisión|lenguaje|selección|ninguno
+
+  // vNext scoring contract
+  biasRaw: number; // -10..+10
+  biasScoreNormalized: number; // abs(biasRaw)/10
+
+  biasType?: string; // Tipo de sesgo: encuadre|omision|lenguaje|seleccion|ninguno
   biasIndicators: string[];
-  // clickbaitScore: 0 (Serio) a 100 (Clickbait extremo)
-  clickbaitScore: number;
-  // reliabilityScore: 0 (Bulo/Falso) a 100 (Altamente Contrastado/Oficial)
+  // Comentario corto para UI (explicabilidad textual, sin hechos externos)
+  biasComment?: string;
+  // Tendencia ideologica del articulo (solo con evidencia citada suficiente)
+  articleLeaning?: 'progresista' | 'conservadora' | 'extremista' | 'neutral' | 'indeterminada';
+  // Confianza del leaning (opcional, derivada de la calidad de evidencia interna)
+  leaningConfidence?: 'baja' | 'media' | 'alta';
+  // Legacy alias para compatibilidad hacia atras (deprecado)
+  biasLeaning?: 'progresista' | 'conservadora' | 'neutral' | 'indeterminada' | 'otra';
+  clickbaitScore: number; // 0..100
+
+  // reliabilityScore: fiabilidad basada SOLO en evidencia interna del texto (0-100)
   reliabilityScore: number;
+  // traceabilityScore: trazabilidad interna de fuentes/citas/contexto (0-100)
+  traceabilityScore: number;
+
+  factualityStatus: 'no_determinable' | 'plausible_but_unverified';
+  evidence_needed: string[];
+  should_escalate: boolean;
+  // Comentario corto sobre fiabilidad interna y evidencia faltante
+  reliabilityComment?: string;
+
   sentiment: 'positive' | 'negative' | 'neutral';
   mainTopics: string[];
   factCheck: FactCheck;
-  explanation?: string; // Transparencia AI Act: por qué se asignaron estos scores
+  explanation?: string; // Transparencia AI Act: por que se asignaron estos scores
+  deep?: {
+    sections?: {
+      known?: string[];
+      unknown?: string[];
+      quotes?: string[];
+      risks?: string[];
+    };
+  };
+
   // Token Taximeter: Cost tracking (Sprint 8.2)
   usage?: TokenUsage;
 }
@@ -175,6 +216,18 @@ export class NewsArticle {
     return this.props.internalReasoning;
   }
 
+  get accessStatus(): ArticleAccessStatus {
+    return this.props.accessStatus ?? 'UNKNOWN';
+  }
+
+  get accessReason(): string | null {
+    return this.props.accessReason ?? null;
+  }
+
+  get analysisBlocked(): boolean {
+    return this.props.analysisBlocked ?? false;
+  }
+
   get fetchedAt(): Date {
     return this.props.fetchedAt;
   }
@@ -210,7 +263,7 @@ export class NewsArticle {
     return NewsArticle.reconstitute({
       ...this.props,
       summary: analysis.summary,
-      biasScore: analysis.biasScore,
+      biasScore: analysis.biasScoreNormalized,
       analysis: JSON.stringify(analysis),
       analyzedAt: new Date(),
       internalReasoning: analysis.internal_reasoning || null, // Store for XAI auditing
@@ -241,6 +294,23 @@ export class NewsArticle {
   }
 
   /**
+   * Create a new instance with article access status (paywall/restrictions)
+   */
+  withAccessStatus(params: {
+    accessStatus: ArticleAccessStatus;
+    accessReason?: string | null;
+    analysisBlocked: boolean;
+  }): NewsArticle {
+    return NewsArticle.reconstitute({
+      ...this.props,
+      accessStatus: params.accessStatus,
+      accessReason: params.accessReason ?? null,
+      analysisBlocked: params.analysisBlocked,
+      updatedAt: new Date(),
+    });
+  }
+
+  /**
    * Toggle favorite status
    */
   withFavoriteToggle(): NewsArticle {
@@ -254,6 +324,11 @@ export class NewsArticle {
   toJSON(): NewsArticleProps {
     const { internalReasoning, ...publicProps } = this.props;
     // Exclude internalReasoning from client responses (XAI auditing only per AI_RULES.md)
-    return publicProps as NewsArticleProps;
+    return {
+      ...publicProps,
+      accessStatus: this.accessStatus,
+      accessReason: this.accessReason,
+      analysisBlocked: this.analysisBlocked,
+    } as NewsArticleProps;
   }
 }

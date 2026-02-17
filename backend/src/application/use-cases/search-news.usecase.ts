@@ -1,13 +1,13 @@
 /**
  * SearchNewsUseCase (Application Layer)
- * Semantic search using ChromaDB vector store + PostgreSQL for content
- * Pattern: Vector Search for IDs -> SQL fetch for Content
+ * Semantic search using pgvector in PostgreSQL
+ * Pattern: Vector Search with embeddings stored in main database
  */
 
 import { NewsArticle } from '../../domain/entities/news-article.entity';
 import { INewsArticleRepository } from '../../domain/repositories/news-article.repository';
 import { IGeminiClient } from '../../domain/services/gemini-client.interface';
-import { IChromaClient } from '../../domain/services/chroma-client.interface';
+import { IVectorClient } from '../../domain/services/vector-client.interface';
 import { ValidationError } from '../../domain/errors/domain.error';
 import { GeminiErrorMapper } from '../../infrastructure/external/gemini-error-mapper';
 
@@ -26,7 +26,7 @@ export class SearchNewsUseCase {
   constructor(
     private readonly articleRepository: INewsArticleRepository,
     private readonly geminiClient: IGeminiClient,
-    private readonly chromaClient: IChromaClient
+    private readonly vectorClient: IVectorClient
   ) {}
 
   async execute(input: SearchNewsInput): Promise<SearchNewsOutput> {
@@ -56,9 +56,9 @@ export class SearchNewsUseCase {
       throw mappedError;
     }
 
-    // 2. Search ChromaDB for similar article IDs
-    console.log(`   🔗 Buscando en ChromaDB...`);
-    const similarIds = await this.chromaClient.querySimilar(queryEmbedding, limit);
+    // 2. Search vector database for similar article IDs
+    console.log(`   🔗 Buscando artículos similares en pgvector...`);
+    const similarIds = await this.vectorClient.querySimilar(queryEmbedding, limit);
 
     if (similarIds.length === 0) {
       console.log(`   ⚠️ No se encontraron resultados similares`);
@@ -89,7 +89,7 @@ export class SearchNewsUseCase {
   }
 
   /**
-   * Reorder articles to match the relevance order from ChromaDB
+   * Reorder articles to match the relevance order from vector search
    * This ensures the most semantically similar articles appear first
    */
   private preserveRelevanceOrder(

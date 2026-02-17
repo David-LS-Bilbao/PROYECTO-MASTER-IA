@@ -19,6 +19,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import request from 'supertest';
 import { Application } from 'express';
 import { createServer } from '../../src/infrastructure/http/server';
+import { getPrismaClient } from '../../src/infrastructure/persistence/prisma.client';
 
 // ============================================================================
 // MOCK DATA FACTORIES
@@ -43,7 +44,7 @@ function createMockAnalysisOutput() {
       mainTopics: ['AI', 'technology', 'society'],
       factCheck: {
         claims: ['AI is advancing rapidly', 'Technology impacts society'],
-        verdict: 'Verified',
+        verdict: 'SupportedByArticle',
         reasoning: 'Based on recent research and industry reports',
       },
     },
@@ -57,6 +58,7 @@ function createMockAnalysisOutput() {
 
 describe('AnalyzeController Integration Tests (API Layer)', () => {
   let app: Application;
+  const prisma = getPrismaClient();
 
   beforeAll(() => {
     // Crear servidor Express con dependencias reales
@@ -249,6 +251,42 @@ describe('AnalyzeController Integration Tests (API Layer)', () => {
   // ==========================================================================
 
   describe('⚠️ Manejo de Errores de Negocio', () => {
+    it('422 UNPROCESSABLE ENTITY: bloquea análisis para artículo PAYWALLED', async () => {
+      const paywalledArticleId = '550e8400-e29b-41d4-a716-446655440123';
+
+      await prisma.article.upsert({
+        where: { id: paywalledArticleId },
+        update: {
+          accessStatus: 'PAYWALLED',
+          analysisBlocked: true,
+        },
+        create: {
+          id: paywalledArticleId,
+          title: 'Artículo con paywall',
+          description: 'Contenido restringido por suscripción',
+          content: 'Suscríbete para seguir leyendo',
+          url: `https://example.com/paywall-${paywalledArticleId}`,
+          urlToImage: null,
+          source: 'Fuente de prueba',
+          author: null,
+          publishedAt: new Date('2026-02-10T10:00:00Z'),
+          category: 'general',
+          language: 'es',
+          accessStatus: 'PAYWALLED',
+          analysisBlocked: true,
+        },
+      });
+
+      const response = await request(app)
+        .post('/api/analyze/article')
+        .set('Authorization', 'Bearer test-token-generic')
+        .send({ articleId: paywalledArticleId });
+
+      expect(response.status).toBe(422);
+      expect(response.body).toHaveProperty('error.code', 'PAYWALL_BLOCKED');
+      expect(response.body).toHaveProperty('error.message');
+    });
+
     it('404 NOT FOUND: debe devolver 404 si el artículo no existe', async () => {
       // ARRANGE
       const nonExistentArticleId = '00000000-0000-0000-0000-000000000000';
@@ -417,6 +455,7 @@ describe('AnalyzeController Integration Tests (API Layer)', () => {
 
       // ASSERT
       expect(response.headers['content-type']).toMatch(/application\/json/);
+      expect(response.headers['content-type']).toMatch(/charset=utf-8/i);
     });
   });
 

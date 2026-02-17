@@ -2,16 +2,50 @@ import { ShieldCheck, ShieldAlert, ShieldQuestion } from 'lucide-react';
 
 interface ReliabilityBadgeProps {
   score: number; // 0-100
+  traceabilityScore?: number;
+  factualityStatus?: 'no_determinable' | 'plausible_but_unverified';
+  factCheckVerdict?: 'SupportedByArticle' | 'NotSupportedByArticle' | 'InsufficientEvidenceInArticle';
+  clickbaitScore?: number;
+  shouldEscalate?: boolean;
   reasoning?: string;
 }
 
-export function ReliabilityBadge({ score, reasoning }: ReliabilityBadgeProps) {
-  let color = 'bg-red-500';
-  let textColor = 'text-red-600';
-  let text = 'Posible Bulo';
-  let Icon = ShieldAlert;
+export function ReliabilityBadge({
+  score,
+  traceabilityScore,
+  factualityStatus,
+  factCheckVerdict,
+  clickbaitScore,
+  shouldEscalate,
+  reasoning,
+}: ReliabilityBadgeProps) {
+  let color = 'bg-amber-500';
+  let textColor = 'text-amber-600';
+  let text = 'Fiabilidad baja';
+  let Icon = ShieldQuestion;
 
-  if (score >= 70) {
+  const meetsLowEvidenceThreshold =
+    score < 20 && (traceabilityScore ?? 100) < 20;
+  const hasStrongRedFlags =
+    (clickbaitScore ?? 0) >= 60 || Boolean(shouldEscalate);
+  const isHighRisk = meetsLowEvidenceThreshold && hasStrongRedFlags;
+
+  if (isHighRisk) {
+    color = 'bg-red-500';
+    textColor = 'text-red-600';
+    text = 'Posible bulo / alto riesgo';
+    Icon = ShieldAlert;
+  } else if (factCheckVerdict === 'SupportedByArticle') {
+    color = 'bg-emerald-600';
+    textColor = 'text-emerald-700';
+    text = 'Soportado por el articulo (sin verificacion externa)';
+    Icon = ShieldCheck;
+  } else if (factualityStatus === 'no_determinable') {
+    color = 'bg-zinc-500';
+    textColor = 'text-zinc-600';
+    text = 'No verificable con fuentes internas';
+    Icon = ShieldQuestion;
+  } else if (score >= 70) {
     color = 'bg-green-600';
     textColor = 'text-green-600';
     text = 'Contrastada';
@@ -35,7 +69,7 @@ export function ReliabilityBadge({ score, reasoning }: ReliabilityBadgeProps) {
       {/* Progress bar with native tooltip */}
       <div
         className="w-full h-4 bg-gray-200 dark:bg-zinc-700 rounded-full overflow-hidden cursor-help"
-        title={reasoning || "Análisis de fuentes y consistencia"}
+        title={reasoning || 'Analisis de fuentes y consistencia'}
       >
         <div
           className={`h-full ${color} transition-all duration-500`}

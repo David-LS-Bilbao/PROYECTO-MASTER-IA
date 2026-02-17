@@ -6,6 +6,7 @@ import { PrismaClient, Prisma } from '@prisma/client';
 import {
   INewsArticleRepository,
   FindAllParams,
+  ParsedLocation,
 } from '../../domain/repositories/news-article.repository';
 import { NewsArticle } from '../../domain/entities/news-article.entity';
 import { DatabaseError } from '../../domain/errors/infrastructure.error';
@@ -250,6 +251,7 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
 
       // =========================================================================
       // SPRINT 18.3: SOURCE INTERLEAVING (Round Robin) - UX Improvement
+      // Sprint 34 FIX: Only apply round robin on first page (offset=0)
       // =========================================================================
       // PROBLEMA: Articles from the same source appear clustered together,
       // creating a "clumping" effect that reduces perceived variety.
@@ -259,10 +261,17 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
       //
       // BENEFICIO: Users see a diverse mix of sources, improving UX and
       // perceived content variety while maintaining chronological relevance.
+      //
+      // BUG FIX (Sprint 34): Round robin + buffer causes duplicates in pagination.
+      // SOLUTION: Only apply round robin on first page (offset=0).
+      // Subsequent pages use normal pagination to avoid overlap.
       // =========================================================================
 
-      // 1. BUFFER: Fetch 3x more articles (minimum 60) for diversity
-      const bufferSize = Math.max(limit * 3, 60);
+      // Sprint 34: Skip round robin for pagination (offset > 0)
+      const useRoundRobin = offset === 0;
+
+      // 1. BUFFER: Fetch 3x more articles (minimum 60) for diversity (only on first page)
+      const bufferSize = useRoundRobin ? Math.max(limit * 3, 60) : limit;
 
       const articles = await this.prisma.article.findMany({
         where,
@@ -273,48 +282,58 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
         skip: offset,
       });
 
-      console.log(`[Repository.findAll] Fetched ${articles.length} articles (buffer for interleaving)`);
+      console.log(`[Repository.findAll] Fetched ${articles.length} articles (buffer=${bufferSize}, roundRobin=${useRoundRobin})`);
 
       if (articles.length === 0) {
         return [];
       }
 
-      // 2. GROUP BY SOURCE: Maintain chronological order within each group
-      const sourceGroups = new Map<string, typeof articles>();
+      let finalArticles: typeof articles;
 
-      for (const article of articles) {
-        const source = article.source;
-        if (!sourceGroups.has(source)) {
-          sourceGroups.set(source, []);
-        }
-        sourceGroups.get(source)!.push(article);
-      }
+      if (useRoundRobin) {
+        // FIRST PAGE: Apply round robin interleaving for source diversity
+        // 2. GROUP BY SOURCE: Maintain chronological order within each group
+        const sourceGroups = new Map<string, typeof articles>();
 
-      console.log(`[Repository.findAll] Grouped into ${sourceGroups.size} sources:`,
-        Array.from(sourceGroups.entries()).map(([src, arts]) => `${src}:${arts.length}`).join(', ')
-      );
-
-      // 3. ROUND ROBIN INTERLEAVING: Mix sources evenly
-      const interleavedArticles: typeof articles = [];
-      const sourceIterators = Array.from(sourceGroups.values());
-      let round = 0;
-
-      while (interleavedArticles.length < limit && sourceIterators.some(group => group.length > 0)) {
-        for (const group of sourceIterators) {
-          if (interleavedArticles.length >= limit) break;
-
-          if (group.length > 0) {
-            const article = group.shift()!; // Take first (most recent in this source)
-            interleavedArticles.push(article);
+        for (const article of articles) {
+          const source = article.source;
+          if (!sourceGroups.has(source)) {
+            sourceGroups.set(source, []);
           }
+          sourceGroups.get(source)!.push(article);
         }
-        round++;
-      }
 
-      console.log(`[Repository.findAll] Interleaved ${interleavedArticles.length} articles in ${round} rounds`);
+        console.log(`[Repository.findAll] Grouped into ${sourceGroups.size} sources:`,
+          Array.from(sourceGroups.entries()).map(([src, arts]) => `${src}:${arts.length}`).join(', ')
+        );
+
+        // 3. ROUND ROBIN INTERLEAVING: Mix sources evenly
+        const interleavedArticles: typeof articles = [];
+        const sourceIterators = Array.from(sourceGroups.values());
+        let round = 0;
+
+        while (interleavedArticles.length < limit && sourceIterators.some(group => group.length > 0)) {
+          for (const group of sourceIterators) {
+            if (interleavedArticles.length >= limit) break;
+
+            if (group.length > 0) {
+              const article = group.shift()!; // Take first (most recent in this source)
+              interleavedArticles.push(article);
+            }
+          }
+          round++;
+        }
+
+        console.log(`[Repository.findAll] Interleaved ${interleavedArticles.length} articles in ${round} rounds`);
+        finalArticles = interleavedArticles;
+      } else {
+        // SUBSEQUENT PAGES: Normal pagination (no round robin to avoid duplicates)
+        finalArticles = articles.slice(0, limit);
+        console.log(`[Repository.findAll] Using normal pagination (no round robin)`);
+      }
 
       // 4. CONVERT TO DOMAIN ENTITIES
-      let domainArticles = interleavedArticles.map((article) => this.mapper.toDomain(article));
+      let domainArticles = finalArticles.map((article) => this.mapper.toDomain(article));
 
       // Enrich with per-user favorite status
       if (userId && domainArticles.length > 0) {
@@ -563,6 +582,44 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
     return where;
   }
 
+  /**
+   * Interleave articles by source using round-robin and then apply pagination.
+   * This keeps source variety while preserving chronological order per source.
+   */
+  private interleaveBySource<T extends { source: string }>(
+    articles: T[],
+    limit: number,
+    offset: number
+  ): T[] {
+    if (articles.length === 0 || limit <= 0) {
+      return [];
+    }
+
+    const targetSize = offset + limit;
+    const sourceGroups = new Map<string, T[]>();
+
+    for (const article of articles) {
+      if (!sourceGroups.has(article.source)) {
+        sourceGroups.set(article.source, []);
+      }
+      sourceGroups.get(article.source)!.push(article);
+    }
+
+    const interleaved: T[] = [];
+    const sourceIterators = Array.from(sourceGroups.values());
+
+    while (interleaved.length < targetSize && sourceIterators.some(group => group.length > 0)) {
+      for (const group of sourceIterators) {
+        if (interleaved.length >= targetSize) break;
+        if (group.length > 0) {
+          interleaved.push(group.shift()!);
+        }
+      }
+    }
+
+    return interleaved.slice(offset, targetSize);
+  }
+
   // =========================================================================
   // SEARCH (Sprint 19: Waterfall Search Engine)
   // =========================================================================
@@ -573,8 +630,17 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
    *
    * SPRINT 19.3.1 - ACCENT-INSENSITIVE SEARCH
    */
-  private normalizeText(text: string): string {
-    return text
+  private normalizeText(text: string | null | undefined): string {
+    if (typeof text !== 'string') {
+      return '';
+    }
+
+    const trimmed = text.trim();
+    if (trimmed.length === 0) {
+      return '';
+    }
+
+    return trimmed
       .normalize('NFD') // Decompose accented characters
       .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
       .toLowerCase();
@@ -720,6 +786,209 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
     } catch (error) {
       throw new DatabaseError(
         `Failed to search articles: ${(error as Error).message}`,
+        error as Error
+      );
+    }
+  }
+
+  // =========================================================================
+  // SPRINT 28 & 32: LOCAL NEWS SEARCH (Category-filtered + Progressive fallback)
+  // =========================================================================
+
+  /**
+   * Helper: Query local articles by city name
+   */
+  private async queryCityArticles(city: string, limit: number): Promise<Prisma.ArticleGetPayload<{}>[]> {
+    if (!city || city.trim().length === 0) {
+      return [];
+    }
+
+    const normalized = this.normalizeText(city);
+    const variants = this.generateAccentVariants(normalized);
+
+    const searchFields = ['title', 'description', 'summary', 'content'] as const;
+    const cityConditions = searchFields.flatMap(field =>
+      variants.map(variant => ({
+        [field]: { contains: variant, mode: 'insensitive' as const }
+      }))
+    );
+
+    return this.prisma.article.findMany({
+      where: {
+        AND: [
+          { category: { equals: 'local', mode: 'insensitive' } },
+          { OR: cityConditions }
+        ]
+      },
+      orderBy: { publishedAt: 'desc' },
+      take: limit
+    });
+  }
+
+  /**
+   * Helper: Query local articles by province name
+   */
+  private async queryProvinceArticles(province: string, limit: number): Promise<Prisma.ArticleGetPayload<{}>[]> {
+    if (!province || province.trim().length === 0) {
+      return [];
+    }
+
+    const normalized = this.normalizeText(province);
+    const variants = this.generateAccentVariants(normalized);
+
+    const searchFields = ['title', 'description', 'summary', 'content'] as const;
+    const provinceConditions = searchFields.flatMap(field =>
+      variants.map(variant => ({
+        [field]: { contains: variant, mode: 'insensitive' as const }
+      }))
+    );
+
+    return this.prisma.article.findMany({
+      where: {
+        AND: [
+          { category: { equals: 'local', mode: 'insensitive' } },
+          { OR: provinceConditions }
+        ]
+      },
+      orderBy: { publishedAt: 'desc' },
+      take: limit
+    });
+  }
+
+  /**
+   * Search articles in the 'local' category with progressive fallback.
+   *
+   * SPRINT 32 vNext: Progressive fallback strategy
+   * - LEVEL 1: Try city search (if >= MIN_RESULTS, return with scopeUsed: 'city')
+   * - LEVEL 2: Try province search (if >= MIN_RESULTS, return with scopeUsed: 'province')
+   * - LEVEL 3: Fallback to all local articles (scopeUsed: 'general')
+   */
+  async searchLocalArticles(
+    location: ParsedLocation,
+    limit: number,
+    offset: number,
+    userId?: string
+  ): Promise<{ articles: NewsArticle[]; scopeUsed: 'city' | 'province' | 'region' | 'general' }> {
+    try {
+      const MIN_RESULTS = 8;
+      const bufferSize = Math.max((offset + limit) * 3, 60);
+
+      console.log(`[Repository.searchLocalArticles] 📍 Location:`, location);
+
+      // LEVEL 1: Try city search
+      let candidates = await this.queryCityArticles(location.city, bufferSize);
+      console.log(`[Repository.searchLocalArticles]    🏙️  City "${location.city}": ${candidates.length} results`);
+
+      if (candidates.length >= MIN_RESULTS) {
+        const articles = this.interleaveBySource(candidates, limit, offset);
+        let domainArticles = articles.map(a => this.mapper.toDomain(a));
+
+        if (userId && domainArticles.length > 0) {
+          domainArticles = await this.enrichWithUserFavorites(domainArticles, userId);
+        } else {
+          domainArticles = domainArticles.map(a =>
+            NewsArticle.reconstitute({ ...a.toJSON(), isFavorite: false })
+          );
+        }
+
+        return { articles: domainArticles, scopeUsed: 'city' };
+      }
+
+      // LEVEL 2: Try province search
+      if (location.province) {
+        candidates = await this.queryProvinceArticles(location.province, bufferSize);
+        console.log(`[Repository.searchLocalArticles]    🗺️  Province "${location.province}": ${candidates.length} results`);
+
+        if (candidates.length >= MIN_RESULTS) {
+          const articles = this.interleaveBySource(candidates, limit, offset);
+          let domainArticles = articles.map(a => this.mapper.toDomain(a));
+
+          if (userId && domainArticles.length > 0) {
+            domainArticles = await this.enrichWithUserFavorites(domainArticles, userId);
+          } else {
+            domainArticles = domainArticles.map(a =>
+              NewsArticle.reconstitute({ ...a.toJSON(), isFavorite: false })
+            );
+          }
+
+          return { articles: domainArticles, scopeUsed: 'province' };
+        }
+      }
+
+      // LEVEL 3: Fallback to all local articles
+      console.log(`[Repository.searchLocalArticles]    🌍 Fallback: returning all local articles`);
+      candidates = await this.prisma.article.findMany({
+        where: { category: { equals: 'local', mode: 'insensitive' } },
+        orderBy: { publishedAt: 'desc' },
+        take: bufferSize
+      });
+
+      const articles = this.interleaveBySource(candidates, limit, offset);
+      let domainArticles = articles.map(a => this.mapper.toDomain(a));
+
+      if (userId && domainArticles.length > 0) {
+        domainArticles = await this.enrichWithUserFavorites(domainArticles, userId);
+      } else {
+        domainArticles = domainArticles.map(a =>
+          NewsArticle.reconstitute({ ...a.toJSON(), isFavorite: false })
+        );
+      }
+
+      return { articles: domainArticles, scopeUsed: 'general' };
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to search local articles: ${(error as Error).message}`,
+        error as Error
+      );
+    }
+  }
+
+  async countLocalArticles(city: string): Promise<number> {
+    try {
+      if (!city || city.trim().length === 0) {
+        return 0;
+      }
+
+      const trimmedCity = city.trim();
+      const normalizedCity = this.normalizeText(trimmedCity);
+      const cityVariants = this.generateAccentVariants(normalizedCity);
+      const searchFields = ['title', 'description', 'summary', 'content'] as const;
+      const cityConditions = searchFields.flatMap(field =>
+        cityVariants.map(variant => ({
+          [field]: { contains: variant, mode: 'insensitive' as const }
+        }))
+      );
+
+      const filteredCount = await this.prisma.article.count({
+        where: {
+          AND: [
+            {
+              category: {
+                equals: 'local',
+                mode: 'insensitive',
+              },
+            },
+            { OR: cityConditions },
+          ],
+        },
+      });
+
+      if (filteredCount > 0) {
+        return filteredCount;
+      }
+
+      // Fallback count aligned with searchLocalArticles fallback behavior
+      return await this.prisma.article.count({
+        where: {
+          category: {
+            equals: 'local',
+            mode: 'insensitive',
+          },
+        },
+      });
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to count local articles: ${(error as Error).message}`,
         error as Error
       );
     }

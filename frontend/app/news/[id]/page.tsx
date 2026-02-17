@@ -7,10 +7,12 @@ import Image from 'next/image';
 import DOMPurify from 'dompurify';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ExternalLink, Clock, User, Tag, Sparkles } from 'lucide-react';
-import { analyzeArticle, type NewsArticle, type AnalyzeResponse } from '@/lib/api';
+import { toast } from 'sonner';
+import { APIError, analyzeArticleWithMode, type AnalysisMode, type AnalyzeDepthMode } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useArticle } from '@/hooks/useArticle';
-import { formatDate, getBiasInfo, getSentimentInfo, isValidUUID, isSafeUrl } from '@/lib/news-utils';
+import { useEntitlements } from '@/hooks/useEntitlements';
+import { formatDate, getBiasDisplayInfo, getSentimentInfo, isValidUUID, isSafeUrl } from '@/lib/news-utils';
 import { ANALYSIS_COOLDOWN_MS } from '@/lib/constants';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,7 +20,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ReliabilityBadge } from '@/components/reliability-badge';
+import { DeepAnalysisPanel } from '@/components/deep-analysis-panel';
+import { DeepAnalysisButton } from '@/components/deep-analysis-button';
+import { DeepAnalysisRedeemSheet } from '@/components/deep-analysis-redeem-sheet';
 import { NewsChatDrawer } from '@/components/news-chat-drawer';
+import { GeneralChatDrawer } from '@/components/general-chat-drawer';
 
 /**
  * Loading skeleton for the article
@@ -56,10 +62,17 @@ export default function NewsDetailPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { getToken } = useAuth();
+  const { user, loading: authLoading, getToken } = useAuth();
   const queryClient = useQueryClient();
   const id = params.id as string;
   const shouldAutoAnalyze = searchParams.get('analyze') === 'true';
+  const {
+    entitlements,
+    loading: entitlementsLoading,
+    redeeming: redeemingEntitlements,
+    redeem: redeemEntitlementCode,
+    refetch: refetchEntitlements,
+  } = useEntitlements(user, authLoading, getToken);
 
   // Validate UUID format to prevent injection attacks
   const validUUID = isValidUUID(id);
@@ -82,7 +95,10 @@ export default function NewsDetailPage() {
   // Local state for AI analysis
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [paywallBlocked, setPaywallBlocked] = useState(false);
+  const [isRedeemSheetOpen, setIsRedeemSheetOpen] = useState(false);
   const [lastAnalyzeTime, setLastAnalyzeTime] = useState<number>(0);
+  const [lastScrapedContentLength, setLastScrapedContentLength] = useState<number | null>(null);
 
   // =========================================================================
   // SPRINT 18.3: ARTIFICIAL REVEAL STATE - UX Enhancement
@@ -97,6 +113,12 @@ export default function NewsDetailPage() {
   // perceived value of AI analysis regardless of cache status.
   // =========================================================================
   const [isRevealing, setIsRevealing] = useState(false);
+
+  // =========================================================================
+  // SPRINT 29: GRACEFUL DEGRADATION - General Chat Fallback
+  // =========================================================================
+  const [isGeneralChatOpen, setIsGeneralChatOpen] = useState(false);
+  const [generalChatInitialQuestion, setGeneralChatInitialQuestion] = useState('');
 
   // Redirect to not-found if 404 error
   useEffect(() => {
@@ -119,82 +141,76 @@ export default function NewsDetailPage() {
     });
   }, [article?.content]);
 
-  const handleAnalyze = async () => {
-    console.log(`[page.tsx] 🟡 handleAnalyze called`);
+  const handleAnalyze = async (
+    analysisMode: AnalysisMode = 'moderate',
+    mode: AnalyzeDepthMode = 'standard'
+  ) => {
     if (!article) {
-      console.log(`[page.tsx]    ❌ No article - aborting`);
       return;
     }
-
-    console.log(`[page.tsx]    Article ID: ${article.id.substring(0, 8)}...`);
 
     // Rate limiting: cooldown to prevent spam
     const now = Date.now();
     if (now - lastAnalyzeTime < ANALYSIS_COOLDOWN_MS) {
-      console.log(`[page.tsx]    ⏱️ Rate limit - waiting ${ANALYSIS_COOLDOWN_MS / 1000}s`);
-      setAnalyzeError(`Espera ${ANALYSIS_COOLDOWN_MS / 1000} segundos antes de re-analizar`);
+      setAnalyzeError(`Espera ${ANALYSIS_COOLDOWN_MS / 1000} segundos antes de volver a analizar`);
       return;
     }
 
     setIsAnalyzing(true);
     setAnalyzeError(null);
+    setPaywallBlocked(false);
     setLastAnalyzeTime(now);
-    console.log(`[page.tsx]    📡 Starting analysis API call...`);
 
     try {
       // Get authentication token
       const token = await getToken();
       if (!token) {
-        console.log(`[page.tsx]    ❌ No auth token available`);
         setAnalyzeError('No se pudo obtener el token de autenticación');
         return;
       }
 
-      console.log(`[page.tsx]    ✅ Token obtained, calling analyzeArticle API...`);
-      const result = await analyzeArticle(article.id, token);
-      console.log(`[page.tsx]    ✅ Analysis API response:`, result);
+      const analyzeResponse = await analyzeArticleWithMode(article.id, token, analysisMode, mode);
+      setLastScrapedContentLength(analyzeResponse.data.scrapedContentLength);
+      setPaywallBlocked(false);
 
       // Invalidate caches to refetch article and update dashboard buttons
-      console.log(`[page.tsx]    🔄 Invalidating caches...`);
       queryClient.invalidateQueries({ queryKey: ['article', id] });
       queryClient.invalidateQueries({ queryKey: ['news'] });
-      console.log(`[page.tsx]    ✅ Caches invalidated`);
     } catch (e) {
       console.error(`[page.tsx]    ❌ Analysis failed:`, e);
+      if (e instanceof APIError && e.errorCode === 'PAYWALL_BLOCKED') {
+        const blockedMessage =
+          'Articulo de pago o suscripcion al medio. No se puede realizar el analisis sin el texto completo.';
+        setPaywallBlocked(true);
+        setAnalyzeError(blockedMessage);
+        toast.error(blockedMessage);
+        return;
+      }
+      if (
+        mode === 'deep' &&
+        e instanceof Error &&
+        /(premium required|deep analysis entitlement required)/i.test(e.message)
+      ) {
+        setAnalyzeError('Disponible en Premium. Activa Analisis profundo con un codigo promocional.');
+        return;
+      }
       setAnalyzeError(e instanceof Error ? e.message : 'Error al analizar');
     } finally {
       setIsAnalyzing(false);
-      console.log(`[page.tsx]    🏁 Analysis flow completed`);
     }
   };
 
   // Auto-trigger analysis when navigating from card with ?analyze=true
   useEffect(() => {
-    console.log(`[page.tsx] 🟢 Auto-trigger useEffect fired`);
-    console.log(`[page.tsx]    shouldAutoAnalyze: ${shouldAutoAnalyze}`);
-    console.log(`[page.tsx]    autoAnalyzeTriggered: ${autoAnalyzeTriggered}`);
-    console.log(`[page.tsx]    article exists: ${!!article}`);
-    console.log(`[page.tsx]    isAnalyzing: ${isAnalyzing}`);
-
-    if (article) {
-      console.log(`[page.tsx]    article.id: ${article.id.substring(0, 8)}...`);
-      console.log(`[page.tsx]    article.analyzedAt: ${article.analyzedAt ? 'YES' : 'NO'}`);
-      console.log(`[page.tsx]    article.isFavorite: ${article.isFavorite}`);
-    }
-
     if (!shouldAutoAnalyze || autoAnalyzeTriggered || !article || isAnalyzing) {
-      console.log(`[page.tsx]    ❌ Skipping auto-trigger (conditions not met)`);
       return;
     }
 
     // Case 1: Article not analyzed at all → trigger fresh analysis
     // Case 2: Article analyzed globally but user hasn't seen it → trigger to add auto-favorite
     if (!article.analyzedAt || (article.analyzedAt && !article.isFavorite)) {
-      console.log(`[page.tsx]    ✅ Conditions met! Triggering handleAnalyze()`);
       setAutoAnalyzeTriggered(true);
       handleAnalyze();
-    } else {
-      console.log(`[page.tsx]    ℹ️ Article already analyzed AND in favorites - no action needed`);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shouldAutoAnalyze, autoAnalyzeTriggered, article]);
@@ -206,8 +222,6 @@ export default function NewsDetailPage() {
   // (user has it unlocked from before), apply fake delay to maintain UX value
   // =========================================================================
   useEffect(() => {
-    console.log(`[page.tsx] 🎭 Reveal useEffect fired`);
-
     // Only apply reveal delay if:
     // 1. User came with ?analyze=true intent
     // 2. Article is already analyzed (data available)
@@ -215,18 +229,14 @@ export default function NewsDetailPage() {
     // 4. Not already revealing
     const shouldReveal = shouldAutoAnalyze && article?.analyzedAt && !isAnalyzing && !isRevealing;
 
-    console.log(`[page.tsx]    shouldReveal: ${shouldReveal}`);
-
     if (!shouldReveal) {
       return;
     }
 
-    console.log(`[page.tsx]    ✨ Starting artificial reveal (1.8s delay)...`);
     setIsRevealing(true);
 
     const REVEAL_DELAY = 1800; // 1.8 seconds
     const timer = setTimeout(() => {
-      console.log(`[page.tsx]    ✅ Reveal completed - showing analysis`);
       setIsRevealing(false);
     }, REVEAL_DELAY);
 
@@ -259,13 +269,55 @@ export default function NewsDetailPage() {
   }
 
   const isAnalyzed = article.analyzedAt !== null;
-  const biasInfo = article.biasScore !== null ? getBiasInfo(article.biasScore) : null;
+  const hasDeepAnalysisEntitlement = entitlements.deepAnalysis;
+  const deepSections = article.analysis?.deep?.sections;
   const sentimentInfo = article.analysis?.sentiment ? getSentimentInfo(article.analysis.sentiment) : null;
+  const articleLeaningLabels: Record<'progresista' | 'conservadora' | 'extremista' | 'neutral' | 'indeterminada', string> = {
+    progresista: 'Progresista',
+    conservadora: 'Conservadora',
+    extremista: 'Extremista',
+    neutral: 'Neutral',
+    indeterminada: 'Indeterminada',
+  };
+  const articleLeaning =
+    article.analysis?.articleLeaning ??
+    (article.analysis?.biasLeaning === 'otra'
+      ? 'indeterminada'
+      : article.analysis?.biasLeaning);
+  const qualityNotice = article.analysis?.qualityNotice?.trim();
+  const effectiveContentLength =
+    lastScrapedContentLength ?? (article.content?.trim().length ?? 0);
+  const biasInfo =
+    article.biasScore !== null
+      ? getBiasDisplayInfo({
+          score: article.biasScore,
+          articleLeaning,
+          leaningConfidence: article.analysis?.leaningConfidence,
+          biasIndicators: article.analysis?.biasIndicators,
+          contentLength: effectiveContentLength,
+          qualityNotice,
+        })
+      : null;
 
   // Determine if we should show analysis content or skeleton
   // Show skeleton if: analyzing OR revealing (artificial delay)
   const showAnalysisSkeleton = isAnalyzing || isRevealing;
-  const showAnalysisContent = isAnalyzed && !showAnalysisSkeleton;
+  const showAnalysisContent = isAnalyzed && !showAnalysisSkeleton && !paywallBlocked;
+  const hasAnalysisFormatError =
+    article.analysis?.formatError === true ||
+    (article.summary ?? '').toLowerCase().includes('no se pudo procesar el formato del analisis');
+  const showAnalysisErrorState = showAnalysisContent && hasAnalysisFormatError;
+  const isIndeterminateLeaning =
+    articleLeaning === 'indeterminada' || article.analysis?.biasLeaning === 'indeterminada';
+  const isLowCostDueToInsufficientContent =
+    article.analysis?.analysisModeUsed === 'low_cost' &&
+    effectiveContentLength > 0 &&
+    effectiveContentLength < 800;
+  const hasPreliminaryContentWarning =
+    showAnalysisContent &&
+    !showAnalysisErrorState &&
+    !qualityNotice &&
+    (effectiveContentLength < 300 || isIndeterminateLeaning || isLowCostDueToInsufficientContent);
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
@@ -350,6 +402,18 @@ export default function NewsDetailPage() {
                   <div className="h-4 bg-purple-200 dark:bg-purple-800 rounded w-10/12"></div>
                 </div>
               </div>
+            ) : showAnalysisErrorState ? (
+              <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                <div className="flex items-center gap-2 mb-3">
+                  <Sparkles className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                  <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-300">
+                    Estado del analisis
+                  </h3>
+                </div>
+                <p className="text-sm text-amber-800 dark:text-amber-300 leading-relaxed">
+                  No se pudo procesar el formato del analisis. Reintenta.
+                </p>
+              </div>
             ) : showAnalysisContent && article.summary ? (
               <div className="mb-6 p-4 bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-lg">
                 <div className="flex items-center gap-2 mb-3">
@@ -361,6 +425,11 @@ export default function NewsDetailPage() {
                 <p className="text-base text-zinc-700 dark:text-zinc-300 leading-relaxed">
                   {article.summary}
                 </p>
+                {qualityNotice && (
+                  <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-400">
+                    {qualityNotice}
+                  </p>
+                )}
               </div>
             ) : null}
 
@@ -442,26 +511,65 @@ export default function NewsDetailPage() {
 
                     <div className="h-10 w-full bg-zinc-300 dark:bg-zinc-700 rounded"></div>
                   </div>
+                ) : showAnalysisErrorState ? (
+                  <>
+                    <div className="text-center py-4">
+                      <p className="text-sm text-amber-700 dark:text-amber-400 mb-4">
+                        No se pudo procesar el formato del analisis. Reintenta.
+                      </p>
+                      <Button
+                        size="lg"
+                        className="w-full gap-2"
+                        onClick={() => handleAnalyze('moderate')}
+                        disabled={isAnalyzing || isRevealing}
+                      >
+                        <Sparkles className="h-5 w-5" />
+                        Reintentar analisis
+                      </Button>
+                    </div>
+                    {analyzeError && (
+                      <p className="text-sm text-red-500">{analyzeError}</p>
+                    )}
+                  </>
                 ) : showAnalysisContent && biasInfo ? (
                   // ========== ACTUAL ANALYSIS CONTENT ==========
                   <>
                     {/* Bias Score */}
                     <div className="space-y-3">
+                      {hasPreliminaryContentWarning && (
+                        <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
+                          Contenido insuficiente: analisis preliminar
+                        </p>
+                      )}
                       <div className="flex justify-between items-center">
                         <span className="text-sm font-medium">Nivel de Sesgo</span>
                         <span className={`text-sm font-semibold px-2 py-1 rounded ${biasInfo.bg} ${biasInfo.color}`}>
                           {biasInfo.label}
                         </span>
                       </div>
-                      <div className="h-3 bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-linear-to-r from-green-500 via-amber-500 to-red-500 rounded-full transition-all"
-                          style={{ width: `${(article.biasScore ?? 0) * 100}%` }}
-                        />
-                      </div>
+                      {biasInfo.showScore ? (
+                        <div className="h-3 bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-linear-to-r from-green-500 via-amber-500 to-red-500 rounded-full transition-all"
+                            style={{ width: `${biasInfo.progressValue}%` }}
+                          />
+                        </div>
+                      ) : (
+                        <div className="h-3 bg-zinc-200 dark:bg-zinc-700 rounded-full" />
+                      )}
                       <p className="text-xs text-muted-foreground">
-                        Puntuación: {((article.biasScore ?? 0) * 100).toFixed(0)}% de sesgo detectado
+                        Puntuacion: {biasInfo.showScore ? `${biasInfo.scoreText} de sesgo detectado` : 'N/A'}
                       </p>
+                      {article.analysis?.biasComment && (
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          {article.analysis.biasComment}
+                        </p>
+                      )}
+                      {articleLeaning && (
+                        <p className="text-xs text-muted-foreground">
+                          Tendencia estimada: {articleLeaningLabels[articleLeaning]}
+                        </p>
+                      )}
                     </div>
 
                     {/* Reliability Score - Detector de Bulos */}
@@ -469,8 +577,18 @@ export default function NewsDetailPage() {
                       <div className="p-4 border rounded-lg bg-white dark:bg-zinc-800">
                         <ReliabilityBadge
                           score={article.analysis.reliabilityScore}
+                          traceabilityScore={article.analysis.traceabilityScore}
+                          factualityStatus={article.analysis.factualityStatus}
+                          factCheckVerdict={article.analysis.factCheck?.verdict}
+                          clickbaitScore={article.analysis.clickbaitScore}
+                          shouldEscalate={article.analysis.should_escalate}
                           reasoning={article.analysis.factCheck?.reasoning}
                         />
+                        {article.analysis.reliabilityComment && (
+                          <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
+                            {article.analysis.reliabilityComment}
+                          </p>
+                        )}
                       </div>
                     )}
 
@@ -514,25 +632,24 @@ export default function NewsDetailPage() {
                       </div>
                     )}
 
-                    {/* Re-analyze button */}
-                    <Button
-                      variant="outline"
-                      className="w-full gap-2"
-                      onClick={handleAnalyze}
-                      disabled={isAnalyzing || isRevealing}
-                    >
-                      {isAnalyzing || isRevealing ? (
-                        <>
-                          <span className="animate-spin">⏳</span>
-                          {isRevealing ? 'Procesando...' : 'Re-analizando...'}
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="h-4 w-4" />
-                          Re-analizar
-                        </>
-                      )}
-                    </Button>
+                    <DeepAnalysisPanel sections={deepSections} />
+                    <DeepAnalysisButton
+                      hasEntitlement={hasDeepAnalysisEntitlement && !entitlementsLoading}
+                      isBusy={isAnalyzing || isRevealing}
+                      onClick={() => handleAnalyze('standard', 'deep')}
+                    />
+                    {!hasDeepAnalysisEntitlement && !entitlementsLoading && (
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => setIsRedeemSheetOpen(true)}
+                      >
+                        Activar con codigo
+                      </Button>
+                    )}
+                    {analyzeError && (
+                      <p className="text-sm text-red-500">{analyzeError}</p>
+                    )}
                   </>
                 ) : (
                   <>
@@ -546,7 +663,7 @@ export default function NewsDetailPage() {
                       <Button
                         size="lg"
                         className="w-full gap-2"
-                        onClick={handleAnalyze}
+                        onClick={() => handleAnalyze('moderate')}
                         disabled={isAnalyzing || isRevealing}
                       >
                         {isAnalyzing || isRevealing ? (
@@ -584,7 +701,37 @@ export default function NewsDetailPage() {
       </footer>
 
       {/* Floating Chat Button - RAG-powered conversation with the article */}
-      <NewsChatDrawer articleId={article.id} articleTitle={article.title} />
+      <NewsChatDrawer
+        articleId={article.id}
+        articleTitle={article.title}
+        onOpenGeneralChat={(question) => {
+          setGeneralChatInitialQuestion(question);
+          setIsGeneralChatOpen(true);
+        }}
+      />
+
+      {/* Sprint 29: General Chat Drawer - Fallback for out-of-domain questions */}
+      <GeneralChatDrawer
+        isOpen={isGeneralChatOpen}
+        onOpenChange={setIsGeneralChatOpen}
+        initialQuestion={generalChatInitialQuestion}
+      />
+
+      <DeepAnalysisRedeemSheet
+        isOpen={isRedeemSheetOpen}
+        onOpenChange={setIsRedeemSheetOpen}
+        isSubmitting={redeemingEntitlements}
+        onRedeem={async (code) => {
+          const activated = await redeemEntitlementCode(code);
+          if (activated) {
+            await refetchEntitlements();
+            setAnalyzeError(null);
+          }
+          return activated;
+        }}
+      />
     </div>
   );
 }
+
+

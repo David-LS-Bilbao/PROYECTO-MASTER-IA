@@ -5,11 +5,17 @@
 
 import { ArticleAnalysis } from '../entities/news-article.entity';
 
+export type AnalysisMode = 'low_cost' | 'moderate' | 'standard' | 'deep';
+
 export interface AnalyzeContentInput {
   title: string;
   content: string;
   source: string;
   language: string;
+  analysisMode?: AnalysisMode;
+  inputQuality?: 'full' | 'snippet_rss' | 'paywall_o_vacio' | 'unknown';
+  textSource?: string;
+  contentChars?: number;
 }
 
 export interface ChatMessage {
@@ -42,12 +48,22 @@ export interface IGeminiClient {
   /**
    * Generate a chat response using RAG context (Retrieval-Augmented Generation)
    * Uses a focused system prompt that only answers from provided context
-   * @param context The retrieved context from ChromaDB
+   * @param context The retrieved context from pgvector
    * @param question The user's question
    * @returns The AI-generated response
    * @throws ExternalAPIError if API call fails
    */
   generateChatResponse(context: string, question: string): Promise<string>;
+
+  /**
+   * Generate a general chat response with full conversation history and Google Search
+   * Uses Google Search Grounding for real-time data access
+   * @param systemPrompt The system instructions for the LLM
+   * @param messages Full conversation history (sliding window applied internally)
+   * @returns The AI-generated response
+   * @throws ExternalAPIError if API call fails
+   */
+  generateGeneralResponse(systemPrompt: string, messages: ChatMessage[]): Promise<string>;
 
   /**
    * Generate embedding vector for text using text-embedding-004

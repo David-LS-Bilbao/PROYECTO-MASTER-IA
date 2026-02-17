@@ -17,6 +17,7 @@ import {
   type NewsResponse,
 } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import { useBackendStatus } from '@/hooks/useBackendStatus';
 
 export interface UseNewsParams {
   category?: string; // Sprint 22: Cambiado de string a string para soportar topics dinámicos
@@ -27,7 +28,9 @@ export interface UseNewsParams {
 
 export function useNews(params: UseNewsParams = {}) {
   const { category = 'general', limit = 50, offset = 0, refetchInterval } = params;
-  const { getToken, user } = useAuth();
+  const { getToken, user, loading: authLoading } = useAuth();
+  const { isReady: backendReady } = useBackendStatus();
+  const requiresAuth = category === 'local' || category === 'favorites';
 
   // Cache the token to avoid re-fetching on every render
   const tokenRef = useRef<string | null>(null);
@@ -43,34 +46,31 @@ export function useNews(params: UseNewsParams = {}) {
   const staleTime = (category as string) === 'favorites' ? 2 * 60 * 1000 : undefined;
 
   return useQuery<NewsResponse>({
-    queryKey: ['news', category, limit, offset],
+    queryKey: ['news', category, limit, offset, user?.uid ?? 'anon'],
 
     queryFn: async () => {
       const startTime = Date.now();
 
       // Get fresh token for this request
       const token = await getToken() || tokenRef.current || undefined;
+      if (requiresAuth && !token) {
+        throw new Error('Authentication token not ready yet');
+      }
 
       let result;
       if ((category as string) === 'favorites') {
-        console.log('[useNews] Fetching FAVORITES...');
         result = await fetchFavorites(limit, offset, token);
       } else if (category === 'general') {
-        console.log('[useNews] Fetching GENERAL...');
         result = await fetchNews(limit, offset, token);
       } else {
-        console.log(`[useNews] Fetching ${category.toUpperCase()}...`);
         result = await fetchNewsByCategory(category, limit, offset, token);
       }
-
-      const duration = Date.now() - startTime;
-      console.log(`[useNews] "${category}" completado: ${result.data?.length || 0} articulos en ${duration}ms`);
 
       return result;
     },
 
     placeholderData: keepPreviousData,
-    enabled: !!category,
+    enabled: backendReady && !!category && (!requiresAuth || (!authLoading && !!user)),
     staleTime,
     refetchInterval,
     refetchIntervalInBackground: false,
@@ -104,13 +104,10 @@ export function useInvalidateNews() {
   return useCallback(
     (category?: string, invalidateAll: boolean = false) => {
       if (invalidateAll) {
-        console.log('[Cache] Invalidando TODAS las categorias');
         queryClient.invalidateQueries({ queryKey: ['news'] });
       } else if (category) {
-        console.log(`[Cache] Invalidando: ${category}`);
         queryClient.invalidateQueries({ queryKey: ['news', category] });
       } else {
-        console.log('[Cache] Invalidando todas las news (fallback)');
         queryClient.invalidateQueries({ queryKey: ['news'] });
       }
     },
@@ -154,8 +151,6 @@ export function useGlobalRefresh() {
     const cronSecret = process.env.NEXT_PUBLIC_CRON_SECRET || '';
 
     try {
-      console.log('🌍 [GlobalRefresh] Iniciando actualización global...');
-
       // POST to /api/ingest/all
       const response = await fetch(`${API_BASE_URL}/api/ingest/all`, {
         method: 'POST',
@@ -171,14 +166,7 @@ export function useGlobalRefresh() {
 
       const result = await response.json();
 
-      console.log('✅ [GlobalRefresh] Completado:', {
-        processed: result.data.processed,
-        newArticles: result.data.totalNewArticles,
-        duplicates: result.data.totalDuplicates,
-      });
-
       // Invalidar TODAS las queries de news para forzar refetch
-      console.log('🗑️ [GlobalRefresh] Invalidando todas las queries de news...');
       await queryClient.invalidateQueries({
         predicate: (query) => {
           const [base] = query.queryKey;

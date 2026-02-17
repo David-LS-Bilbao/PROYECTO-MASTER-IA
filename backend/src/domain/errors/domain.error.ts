@@ -72,6 +72,16 @@ export class ForbiddenError extends DomainError {
   }
 }
 
+export class PaywallBlockedError extends DomainError {
+  constructor(
+    message: string = 'Articulo de pago o suscripcion al medio. No se puede realizar el analisis sin el texto completo.',
+    details?: Record<string, unknown>
+  ) {
+    super(message, 422, 'PAYWALL_BLOCKED', details);
+    this.name = 'PaywallBlockedError';
+  }
+}
+
 export class QuotaExceededError extends DomainError {
   constructor(message: string = 'Monthly quota exceeded', details?: Record<string, unknown>) {
     super(message, 429, 'QUOTA_EXCEEDED', details);
@@ -83,5 +93,36 @@ export class SecurityError extends DomainError {
   constructor(message: string, errorCode?: string, details?: Record<string, unknown>) {
     super(message, 403, errorCode || 'SECURITY_VIOLATION', details);
     this.name = 'SecurityError';
+  }
+}
+
+/**
+ * LowRelevanceError - Sprint 29 (Graceful Degradation)
+ * Thrown when RAG retrieval finds no relevant context for user's question
+ * NOT a 4xx/5xx error - this is expected behavior for out-of-domain questions
+ *
+ * HTTP 200 OK with special flag to trigger frontend fallback to General Chat
+ */
+export class LowRelevanceError extends DomainError {
+  constructor(message: string = 'No encuentro información sobre eso en esta noticia.') {
+    // 200 status code - this is not an error, it's a graceful fallback
+    super(message, 200, 'LOW_RELEVANCE', { isFallback: true });
+    this.name = 'LowRelevanceError';
+  }
+}
+
+/**
+ * FeatureLockedError - Sprint 30 (Premium Chat)
+ * Thrown when user tries to access a PREMIUM-only feature without subscription
+ * HTTP 403 Forbidden with specific error code for frontend to show upgrade CTA
+ */
+export class FeatureLockedError extends DomainError {
+  constructor(
+    feature: string = 'Chat',
+    message: string = 'Esta funcionalidad es exclusiva para usuarios Premium',
+    details?: Record<string, unknown>
+  ) {
+    super(message, 403, 'CHAT_FEATURE_LOCKED', { feature, ...details });
+    this.name = 'FeatureLockedError';
   }
 }

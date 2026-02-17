@@ -4,23 +4,128 @@
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
+/** Timeout por defecto para llamadas a la API (45s - permite cold start de Render free tier) */
+const DEFAULT_FETCH_TIMEOUT = 45_000;
+
+/**
+ * Wrapper de fetch con timeout via AbortController.
+ * Evita que las llamadas a la API cuelguen indefinidamente cuando el backend
+ * está dormido (Render free tier cold start ~30-60s).
+ */
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init?: RequestInit & { timeout?: number }
+): Promise<Response> {
+  const { timeout = DEFAULT_FETCH_TIMEOUT, ...fetchInit } = init ?? {};
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    const response = await fetch(input, {
+      ...fetchInit,
+      signal: controller.signal,
+    });
+    return response;
+  } catch (error: unknown) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error(
+        `El servidor no responde (timeout ${Math.round(timeout / 1000)}s). ` +
+        'Puede estar despertando. Inténtalo de nuevo en unos segundos.'
+      );
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+export type AnalysisMode = 'low_cost' | 'moderate' | 'standard';
+export type AnalyzeDepthMode = 'standard' | 'deep';
+
+function extractApiError(errorData: any, fallback: string): {
+  message: string;
+  code?: string;
+  details?: any;
+} {
+  if (!errorData || typeof errorData !== 'object') {
+    return { message: fallback };
+  }
+
+  const code =
+    typeof errorData.error?.code === 'string'
+      ? errorData.error.code
+      : undefined;
+  const details =
+    errorData.error && typeof errorData.error === 'object'
+      ? errorData.error.details
+      : undefined;
+
+  if (typeof errorData.message === 'string' && errorData.message.trim().length > 0) {
+    return { message: errorData.message, code, details };
+  }
+
+  if (typeof errorData.error === 'string' && errorData.error.trim().length > 0) {
+    return { message: errorData.error, code, details };
+  }
+
+  if (errorData.error && typeof errorData.error === 'object') {
+    const nestedMessage = errorData.error.message;
+    if (typeof nestedMessage === 'string' && nestedMessage.trim().length > 0) {
+      return { message: nestedMessage, code, details };
+    }
+
+    const originalMessage = errorData.error?.details?.originalMessage;
+    if (typeof originalMessage === 'string' && originalMessage.trim().length > 0) {
+      return { message: originalMessage, code, details };
+    }
+  }
+
+  return { message: fallback, code, details };
+}
+
 export interface ArticleAnalysis {
+  formatError?: boolean;
   summary: string;
+  qualityNotice?: string;
+  analysisModeUsed?: AnalysisMode | 'deep';
   // biasScore normalizado 0-1 para UI (0 = neutral, 1 = extremo)
   biasScore: number;
   // biasRaw: -10 (Extrema Izquierda) a +10 (Extrema Derecha)
   biasRaw: number;
+  // biasScoreNormalized explicito para UI (vNext)
+  biasScoreNormalized?: number;
   biasIndicators: string[];
+  biasComment?: string;
+  articleLeaning?: 'progresista' | 'conservadora' | 'extremista' | 'neutral' | 'indeterminada';
+  leaningConfidence?: 'baja' | 'media' | 'alta';
+  // Legacy alias maintained for backward compatibility with cached payloads
+  biasLeaning?: 'progresista' | 'conservadora' | 'neutral' | 'indeterminada' | 'otra';
   // clickbaitScore: 0 (Serio) a 100 (Clickbait extremo)
   clickbaitScore: number;
-  // reliabilityScore: 0 (Bulo/Falso) a 100 (Altamente Contrastado)
+  // reliabilityScore: fiabilidad basada en evidencia interna del texto (NO veracidad externa)
   reliabilityScore: number;
+  traceabilityScore?: number;
+  factualityStatus?: 'no_determinable' | 'plausible_but_unverified';
+  evidence_needed?: string[];
+  reliabilityComment?: string;
+  should_escalate?: boolean;
   sentiment: 'positive' | 'negative' | 'neutral';
   mainTopics: string[];
   factCheck: {
     claims: string[];
-    verdict: 'Verified' | 'Mixed' | 'Unproven' | 'False';
+    verdict:
+      | 'SupportedByArticle'
+      | 'NotSupportedByArticle'
+      | 'InsufficientEvidenceInArticle';
     reasoning: string;
+  };
+  deep?: {
+    sections?: {
+      known?: string[];
+      unknown?: string[];
+      quotes?: string[];
+      risks?: string[];
+    };
   };
   // Legacy field
   factualClaims?: string[];
@@ -61,6 +166,38 @@ export interface NewsResponse {
     limit: number;
     offset: number;
     hasMore: boolean;
+  };
+  meta?: {
+    location?: string;
+    message?: string;
+    localMeta?: {
+      requested: string;        // Input original del usuario ("Mostoles, Madrid")
+      resolved: {
+        city?: string;           // Ciudad extraída ("Mostoles")
+        province?: string;       // Provincia extraída ("Madrid")
+        region?: string;         // Comunidad autónoma (opcional)
+      };
+      scopeUsed: 'city' | 'province' | 'region' | 'general';  // Scope de fallback usado
+      ttlMinutes: number;        // TTL del caché (ej: 15)
+      fetchedAt: string;         // ISO timestamp de última ingesta
+    };
+    refresh?: {
+      forced: boolean;
+      attempted: boolean;
+      status: 'skipped_ttl' | 'completed' | 'timeout' | 'error';
+      timeoutMs: number;
+      durationMs: number;
+      pending: boolean;
+      queryUsed?: string;
+      ingest: null | {
+        totalFetched: number;
+        newArticles: number;
+        duplicates: number;
+        errors: number;
+        source: string;
+        timestamp: string;
+      };
+    };
   };
 }
 
@@ -107,7 +244,7 @@ export async function fetchNews(limit = 50, offset = 0, token?: string): Promise
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${API_BASE_URL}/api/news?limit=${limit}&offset=${offset}`,
     {
       cache: 'no-store',
@@ -132,7 +269,7 @@ export async function fetchNewsById(id: string, token?: string): Promise<{ succe
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_BASE_URL}/api/news/${id}`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/news/${id}`, {
     cache: 'no-store',
     headers,
   });
@@ -149,18 +286,51 @@ export async function fetchNewsById(id: string, token?: string): Promise<{ succe
  * Requires authentication token
  */
 export async function analyzeArticle(articleId: string, token: string): Promise<AnalyzeResponse> {
-  const res = await fetch(`${API_BASE_URL}/api/analyze/article`, {
+  const payload: Record<string, unknown> = { articleId };
+
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/analyze/article`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`,
     },
-    body: JSON.stringify({ articleId }),
+    body: JSON.stringify(payload),
   });
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.message || errorData.error || `Failed to analyze article: ${res.status}`);
+    const parsedError = extractApiError(errorData, `Failed to analyze article: ${res.status}`);
+    throw new APIError(parsedError.message, parsedError.code, parsedError.details);
+  }
+
+  return res.json();
+}
+
+/**
+ * Analyze a single article with AI using an explicit cost mode.
+ * Requires authentication token.
+ */
+export async function analyzeArticleWithMode(
+  articleId: string,
+  token: string,
+  analysisMode: AnalysisMode,
+  mode: AnalyzeDepthMode = 'standard'
+): Promise<AnalyzeResponse> {
+  const payload: Record<string, unknown> = { articleId, analysisMode, mode };
+
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/analyze/article`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    const parsedError = extractApiError(errorData, `Failed to analyze article: ${res.status}`);
+    throw new APIError(parsedError.message, parsedError.code, parsedError.details);
   }
 
   return res.json();
@@ -179,7 +349,7 @@ export async function fetchAnalysisStats(): Promise<{
     biasDistribution: BiasDistribution;
   };
 }> {
-  const res = await fetch(`${API_BASE_URL}/api/analyze/stats`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/analyze/stats`, {
     cache: 'no-store',
   });
 
@@ -214,36 +384,61 @@ export interface ChatMessage {
 }
 
 /**
+ * Sprint 30: Custom error class to preserve backend errorCode (e.g., CHAT_FEATURE_LOCKED)
+ */
+export class APIError extends Error {
+  constructor(
+    message: string,
+    public errorCode?: string,
+    public details?: any
+  ) {
+    super(message);
+    this.name = 'APIError';
+  }
+}
+
+/**
  * Chat response from backend
  */
 export interface ChatResponse {
   success: boolean;
   data: {
-    articleId: string;
-    articleTitle: string;
+    articleId?: string; // Optional when low_context (Sprint 29)
+    articleTitle?: string; // Optional when low_context (Sprint 29)
     response: string;
+  };
+  meta?: {
+    low_context?: boolean; // Sprint 29: Graceful Degradation flag
   };
   message: string;
 }
 
 /**
  * Send a chat message about an article
+ * Sprint 30: Requires authentication and Premium plan (7-day trial for new users)
  */
 export async function chatWithArticle(
   articleId: string,
-  messages: ChatMessage[]
+  messages: ChatMessage[],
+  token: string
 ): Promise<ChatResponse> {
-  const res = await fetch(`${API_BASE_URL}/api/chat/article`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/chat/article`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
     },
     body: JSON.stringify({ articleId, messages }),
   });
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.message || `Chat failed: ${res.status}`);
+    // Sprint 30: Preserve errorCode for frontend handling (e.g., CHAT_FEATURE_LOCKED)
+    throw new APIError(
+      errorData.message || `Chat failed: ${res.status}`,
+      errorData.errorCode,
+      errorData.details
+    );
   }
 
   return res.json();
@@ -251,33 +446,42 @@ export async function chatWithArticle(
 
 /**
  * Chat general response from backend (Sprint 19.6)
+ * Sprint 27.4: Chat General usa conocimiento completo de Gemini (NO RAG)
  */
 export interface ChatGeneralResponse {
   success: boolean;
   data: {
     response: string;
-    sourcesCount: number;
+    // Chat General NO usa RAG, no incluye sourcesCount
   };
   message: string;
 }
 
 /**
  * Send a general chat message (Sprint 19.6)
+ * Sprint 30: Requires authentication and Premium plan (7-day trial for new users)
  */
 export async function chatGeneral(
-  messages: ChatMessage[]
+  messages: ChatMessage[],
+  token: string
 ): Promise<ChatGeneralResponse> {
-  const res = await fetch(`${API_BASE_URL}/api/chat/general`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/chat/general`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
     },
     body: JSON.stringify({ messages }),
   });
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.message || `Chat failed: ${res.status}`);
+    // Sprint 30: Preserve errorCode for frontend handling (e.g., CHAT_FEATURE_LOCKED)
+    throw new APIError(
+      errorData.message || `Chat failed: ${res.status}`,
+      errorData.errorCode,
+      errorData.details
+    );
   }
 
   return res.json();
@@ -303,7 +507,7 @@ export async function searchNews(
   query: string,
   limit = 10
 ): Promise<SearchResponse> {
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${API_BASE_URL}/api/search?q=${encodeURIComponent(query)}&limit=${limit}`,
     {
       cache: 'no-store',
@@ -334,7 +538,7 @@ export interface ToggleFavoriteResponse {
  * Toggle favorite status of an article (requires auth token for per-user isolation)
  */
 export async function toggleFavorite(articleId: string, token: string): Promise<ToggleFavoriteResponse> {
-  const res = await fetch(`${API_BASE_URL}/api/news/${articleId}/favorite`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/news/${articleId}/favorite`, {
     method: 'PATCH',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -358,7 +562,7 @@ export async function fetchFavorites(limit = 50, offset = 0, token?: string): Pr
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${API_BASE_URL}/api/news?favorite=true&limit=${limit}&offset=${offset}`,
     {
       cache: 'no-store',
@@ -391,7 +595,7 @@ export interface IngestResponse {
  * Trigger RSS ingestion for a specific category
  */
 export async function ingestByCategory(category: string, pageSize = 20): Promise<IngestResponse> {
-  const res = await fetch(`${API_BASE_URL}/api/ingest/news`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/ingest/news`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -415,15 +619,25 @@ export async function fetchNewsByCategory(
   category: string,
   limit = 50,
   offset = 0,
-  token?: string
+  token?: string,
+  refresh = false
 ): Promise<NewsResponse> {
   const headers: Record<string, string> = {};
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(
-    `${API_BASE_URL}/api/news?category=${encodeURIComponent(category)}&limit=${limit}&offset=${offset}`,
+  const query = new URLSearchParams({
+    category,
+    limit: String(limit),
+    offset: String(offset),
+  });
+  if (refresh) {
+    query.set('refresh', 'true');
+  }
+
+  const res = await fetchWithTimeout(
+    `${API_BASE_URL}/api/news?${query.toString()}`,
     {
       cache: 'no-store',
       headers,
@@ -435,6 +649,17 @@ export async function fetchNewsByCategory(
   }
 
   return res.json();
+}
+
+/**
+ * Force refresh local news (bypasses local ingestion TTL on backend).
+ */
+export async function refreshLocalNews(
+  token: string,
+  limit = 20,
+  offset = 0
+): Promise<NewsResponse> {
+  return fetchNewsByCategory('local', limit, offset, token, true);
 }
 
 /**
@@ -457,7 +682,7 @@ export interface DiscoverRssResponse {
  * @returns La URL del RSS encontrada o lanza un error
  */
 export async function discoverRssSource(name: string): Promise<string> {
-  const res = await fetch(`${API_BASE_URL}/api/sources/discover`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/sources/discover`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -475,6 +700,58 @@ export async function discoverRssSource(name: string): Promise<string> {
 }
 
 /**
+ * Discover local RSS sources for a region using AI
+ * FEATURE: SMART LOCAL SOURCES DISCOVERY (Sprint 32)
+ */
+export interface DiscoveredLocalSource {
+  name: string;
+  url: string;
+  rssUrl: string;
+  region: string;
+  verified: boolean;
+}
+
+export interface DiscoverLocalSourcesResponse {
+  success: boolean;
+  data?: {
+    sources: DiscoveredLocalSource[];
+    fromCache: boolean;
+    location: string;
+  };
+  error?: string;
+  message?: string;
+}
+
+/**
+ * Discover local/regional newspapers using AI with cache
+ * FEATURE: RSS AUTO-DISCOVERY LOCAL (Sprint 32)
+ *
+ * @param location Ubicación (ciudad, provincia o región)
+ * @param limit Número máximo de fuentes a descubrir (default: 10)
+ * @returns Array de fuentes descubiertas
+ */
+export async function discoverLocalSources(
+  location: string,
+  limit: number = 10
+): Promise<DiscoveredLocalSource[]> {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/sources/discover-local`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ location, limit }),
+  });
+
+  const data: DiscoverLocalSourcesResponse = await res.json();
+
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || data.message || 'No se pudieron descubrir fuentes locales');
+  }
+
+  return data.data?.sources || [];
+}
+
+/**
  * User Profile Management
  * FEATURE: USER PROFILES (Sprint 10)
  */
@@ -485,6 +762,7 @@ export interface UserProfile {
   name: string | null;
   picture: string | null;
   plan: 'FREE' | 'PREMIUM';
+  entitlements: UserEntitlements;
   location: string | null; // Sprint 20: Geolocalización (ej: "Madrid, España")
   preferences: {
     categories?: string[];
@@ -505,6 +783,10 @@ export interface UserProfile {
   updatedAt: string;
 }
 
+export interface UserEntitlements {
+  deepAnalysis: boolean;
+}
+
 export interface UserProfileResponse {
   success: boolean;
   data: UserProfile;
@@ -521,17 +803,12 @@ interface UpdateUserProfileData {
  * Requires authentication token
  */
 export async function getUserProfile(token: string): Promise<UserProfile> {
-  console.log('📡 getUserProfile - Token length:', token?.length);
-  console.log('📡 getUserProfile - API URL:', `${API_BASE_URL}/api/user/me`);
-  
-  const res = await fetch(`${API_BASE_URL}/api/user/me`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/user/me`, {
     headers: {
       'Authorization': `Bearer ${token}`,
     },
     cache: 'no-store',
   });
-
-  console.log('📡 getUserProfile - Response status:', res.status, res.statusText);
 
   if (!res.ok) {
     const errorText = await res.text();
@@ -540,7 +817,6 @@ export async function getUserProfile(token: string): Promise<UserProfile> {
   }
 
   const response: UserProfileResponse = await res.json();
-  console.log('📡 getUserProfile - Success:', response.data);
   return response.data;
 }
 
@@ -552,7 +828,7 @@ export async function updateUserProfile(
   token: string,
   data: UpdateUserProfileData
 ): Promise<UserProfile> {
-  const res = await fetch(`${API_BASE_URL}/api/user/me`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/user/me`, {
     method: 'PATCH',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -618,7 +894,7 @@ export interface TokenUsageResponse {
  * Requires authentication token
  */
 export async function getTokenUsage(token: string): Promise<TokenUsageStats> {
-  const res = await fetch(`${API_BASE_URL}/api/user/token-usage`, {
+  const res = await fetchWithTimeout(`${API_BASE_URL}/api/user/token-usage`, {
     headers: {
       'Authorization': `Bearer ${token}`,
     },

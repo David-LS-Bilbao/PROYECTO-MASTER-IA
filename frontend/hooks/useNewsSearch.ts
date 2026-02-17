@@ -13,6 +13,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useDebounce } from './useDebounce';
 import { useAuth } from '@/context/AuthContext';
+import { useBackendStatus } from '@/hooks/useBackendStatus';
 import type { NewsArticle } from '@/lib/api';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
@@ -50,6 +51,7 @@ export interface SearchResult {
 export function useNewsSearch(query: string, debounceDelay: number = 500) {
   const debouncedQuery = useDebounce(query, debounceDelay);
   const { getToken } = useAuth();
+  const { isReady: backendReady } = useBackendStatus();
 
   return useQuery<SearchResult>({
     queryKey: ['news-search', debouncedQuery],
@@ -85,7 +87,7 @@ export function useNewsSearch(query: string, debounceDelay: number = 500) {
 
       return response.json();
     },
-    enabled: !!debouncedQuery && debouncedQuery.trim().length > 0,
+    enabled: backendReady && !!debouncedQuery && debouncedQuery.trim().length > 0,
     staleTime: 5 * 60 * 1000, // 5 minutes - cache search results
     retry: 1, // Only retry once on failure
     refetchOnWindowFocus: false, // Don't refetch when user returns to tab

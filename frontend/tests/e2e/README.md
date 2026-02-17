@@ -36,6 +36,9 @@ From the `frontend/` directory:
 # Run all E2E tests (headless mode)
 npm run test:e2e
 
+# Run smoke suite only (@smoke)
+npm run test:e2e:smoke
+
 # Run tests with UI mode (interactive)
 npm run test:e2e:ui
 
@@ -79,6 +82,13 @@ Comprehensive authentication and navigation tests organized by category:
 #### Firebase Integration
 - Verify Firebase SDK initializes without errors
 - Check Firebase availability
+
+### `smoke.spec.ts`
+
+Smoke estable (sin dependencia de auth frÃ¡gil):
+- `@smoke` home (`/`) carga y renderiza branding
+- `@smoke` login (`/login`) muestra formulario base
+- `@smoke` login expone acciones estables
 
 ## Configuration
 

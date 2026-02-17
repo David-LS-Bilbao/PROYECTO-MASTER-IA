@@ -17,6 +17,13 @@ export const analyzeArticleSchema = z.object({
   articleId: z
     .string()
     .uuid('articleId must be a valid UUID'),
+  analysisMode: z
+    .enum(['low_cost', 'moderate', 'standard'])
+    .optional(),
+  mode: z
+    .enum(['standard', 'deep'])
+    .optional()
+    .default('standard'),
 });
 
 /**

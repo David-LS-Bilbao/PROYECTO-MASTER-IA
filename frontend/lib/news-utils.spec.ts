@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   getBiasInfo,
+  getBiasDisplayInfo,
   getSentimentInfo,
   formatDate,
   isValidUUID,
@@ -9,19 +10,19 @@ import {
 
 describe('news-utils', () => {
   describe('getBiasInfo', () => {
-    it('should return "Muy Neutral" for scores <= 0.2', () => {
+    it('should return "Neutral" for scores <= 0.2', () => {
       expect(getBiasInfo(0)).toEqual({
-        label: 'Muy Neutral',
+        label: 'Neutral',
         color: 'text-green-700',
         bg: 'bg-green-100',
       });
       expect(getBiasInfo(0.1)).toEqual({
-        label: 'Muy Neutral',
+        label: 'Neutral',
         color: 'text-green-700',
         bg: 'bg-green-100',
       });
       expect(getBiasInfo(0.2)).toEqual({
-        label: 'Muy Neutral',
+        label: 'Neutral',
         color: 'text-green-700',
         bg: 'bg-green-100',
       });
@@ -97,6 +98,48 @@ describe('news-utils', () => {
         color: 'text-red-700',
         bg: 'bg-red-100',
       });
+    });
+  });
+
+  describe('getBiasDisplayInfo', () => {
+    it('should return indeterminada and N/A when content is low quality', () => {
+      const result = getBiasDisplayInfo({
+        score: 0,
+        articleLeaning: 'indeterminada',
+        contentLength: 120,
+      });
+
+      expect(result.label).toBe('Indeterminada');
+      expect(result.showScore).toBe(false);
+      expect(result.scoreText).toBe('N/A');
+    });
+
+    it('should return neutral low-confidence and hide score when leaning is neutral with weak evidence', () => {
+      const result = getBiasDisplayInfo({
+        score: 0,
+        articleLeaning: 'neutral',
+        leaningConfidence: 'baja',
+        biasIndicators: ['indicador unico'],
+        contentLength: 1200,
+      });
+
+      expect(result.label).toBe('Neutral (confianza baja)');
+      expect(result.showScore).toBe(false);
+      expect(result.scoreText).toBe('N/A');
+    });
+
+    it('should show percentage score when evidence is sufficient', () => {
+      const result = getBiasDisplayInfo({
+        score: 0.34,
+        articleLeaning: 'conservadora',
+        leaningConfidence: 'media',
+        biasIndicators: ['i1', 'i2', 'i3'],
+        contentLength: 1200,
+      });
+
+      expect(result.showScore).toBe(true);
+      expect(result.scoreText).toBe('34%');
+      expect(result.progressValue).toBe(34);
     });
   });
 

@@ -95,8 +95,13 @@ export class GoogleNewsRssClient implements INewsAPIClient {
   private buildGoogleNewsUrl(params: FetchNewsParams): string {
     const searchParams = new URLSearchParams();
 
-    // Add search query
-    const query = params.query || this.getCategoryQuery(params.category);
+    // Add search query (with geographic context for local news)
+    let query = params.query || this.getCategoryQuery(params.category);
+    if (query && params.category === 'local') {
+      // Sprint 28 BUG #3 FIX: Add geographic context for local queries
+      // "Madrid" → "noticias locales Madrid" for more relevant local results
+      query = `noticias locales ${query}`;
+    }
     if (query) {
       searchParams.append('q', query);
     }

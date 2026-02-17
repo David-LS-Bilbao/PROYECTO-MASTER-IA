@@ -7,6 +7,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchNewsById, type NewsArticle } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import { useBackendStatus } from '@/hooks/useBackendStatus';
 
 export interface UseArticleParams {
   id: string | null | undefined;
@@ -14,6 +15,7 @@ export interface UseArticleParams {
 
 export function useArticle({ id }: UseArticleParams) {
   const { getToken, user } = useAuth();
+  const { isReady: backendReady } = useBackendStatus();
 
   return useQuery<NewsArticle>({
     queryKey: ['article', id],
@@ -41,7 +43,7 @@ export function useArticle({ id }: UseArticleParams) {
       return response.data;
     },
 
-    enabled: !!id,
+    enabled: backendReady && !!id,
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
   });

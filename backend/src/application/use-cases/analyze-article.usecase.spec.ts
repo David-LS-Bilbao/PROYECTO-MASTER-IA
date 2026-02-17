@@ -1,4 +1,4 @@
-/**
+﻿/**
  * AnalyzeArticleUseCase Unit Tests
  * Target: 100% coverage
  */
@@ -21,6 +21,7 @@ const createTestArticle = (overrides: Partial<{
   content: string | null;
   source: string;
   language: string;
+  category: string | null;
   analyzedAt: Date | null;
   summary: string | null;
   biasScore: number | null;
@@ -36,7 +37,7 @@ const createTestArticle = (overrides: Partial<{
     source: overrides.source ?? 'Test Source',
     author: 'Test Author',
     publishedAt: new Date('2024-01-15'),
-    category: 'technology',
+    category: overrides.category ?? 'technology',
     language: overrides.language ?? 'es',
     embedding: null,
     summary: overrides.summary ?? null,
@@ -54,15 +55,30 @@ const createTestArticle = (overrides: Partial<{
 const mockAnalysis: ArticleAnalysis = {
   summary: 'This is a test summary of the article.',
   biasScore: 0.3,
-  biasRaw: 0,
-  biasIndicators: ['slight emotional language'],
+  biasRaw: 3,
+  biasScoreNormalized: 0.3,
+  biasIndicators: [
+    'Loaded wording: "total failure"',
+    'Generalization: "everyone knows"',
+    'Selective framing: "only this side"',
+  ],
   sentiment: 'neutral',
   mainTopics: ['technology', 'innovation'],
   clickbaitScore: 20,
   reliabilityScore: 80,
+  traceabilityScore: 80,
+  factualityStatus: 'no_determinable',
+  evidence_needed: [],
+  should_escalate: false,
+  biasComment:
+    'El encuadre refleja una lectura parcial basada en indicios textuales citados y evaluados solo con evidencia interna.',
+  articleLeaning: 'indeterminada',
+  biasLeaning: 'indeterminada',
+  reliabilityComment:
+    'La fiabilidad interna es alta por trazabilidad de citas y atribuciones; no verificable con fuentes internas en ausencia de validacion externa.',
   factCheck: {
     claims: ['Main claim from the article'],
-    verdict: 'Verified',
+    verdict: 'SupportedByArticle',
     reasoning: 'The claims are supported by credible sources',
   },
 };
@@ -70,7 +86,10 @@ const mockAnalysis: ArticleAnalysis = {
 // Mock scraped content
 const mockScrapedContent: ScrapedContent = {
   title: 'Test Article Title',
-  content: 'This is the full scraped content of the article. It contains enough text to be analyzed properly by the AI system.',
+  content:
+    'This is the full scraped content of the article. It contains enough text to be analyzed properly by the AI system. '.repeat(
+      12
+    ),
   description: 'Test description',
   author: 'Test Author',
   publishedDate: '2024-01-15',
@@ -139,6 +158,14 @@ class MockNewsArticleRepository implements INewsArticleRepository {
     return [];
   }
 
+  async searchLocalArticles(_city: string, _limit: number, _offset: number): Promise<NewsArticle[]> {
+    return [];
+  }
+
+  async countLocalArticles(_city: string): Promise<number> {
+    return 0;
+  }
+
   // Test helpers
   setArticle(article: NewsArticle): void {
     this.articles.set(article.id, article);
@@ -164,6 +191,10 @@ class MockGeminiClient implements IGeminiClient {
 
   async generateChatResponse(_context: string, _question: string): Promise<string> {
     return 'Mock chat response';
+  }
+
+  async generateGeneralResponse(_systemPrompt: string, _messages: Array<{ role: string; content: string }>): Promise<string> {
+    return 'Mock general response';
   }
 
   async discoverRssUrl(_mediaName: string): Promise<string | null> {
@@ -246,7 +277,18 @@ describe('AnalyzeArticleUseCase', () => {
       expect(result.articleId).toBe(article.id);
       expect(result.summary).toBe(mockAnalysis.summary);
       expect(result.biasScore).toBe(mockAnalysis.biasScore);
-      expect(result.analysis).toEqual(mockAnalysis);
+      expect(result.analysis).toEqual(
+        expect.objectContaining({
+          summary: mockAnalysis.summary,
+          biasScore: mockAnalysis.biasScore,
+          reliabilityScore: expect.any(Number),
+          traceabilityScore: expect.any(Number),
+          biasComment: expect.any(String),
+          articleLeaning: expect.any(String),
+          biasLeaning: expect.any(String),
+          reliabilityComment: expect.any(String),
+        })
+      );
       expect(result.scrapedContentLength).toBeGreaterThan(0);
     });
 
@@ -275,6 +317,600 @@ describe('AnalyzeArticleUseCase', () => {
       expect(scrapeSpy).toHaveBeenCalledWith(article.url);
     });
 
+    it('should cap reliability/traceability when scrapedContentLength is below 800 chars', async () => {
+      const mediumLengthContent = 'Contenido con soporte parcial pero sin enlaces directos. '.repeat(11);
+      const article = createTestArticle({ content: mediumLengthContent });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        reliabilityScore: 92,
+        traceabilityScore: 87,
+      });
+
+      const result = await useCase.execute({ articleId: article.id });
+
+      expect(result.scrapedContentLength).toBe(mediumLengthContent.length);
+      expect(result.analysis.reliabilityScore).toBe(55);
+      expect(result.analysis.traceabilityScore).toBe(40);
+    });
+
+    it('should apply stricter caps when scrapedContentLength is below 300 chars', async () => {
+      const shortButValidContent = 'Texto breve sin documentos ni enlaces externos. '.repeat(5);
+      const article = createTestArticle({ content: shortButValidContent });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        reliabilityScore: 90,
+        traceabilityScore: 84,
+      });
+
+      const result = await useCase.execute({ articleId: article.id });
+
+      expect(result.scrapedContentLength).toBe(shortButValidContent.length);
+      expect(result.analysis.reliabilityScore).toBe(45);
+      expect(result.analysis.traceabilityScore).toBe(30);
+    });
+
+    it('should keep editorial summary under 90 words for complete input quality', async () => {
+      const longContent = 'Contenido extenso con datos y contexto. '.repeat(70);
+      const article = createTestArticle({ content: longContent });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        summary: `No es una novedad que el gobierno anuncie el plan, y en este contexto cabe destacar que lo presenta hoy ante empresas y sindicatos.
+        El texto explica que la medida entra en batalla con la oposición y que la inversión prevista llega a 2.500 millones para 2026.
+        Según se desprende, el impacto esperado se centra en empleo industrial y costes energéticos durante el próximo año.
+        Además, detalla que la implementación arranca en marzo y afecta primero a regiones con mayor dependencia de gas.
+        También menciona controles trimestrales y revisión parlamentaria al cierre del ejercicio.`,
+      });
+
+      const result = await useCase.execute({ articleId: article.id, analysisMode: 'moderate' });
+      const words = result.summary.split(/\s+/).filter(Boolean).length;
+      const normalizedSummary = result.summary
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
+
+      expect(words).toBeLessThanOrEqual(90);
+      expect(normalizedSummary).not.toContain('no es una novedad');
+      expect(normalizedSummary).not.toContain('cabe destacar');
+      expect(normalizedSummary).not.toContain('en este contexto');
+      expect(normalizedSummary).not.toContain('segun se desprende');
+    });
+
+    it('should constrain summary to <=45 words and keep quality notice outside summary for snippet quality', async () => {
+      const shortSnippetContent = 'Extracto breve con titulares y sin cuerpo completo. '.repeat(5);
+      const article = createTestArticle({ content: shortSnippetContent });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        summary:
+          'La pieza asegura que hay un giro en la negociación y señala enfrentamientos entre gobierno y oposición por el presupuesto. Añade una cifra preliminar de gasto, pero no explica metodología, alcance territorial ni calendario normativo completo.',
+      });
+
+      const result = await useCase.execute({ articleId: article.id, analysisMode: 'standard' });
+      const words = result.summary.split(/\s+/).filter(Boolean).length;
+
+      expect(result.scrapedContentLength).toBeLessThan(300);
+      expect(words).toBeLessThanOrEqual(45);
+      expect(result.summary).not.toContain('Falta el texto completo para confirmar detalles.');
+      expect(result.summary).not.toContain('Resumen provisional');
+      expect(result.summary).not.toContain('No se puede confirmar detalles');
+      expect(result.analysis.qualityNotice?.toLowerCase()).toContain('texto completo');
+    });
+
+    it('should route moderate mode for long content in detail context', async () => {
+      const longContent = 'Contenido extenso con citas y datos verificables. '.repeat(30);
+      const article = createTestArticle({ content: longContent });
+      mockRepository.setArticle(article);
+
+      const geminiSpy = vi.spyOn(mockGemini, 'analyzeArticle');
+
+      await useCase.execute({ articleId: article.id, analysisMode: 'moderate' });
+
+      expect(geminiSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          analysisMode: 'moderate',
+        })
+      );
+    });
+
+    it('should force low_cost mode when content is short even if moderate is requested', async () => {
+      const shortContent = 'Texto breve sin soporte documental. '.repeat(10);
+      const article = createTestArticle({ content: shortContent });
+      mockRepository.setArticle(article);
+
+      const geminiSpy = vi.spyOn(mockGemini, 'analyzeArticle');
+
+      await useCase.execute({ articleId: article.id, analysisMode: 'moderate' });
+
+      expect(geminiSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          analysisMode: 'low_cost',
+        })
+      );
+    });
+
+    it('should keep deep mode for premium deep analysis even with short content', async () => {
+      const shortContent = 'Extracto corto con poco contexto y sin cuerpo completo.';
+      const article = createTestArticle({ content: shortContent });
+      mockRepository.setArticle(article);
+
+      const geminiSpy = vi.spyOn(mockGemini, 'analyzeArticle');
+
+      await useCase.execute({ articleId: article.id, mode: 'deep' });
+
+      expect(geminiSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          analysisMode: 'deep',
+        })
+      );
+    });
+
+    it('should return deep sections in deep mode output', async () => {
+      const article = createTestArticle({
+        content: 'Contenido amplio con citas y datos para analisis profundo. '.repeat(40),
+      });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        analysisModeUsed: 'deep',
+        deep: {
+          sections: {
+            known: ['Se anuncia una medida con fecha de entrada en vigor.'],
+            unknown: ['No se aporta documento tecnico completo en el extracto.'],
+            quotes: ['"La medida entra en vigor el 15 de marzo".'],
+            risks: ['Interpretar el alcance nacional sin anexo metodologico puede inducir error.'],
+          },
+        },
+      });
+
+      const result = await useCase.execute({ articleId: article.id, mode: 'deep' });
+
+      expect(result.analysis.deep?.sections?.known).toEqual(expect.any(Array));
+      expect(result.analysis.deep?.sections?.unknown).toEqual(expect.any(Array));
+      expect(result.analysis.deep?.sections?.quotes).toEqual(expect.any(Array));
+      expect(result.analysis.deep?.sections?.risks).toEqual(expect.any(Array));
+    });
+
+    it('should include limitation in deep unknown section when content is insufficient', async () => {
+      const shortSnippetContent = 'Extracto RSS breve con titular y poco cuerpo.';
+      const article = createTestArticle({ content: shortSnippetContent });
+      mockRepository.setArticle(article);
+      vi.spyOn(mockJina, 'scrapeUrl').mockRejectedValueOnce(new Error('Paywall'));
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        deep: {
+          sections: {
+            known: ['El extracto afirma un cambio regulatorio.'],
+            unknown: [],
+            quotes: ['"Cambio regulatorio inminente"'],
+            risks: [],
+          },
+        },
+      });
+
+      const result = await useCase.execute({ articleId: article.id, mode: 'deep' });
+      const unknownText = (result.analysis.deep?.sections?.unknown || []).join(' ').toLowerCase();
+
+      expect(result.scrapedContentLength).toBeLessThan(300);
+      expect(unknownText).toContain('insuficiente');
+      expect(unknownText).toContain('snippet/paywall');
+    });
+
+    it('should force escalation in low-cost context when strong claims lack attribution', async () => {
+      const shortContent = 'Asegura resultados absolutos sin citar fuentes, documentos o enlaces.';
+      const article = createTestArticle({ content: `${shortContent} ${shortContent}` });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        should_escalate: false,
+        summary:
+          'La nota afirma que el tratamiento cura siempre al 100% y que el resultado es definitivo.',
+        factCheck: {
+          ...mockAnalysis.factCheck,
+          claims: ['El tratamiento cura siempre al 100% de los casos.'],
+          verdict: 'InsufficientEvidenceInArticle',
+          reasoning: 'No hay atribuciones ni documentos verificables en el texto.',
+        },
+      });
+
+      const result = await useCase.execute({ articleId: article.id });
+
+      expect(result.analysis.should_escalate).toBe(true);
+    });
+
+    it('should keep indeterminada articleLeaning only for short content (<300)', async () => {
+      const shortContent = 'Texto breve con framing parcial y afirmaciones politicas. '.repeat(4);
+      const article = createTestArticle({ content: shortContent });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        biasRaw: 5,
+        biasScore: 0.5,
+        biasScoreNormalized: 0.5,
+        articleLeaning: 'progresista',
+        biasLeaning: 'progresista',
+        biasComment: 'Comentario del modelo que no debe usarse en low-cost.',
+      });
+
+      const result = await useCase.execute({ articleId: article.id });
+
+      expect(result.scrapedContentLength).toBeLessThan(300);
+      expect(result.analysis.articleLeaning).toBe('indeterminada');
+      expect(result.analysis.biasComment.toLowerCase()).toMatch(/no se puede estimar|fragmento disponible/);
+    });
+
+    it('should force neutral leaning with low confidence for long content and <2 cited bias indicators', async () => {
+      const longContent =
+        'Segun el ministerio, el plan entra en vigor el 15 de marzo y afecta a 200.000 usuarios. '.repeat(
+          18
+        );
+      const article = createTestArticle({ content: longContent });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        biasRaw: 6,
+        biasScore: 0.6,
+        biasScoreNormalized: 0.6,
+        biasIndicators: ['Lenguaje enfatico: "impacto total"'],
+        articleLeaning: 'progresista',
+        biasLeaning: 'progresista',
+      });
+
+      const result = await useCase.execute({ articleId: article.id, analysisMode: 'standard' });
+
+      expect(result.scrapedContentLength).toBeGreaterThanOrEqual(600);
+      expect(result.analysis.articleLeaning).toBe('neutral');
+      expect(result.analysis.biasLeaning).toBe('neutral');
+      expect(result.analysis.leaningConfidence).toBe('baja');
+      expect(result.analysis.biasComment).toBe(
+        'No se observan indicios textuales claros de encuadre ideologico en el texto disponible (confianza baja).'
+      );
+      expect(result.analysis.articleLeaning).not.toBe('indeterminada');
+    });
+
+    it('should include no_determinable phrase and at most 2 evidence items in reliabilityComment', async () => {
+      const article = createTestArticle({
+        content: 'Contenido con cifras parciales y atribucion incompleta. '.repeat(20),
+      });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        factualityStatus: 'no_determinable',
+        evidence_needed: ['fuente primaria', 'documento oficial', 'metodologia completa'],
+        factCheck: {
+          claims: ['Afirmacion pendiente de validacion interna adicional.'],
+          verdict: 'InsufficientEvidenceInArticle',
+          reasoning: 'Faltan atribuciones verificables en el propio texto.',
+        },
+      });
+
+      const result = await useCase.execute({ articleId: article.id });
+
+      expect(result.analysis.reliabilityComment).toContain(
+        'no verificable con fuentes internas'
+      );
+      expect(result.analysis.reliabilityComment).toContain('citas');
+      expect(result.analysis.reliabilityComment).toContain('documento');
+      expect(result.analysis.reliabilityComment).not.toContain('metodologia completa');
+    });
+
+    it('should keep reliabilityComment <=220 chars and avoid truncation artifacts', async () => {
+      const article = createTestArticle({
+        content:
+          'Contenido con afirmaciones parcialmente atribuidas y referencias incompletas. '.repeat(
+            20
+          ),
+      });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        factualityStatus: 'no_determinable',
+        evidence_needed: [
+          'Acceso al artículo completo con metodología y anexos técnicos extensos',
+          'Base de datos pública en formato reutilizable y trazable',
+          'Tercera fuente no debe aparecer',
+        ],
+        factCheck: {
+          claims: ['Afirmacion sin soporte interno suficiente.'],
+          verdict: 'InsufficientEvidenceInArticle',
+          reasoning: 'El texto no aporta atribuciones completas.',
+        },
+      });
+
+      const result = await useCase.execute({ articleId: article.id });
+      const comment = result.analysis.reliabilityComment ?? '';
+
+      expect(comment.length).toBeLessThanOrEqual(220);
+      expect(comment).not.toContain('...');
+      expect(comment).toContain('no verificable con fuentes internas');
+      expect(comment).not.toContain('Tercera fuente no debe aparecer');
+      const sentenceCount = comment
+        .split(/[.!?]+/)
+        .map((fragment) => fragment.trim())
+        .filter((fragment) => fragment.length > 0).length;
+      expect(sentenceCount).toBeLessThanOrEqual(2);
+      expect(comment).not.toContain('Nota:');
+    });
+
+    it('should keep reliabilityComment coherent for SupportedByArticle without no-verificable label text', async () => {
+      const article = createTestArticle({
+        content:
+          'Segun el Ministerio de Economia, el informe oficial de 2026 confirma una subida del 12% con enlace https://example.com/informe.pdf. '.repeat(
+            12
+          ),
+      });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        factualityStatus: 'no_determinable',
+        factCheck: {
+          claims: ['El informe oficial reporta una subida del 12% en 2026.'],
+          verdict: 'SupportedByArticle',
+          reasoning: 'La afirmacion esta en el propio cuerpo del texto.',
+        },
+      });
+
+      const result = await useCase.execute({ articleId: article.id, analysisMode: 'standard' });
+      const comment = result.analysis.reliabilityComment ?? '';
+
+      expect(result.analysis.factCheck.verdict).toBe('SupportedByArticle');
+      expect(comment.length).toBeLessThanOrEqual(220);
+      expect(comment.toLowerCase()).toContain('soportado por el articulo');
+      expect(comment.toLowerCase()).not.toContain('no verificable con fuentes internas');
+    });
+
+    it('should clamp reliability score into medium range for SupportedByArticle', async () => {
+      const article = createTestArticle({
+        content:
+          'Segun el informe oficial, la medida entra en vigor en abril y afecta a 300.000 usuarios con datos citados y trazabilidad interna. '.repeat(
+            15
+          ),
+      });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        reliabilityScore: 92,
+        factualityStatus: 'no_determinable',
+        factCheck: {
+          claims: ['El informe respalda internamente la cifra de 300.000 usuarios.'],
+          verdict: 'SupportedByArticle',
+          reasoning: 'Soporte interno en el texto.',
+        },
+      });
+
+      const result = await useCase.execute({ articleId: article.id, analysisMode: 'standard' });
+
+      expect(result.analysis.reliabilityScore).toBeGreaterThanOrEqual(45);
+      expect(result.analysis.reliabilityScore).toBeLessThanOrEqual(65);
+    });
+
+    it('should clamp reliability score into low range for insufficient evidence verdict', async () => {
+      const article = createTestArticle({
+        content: 'Resumen breve con afirmaciones sin soporte documental verificable. '.repeat(6),
+      });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        reliabilityScore: 88,
+        factualityStatus: 'no_determinable',
+        factCheck: {
+          claims: ['Afirmacion fuerte sin fuente primaria.'],
+          verdict: 'InsufficientEvidenceInArticle',
+          reasoning: 'No hay evidencia suficiente.',
+        },
+      });
+
+      const result = await useCase.execute({ articleId: article.id, analysisMode: 'standard' });
+
+      expect(result.analysis.reliabilityScore).toBeGreaterThanOrEqual(20);
+      expect(result.analysis.reliabilityScore).toBeLessThanOrEqual(45);
+    });
+
+    it('should force factualityStatus no_determinable when rssSnippetDetected', async () => {
+      const rssSnippet = `
+        <p>Resumen breve de la noticia para portada.</p>
+        Leer <a href="https://example.com/noticia-completa">la noticia completa</a>
+      `;
+      const article = createTestArticle({
+        content: `${rssSnippet} ${rssSnippet} ${rssSnippet} ${rssSnippet} ${rssSnippet}`.repeat(4),
+      });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        factualityStatus: 'plausible_but_unverified',
+      });
+
+      const result = await useCase.execute({ articleId: article.id });
+
+      expect(result.scrapedContentLength).toBeGreaterThan(300);
+      expect(result.analysis.factualityStatus).toBe('no_determinable');
+    });
+
+    it('should enforce verdict and reasoning consistency rules', async () => {
+      const article = createTestArticle({
+        content: 'Contenido analitico con afirmaciones directas y contexto parcial. '.repeat(25),
+      });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        factCheck: {
+          claims: ['La medida tiene respaldo textual en el artículo.'],
+          verdict: 'SupportedByArticle',
+          reasoning: 'Hay soporte interno',
+        },
+      });
+
+      const supportedResult = await useCase.execute({ articleId: article.id });
+      expect(supportedResult.analysis.factCheck.verdict).toBe('SupportedByArticle');
+      expect(supportedResult.analysis.factCheck.reasoning.toLowerCase()).toContain(
+        'soportado por el'
+      );
+      expect(supportedResult.analysis.factCheck.reasoning.toLowerCase()).toContain(
+        'no verificado externamente'
+      );
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        factCheck: {
+          claims: ['Afirmación sin soporte suficiente.'],
+          verdict: 'SupportedByArticle',
+          reasoning: 'No hay evidencia suficiente en el texto para verificar.',
+        },
+      });
+
+      const insufficientResult = await useCase.execute({
+        articleId: article.id,
+        analysisMode: 'standard',
+      });
+      expect(insufficientResult.analysis.factCheck.verdict).toBe(
+        'InsufficientEvidenceInArticle'
+      );
+    });
+
+    it('should clean HTML entities before analysis and preserve a title-based biasIndicator', async () => {
+      const article = createTestArticle({
+        title: '¡Política en tensión! Gobierno y oposición en choque total',
+        content:
+          '<p>El Gobierno anunci&oacute; medidas urgentes.</p><p>Seg&uacute;n el ministerio, el impacto ser&aacute; inmediato.</p>'.repeat(
+            10
+          ),
+      });
+      mockRepository.setArticle(article);
+
+      const geminiSpy = vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        biasRaw: 4,
+        biasScore: 0.4,
+        biasScoreNormalized: 0.4,
+        biasIndicators: [
+          'Carga de certeza: "impacto inmediato"',
+          'Enfoque unilateral: "medidas urgentes"',
+        ],
+      });
+
+      const result = await useCase.execute({ articleId: article.id, analysisMode: 'standard' });
+
+      const analyzedContent = geminiSpy.mock.calls[0]?.[0]?.content ?? '';
+      expect(analyzedContent).not.toContain('<p>');
+      expect(analyzedContent.toLowerCase()).toContain('anunci');
+      expect(analyzedContent.toLowerCase()).toContain('seg');
+      expect(result.analysis.biasIndicators.length).toBeGreaterThanOrEqual(3);
+      expect(result.analysis.biasIndicators.some((indicator) => indicator.includes('Titular:'))).toBe(
+        true
+      );
+      expect(result.analysis.biasRaw).toBe(0);
+    });
+
+    it('should sanitize mojibake tokens from analysis payload', async () => {
+      const article = createTestArticle({
+        content: 'Contenido amplio para forzar analisis completo con suficiente contexto. '.repeat(25),
+      });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        summary: 'El artÃ­culo resume un cambio regulatorio y seÃ±ala impacto fiscal.',
+        biasComment: 'No hay seÃ±ales concluyentes de sesgo ideolÃ³gico.',
+        reliabilityComment: 'Soportado por el artÃ­culo, sin verificaciÃ³n externa.',
+        factCheck: {
+          claims: ['El artÃ­culo cita una fecha oficial.'],
+          verdict: 'SupportedByArticle',
+          reasoning: 'Aparece explÃ­citamente en el artÃ­culo.',
+        },
+      });
+
+      const result = await useCase.execute({ articleId: article.id, analysisMode: 'moderate' });
+
+      const payload = JSON.stringify(result.analysis);
+      expect(payload).not.toContain('Ã');
+    });
+
+    it('should force factCheck verdict to InsufficientEvidenceInArticle when claims are empty', async () => {
+      const article = createTestArticle({
+        content: 'Contenido con tono informativo pero sin afirmaciones verificables directas. '.repeat(20),
+      });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        factCheck: {
+          claims: [],
+          verdict: 'SupportedByArticle',
+          reasoning: 'No aplica',
+        },
+      });
+
+      const result = await useCase.execute({ articleId: article.id });
+      expect(result.analysis.factCheck.claims).toEqual([]);
+      expect(result.analysis.factCheck.verdict).toBe('InsufficientEvidenceInArticle');
+    });
+
+    it('should force factCheck verdict to InsufficientEvidenceInArticle for short content (<300)', async () => {
+      const article = createTestArticle({
+        content: 'Resumen breve con datos sin contexto suficiente. '.repeat(5),
+      });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        factCheck: {
+          claims: ['La medida reducirá siempre el riesgo.'],
+          verdict: 'SupportedByArticle',
+          reasoning: 'Claim supuestamente respaldado por el texto.',
+        },
+      });
+
+      const result = await useCase.execute({ articleId: article.id });
+
+      expect(result.scrapedContentLength).toBeLessThan(300);
+      expect(result.analysis.factCheck.claims.length).toBeGreaterThan(0);
+      expect(result.analysis.factCheck.verdict).toBe('InsufficientEvidenceInArticle');
+    });
+
+    it('should set should_escalate=false for deportes with low-risk claims and low clickbait', async () => {
+      const article = createTestArticle({
+        category: 'deportes',
+        content: 'Crónica deportiva con declaraciones de jugadores y resultados del partido. '.repeat(25),
+      });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        clickbaitScore: 15,
+        reliabilityScore: 44,
+        traceabilityScore: 28,
+        should_escalate: true,
+        factCheck: {
+          claims: ['El equipo asegura que ganó siempre los duelos individuales.'],
+          verdict: 'InsufficientEvidenceInArticle',
+          reasoning: 'Afirmación deportiva sin implicaciones de alto riesgo.',
+        },
+      });
+
+      const result = await useCase.execute({ articleId: article.id });
+
+      expect(result.analysis.clickbaitScore).toBeLessThan(30);
+      expect(result.analysis.should_escalate).toBe(false);
+    });
+
     it('should return cached analysis for already analyzed article', async () => {
       const existingAnalysis = JSON.stringify(mockAnalysis);
       const article = createTestArticle({
@@ -282,7 +918,7 @@ describe('AnalyzeArticleUseCase', () => {
         summary: mockAnalysis.summary,
         biasScore: mockAnalysis.biasScore,
         analysis: existingAnalysis,
-        content: 'Some content',
+        content: 'Contenido completo con contexto suficiente para mantener el resumen cacheado. '.repeat(8),
       });
       mockRepository.setArticle(article);
 
@@ -293,6 +929,34 @@ describe('AnalyzeArticleUseCase', () => {
       expect(geminiSpy).not.toHaveBeenCalled();
       expect(result.summary).toBe(mockAnalysis.summary);
       expect(result.biasScore).toBe(mockAnalysis.biasScore);
+    });
+
+    it('should regenerate summary when cached summary is legacy prefixed', async () => {
+      const legacySummary = 'Resumen provisional basado en contenido interno: texto antiguo.';
+      const cachedAnalysis = {
+        ...mockAnalysis,
+        summary: legacySummary,
+      };
+      const article = createTestArticle({
+        analyzedAt: new Date(),
+        summary: legacySummary,
+        biasScore: mockAnalysis.biasScore,
+        analysis: JSON.stringify(cachedAnalysis),
+        content: 'Contenido suficientemente largo con contexto y datos verificables. '.repeat(25),
+      });
+      mockRepository.setArticle(article);
+
+      const geminiSpy = vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        summary:
+          'El articulo informa de una nueva medida fiscal presentada por el ministerio y respaldada por sindicatos y patronal. Incluye un calendario de aplicacion para 2026 y estima impacto en empleo y costes energéticos.',
+      });
+
+      const result = await useCase.execute({ articleId: article.id, analysisMode: 'moderate' });
+
+      expect(geminiSpy).toHaveBeenCalledTimes(1);
+      expect(result.summary).not.toContain('Resumen provisional basado en contenido interno:');
+      expect(result.summary.length).toBeGreaterThanOrEqual(30);
     });
 
     it('should throw ValidationError for empty articleId', async () => {
@@ -336,8 +1000,10 @@ describe('AnalyzeArticleUseCase', () => {
 
       // Verificar que el análisis se completó correctamente usando fallback
       expect(result.articleId).toBe(article.id);
-      expect(result.summary).toBe(mockAnalysis.summary);
+      expect(result.summary).not.toContain('Falta el texto completo para confirmar detalles.');
+      expect(result.analysis.qualityNotice?.toLowerCase()).toContain('texto completo');
       expect(result.scrapedContentLength).toBe(0); // Fallback no scraped
+      expect(result.analysis.factCheck.verdict).toBe('InsufficientEvidenceInArticle');
     });
 
     it('should wrap unknown scraping errors in ExternalAPIError', async () => {
@@ -351,11 +1017,13 @@ describe('AnalyzeArticleUseCase', () => {
 
       // Verificar que el análisis se completó correctamente usando fallback
       expect(result.articleId).toBe(article.id);
-      expect(result.summary).toBe(mockAnalysis.summary);
+      expect(result.summary).not.toContain('Falta el texto completo para confirmar detalles.');
+      expect(result.analysis.qualityNotice?.toLowerCase()).toContain('texto completo');
       expect(result.scrapedContentLength).toBe(0); // Fallback no scraped
+      expect(result.analysis.factCheck.verdict).toBe('InsufficientEvidenceInArticle');
     });
 
-    it('should save article with scraped content before analysis', async () => {
+    it('should save scraped content before persisting final analysis', async () => {
       const article = createTestArticle({ content: null });
       mockRepository.setArticle(article);
 
@@ -363,8 +1031,22 @@ describe('AnalyzeArticleUseCase', () => {
 
       await useCase.execute({ articleId: article.id });
 
-      // Should save twice: once after scraping, once after analysis
-      expect(saveSpy).toHaveBeenCalledTimes(2);
+      // Puede haber un guardado extra por accessStatus (paywall detection).
+      expect(saveSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+      const savedArticles = saveSpy.mock.calls.map((call) => call[0] as NewsArticle);
+      const scrapedSaveIndex = savedArticles.findIndex(
+        (savedArticle) =>
+          savedArticle.content === mockScrapedContent.content && savedArticle.analyzedAt === null
+      );
+      const analyzedSaveIndex = savedArticles.findIndex(
+        (savedArticle) =>
+          savedArticle.content === mockScrapedContent.content &&
+          savedArticle.analyzedAt instanceof Date &&
+          savedArticle.summary !== null
+      );
+
+      expect(scrapedSaveIndex).toBeGreaterThanOrEqual(0);
+      expect(analyzedSaveIndex).toBeGreaterThan(scrapedSaveIndex);
     });
 
     it('should persist analysis results to repository', async () => {
@@ -557,7 +1239,7 @@ describe('AnalyzeArticleUseCase', () => {
         summary: 'Summary',
         biasScore: 0.5,
         analysis: 'invalid-json',
-        content: 'Long content for reanalysis. '.repeat(10),
+        content: 'Long content for reanalysis. '.repeat(50),
       });
       mockRepository.setArticle(article);
 
@@ -567,7 +1249,12 @@ describe('AnalyzeArticleUseCase', () => {
       const result = await useCase.execute({ articleId: article.id });
 
       expect(geminiSpy).toHaveBeenCalled();
-      expect(result.analysis).toEqual(mockAnalysis);
+      expect(result.analysis).toEqual(
+        expect.objectContaining({
+          summary: mockAnalysis.summary,
+          biasScore: mockAnalysis.biasScore,
+        })
+      );
     });
 
     it('should use article title and metadata in analysis request', async () => {
@@ -583,12 +1270,44 @@ describe('AnalyzeArticleUseCase', () => {
 
       await useCase.execute({ articleId: article.id });
 
-      expect(geminiSpy).toHaveBeenCalledWith({
-        title: 'Specific Test Title',
-        content: expect.any(String),
-        source: 'Specific Source',
-        language: 'en',
+      expect(geminiSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Specific Test Title',
+          content: expect.any(String),
+          source: 'Specific Source',
+          language: 'en',
+          analysisMode: 'low_cost',
+        })
+      );
+    });
+
+    it('should neutralize bias when cached analysis has fewer than 3 cited bias indicators', async () => {
+      const cachedAnalysis = {
+        ...mockAnalysis,
+        biasRaw: 6,
+        biasScore: 0.6,
+        biasScoreNormalized: 0.6,
+        biasType: 'lenguaje',
+        biasIndicators: ['Loaded wording without citation'],
+        explanation: 'Explicacion original contradictoria.',
+      };
+      const article = createTestArticle({
+        analyzedAt: new Date(),
+        summary: cachedAnalysis.summary,
+        biasScore: cachedAnalysis.biasScoreNormalized,
+        analysis: JSON.stringify(cachedAnalysis),
       });
+      mockRepository.setArticle(article);
+
+      const result = await useCase.execute({ articleId: article.id });
+
+      expect(result.analysis.biasRaw).toBe(0);
+      expect(result.analysis.biasScore).toBe(0);
+      expect(result.analysis.biasScoreNormalized).toBe(0);
+      expect(result.analysis.biasType).toBe('ninguno');
+      expect(result.analysis.explanation).toBe(
+        'No se detectaron indicios textuales suficientes de sesgo con evidencia citada.'
+      );
     });
   });
 
@@ -647,7 +1366,7 @@ describe('AnalyzeArticleUseCase', () => {
       });
 
       expect(result.articleId).toBe(article.id);
-      expect(result.summary).toBe(mockAnalysis.summary);
+      expect(result.summary).toContain('This is a test summary of the article.');
     });
 
     it('should allow analysis when no quota service provided', async () => {

@@ -17,12 +17,15 @@ const REQUEST_TIMEOUT = 30000; // 30 seconds
 
 export class JinaReaderClient implements IJinaReaderClient {
   private readonly apiKey: string;
+  private readonly requireApiKey: boolean;
 
   constructor(apiKey: string) {
-    if (!apiKey || apiKey.trim() === '') {
+    this.requireApiKey = process.env.NODE_ENV === 'production';
+    this.apiKey = (apiKey || '').trim();
+
+    if (this.requireApiKey && this.apiKey.length === 0) {
       throw new ConfigurationError('JINA_API_KEY is required');
     }
-    this.apiKey = apiKey;
   }
 
   async scrapeUrl(url: string): Promise<ScrapedContent> {
@@ -40,11 +43,10 @@ export class JinaReaderClient implements IJinaReaderClient {
 
       const response = await fetch(jinaUrl, {
         method: 'GET',
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
+        headers: this.buildHeaders({
           Accept: 'application/json',
           'X-Return-Format': 'json',
-        },
+        }),
         signal: controller.signal,
       });
 
@@ -98,9 +100,7 @@ export class JinaReaderClient implements IJinaReaderClient {
       const testUrl = 'https://example.com';
       const response = await fetch(`${JINA_READER_BASE_URL}${encodeURIComponent(testUrl)}`, {
         method: 'HEAD',
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-        },
+        headers: this.buildHeaders(),
       });
       return response.ok;
     } catch {
@@ -120,6 +120,17 @@ export class JinaReaderClient implements IJinaReaderClient {
     }
   }
 
+  private buildHeaders(extraHeaders: Record<string, string> = {}): Record<string, string> {
+    if (!this.apiKey) {
+      return extraHeaders;
+    }
+
+    return {
+      Authorization: `Bearer ${this.apiKey}`,
+      ...extraHeaders,
+    };
+  }
+
   /**
    * Parse Jina Reader response
    */
@@ -136,15 +147,25 @@ export class JinaReaderClient implements IJinaReaderClient {
         author: null,
         publishedDate: null,
         imageUrl: null,
+        metadataFlags: undefined,
       };
     }
 
     // Structured JSON response
     const payload = (data && typeof data === 'object') ? (data as Record<string, unknown>) : {};
+    const nestedData =
+      payload.data && typeof payload.data === 'object'
+        ? (payload.data as Record<string, unknown>)
+        : null;
+    const contentContainer = nestedData ?? payload;
     const content =
-      this.getStringField(payload, ['content', 'text', 'markdown']) || '';
+      this.getStringField(contentContainer, ['content', 'text', 'markdown']) ||
+      this.getStringField(payload, ['content', 'text', 'markdown']) ||
+      '';
     const title =
-      this.getStringField(payload, ['title']) || this.extractTitleFromMarkdown(content);
+      this.getStringField(contentContainer, ['title']) ||
+      this.getStringField(payload, ['title']) ||
+      this.extractTitleFromMarkdown(content);
 
     if (!content || content.trim().length === 0) {
       throw new ExternalAPIError(
@@ -155,15 +176,23 @@ export class JinaReaderClient implements IJinaReaderClient {
     }
 
     // Extract image URL from Open Graph metadata or other fields
-    const imageUrl = this.extractImageUrl(payload);
+    const imageUrl = this.extractImageUrl(contentContainer) || this.extractImageUrl(payload);
+    const metadataFlags = this.extractMetadataFlags(contentContainer, payload);
 
     return {
       title: title || 'Untitled',
       content: this.cleanContent(content),
-      description: this.getStringField(payload, ['description', 'excerpt']),
-      author: this.getStringField(payload, ['author', 'byline']),
-      publishedDate: this.getStringField(payload, ['publishedDate', 'date']),
+      description:
+        this.getStringField(contentContainer, ['description', 'excerpt']) ||
+        this.getStringField(payload, ['description', 'excerpt']),
+      author:
+        this.getStringField(contentContainer, ['author', 'byline']) ||
+        this.getStringField(payload, ['author', 'byline']),
+      publishedDate:
+        this.getStringField(contentContainer, ['publishedDate', 'date']) ||
+        this.getStringField(payload, ['publishedDate', 'date']),
       imageUrl,
+      metadataFlags,
     };
   }
 
@@ -233,6 +262,37 @@ export class JinaReaderClient implements IJinaReaderClient {
       }
     }
     return null;
+  }
+
+  private extractMetadataFlags(
+    ...containers: Array<Record<string, unknown>>
+  ): Record<string, unknown> | undefined {
+    const flags: Record<string, unknown> = {};
+    const keyVariants = ['isSubscriberContent', 'isSuscriberContent'];
+
+    const assignFlag = (key: string, value: unknown): void => {
+      if (value === undefined || value === null) {
+        return;
+      }
+      flags[key] = value;
+    };
+
+    for (const container of containers) {
+      for (const key of keyVariants) {
+        const directValue = container[key];
+        assignFlag(key, directValue);
+      }
+
+      const nestedFlags = container.flags;
+      if (nestedFlags && typeof nestedFlags === 'object' && !Array.isArray(nestedFlags)) {
+        for (const key of keyVariants) {
+          const nestedValue = (nestedFlags as Record<string, unknown>)[key];
+          assignFlag(key, nestedValue);
+        }
+      }
+    }
+
+    return Object.keys(flags).length > 0 ? flags : undefined;
   }
 
   /**
