@@ -116,10 +116,52 @@ describe('AnalyzeController', () => {
     expect(jsonMock).toHaveBeenCalledWith(
       expect.objectContaining({
         success: false,
-        error: 'Deep analysis entitlement required',
+        code: 'PREMIUM_REQUIRED',
+        message: 'Solo para usuarios Premium',
       })
     );
     expect(analyzeUseCase.execute).not.toHaveBeenCalled();
+  });
+
+  it('analyzeArticle responde 200 en modo deep para usuario PREMIUM sin promo', async () => {
+    const { res, statusMock } = createRes();
+    const req = {
+      body: { articleId: validArticleId, mode: 'deep' },
+      user: {
+        uid: 'user-1',
+        email: 'premium@example.com',
+        subscriptionPlan: 'PREMIUM',
+        entitlements: { deepAnalysis: false },
+      },
+    } as Request;
+
+    analyzeUseCase.execute.mockResolvedValueOnce({
+      articleId: validArticleId,
+      summary: 'Resumen premium',
+      biasScore: 0.1,
+      analysis: {
+        summary: 'Resumen premium',
+        biasScore: 0.1,
+        biasRaw: 0,
+        biasScoreNormalized: 0.1,
+        biasIndicators: [],
+        clickbaitScore: 10,
+        reliabilityScore: 90,
+        sentiment: 'neutral',
+        mainTopics: [],
+        factCheck: { claims: [], verdict: 'SupportedByArticle', reasoning: '' },
+      },
+      scrapedContentLength: 1200,
+    });
+
+    await controller.analyzeArticle(req, res as Response);
+
+    expect(statusMock).toHaveBeenCalledWith(200);
+    expect(analyzeUseCase.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: 'deep',
+      })
+    );
   });
 
   it('analyzeArticle responde 200 en modo deep con entitlement y devuelve secciones deep', async () => {

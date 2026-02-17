@@ -14,7 +14,7 @@ export function DeepAnalysisButton({
   isBusy,
   onClick,
 }: DeepAnalysisButtonProps) {
-  const disabled = isBusy || !hasEntitlement;
+  const disabled = isBusy;
 
   return (
     <Button
@@ -22,7 +22,7 @@ export function DeepAnalysisButton({
       className="w-full gap-2"
       onClick={onClick}
       disabled={disabled}
-      title={!hasEntitlement ? 'Disponible en Premium' : undefined}
+      title={!hasEntitlement ? 'Solo para usuarios Premium' : undefined}
     >
       {isBusy ? (
         <>
@@ -37,7 +37,7 @@ export function DeepAnalysisButton({
       ) : (
         <>
           <Lock className="h-4 w-4" />
-          Disponible en Premium
+          Solo para usuarios Premium
         </>
       )}
     </Button>

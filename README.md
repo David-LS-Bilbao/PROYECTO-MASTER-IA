@@ -83,6 +83,7 @@ npm run test:e2e
 Referencias:
 - Estandar QA: `docs/CALIDAD.md`
 - E2E: `frontend/tests/e2e/README.md`
+- Pre-merge Render/Prisma (incidentes reales): `docs/incidents/PRE_MERGE_PLAYBOOK_RENDER_PRISMA.md`
 
 ### Limitaciones (Paywall y Calidad de Texto)
 

@@ -61,6 +61,9 @@ npm run test:e2e:smoke
 
 `npm run test:e2e` completo es recomendado cuando haya cambios de UI/routing/auth.
 
+Playbook recomendado antes de merge a `main` (Render + Prisma + smoke):
+- `docs/incidents/PRE_MERGE_PLAYBOOK_RENDER_PRISMA.md`
+
 ## 4) Umbrales y criterios PASS/FAIL
 
 - Backend coverage: `branches >= 80%` (global), sin bajar umbrales.

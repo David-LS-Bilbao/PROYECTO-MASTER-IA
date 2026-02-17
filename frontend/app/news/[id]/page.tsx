@@ -12,7 +12,9 @@ import { APIError, analyzeArticleWithMode, type AnalysisMode, type AnalyzeDepthM
 import { useAuth } from '@/context/AuthContext';
 import { useArticle } from '@/hooks/useArticle';
 import { useEntitlements } from '@/hooks/useEntitlements';
+import { useProfile } from '@/hooks/useProfile';
 import { formatDate, getBiasDisplayInfo, getSentimentInfo, isValidUUID, isSafeUrl } from '@/lib/news-utils';
+import { isUserPremium } from '@/lib/auth';
 import { ANALYSIS_COOLDOWN_MS } from '@/lib/constants';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -73,6 +75,7 @@ export default function NewsDetailPage() {
     redeem: redeemEntitlementCode,
     refetch: refetchEntitlements,
   } = useEntitlements(user, authLoading, getToken);
+  const { profile, loading: profileLoading } = useProfile(user, authLoading, getToken);
 
   // Validate UUID format to prevent injection attacks
   const validUUID = isValidUUID(id);
@@ -149,6 +152,25 @@ export default function NewsDetailPage() {
       return;
     }
 
+    const premiumRequiredMessage = 'Solo para usuarios Premium';
+    const canUseDeepAnalysis = isUserPremium({
+      plan: profile?.plan,
+      entitlements,
+    });
+
+    if (mode === 'deep') {
+      if (profileLoading || entitlementsLoading) {
+        setAnalyzeError('Cargando estado de suscripcion...');
+        return;
+      }
+
+      if (!canUseDeepAnalysis) {
+        setAnalyzeError(premiumRequiredMessage);
+        toast.info(premiumRequiredMessage);
+        return;
+      }
+    }
+
     // Rate limiting: cooldown to prevent spam
     const now = Date.now();
     if (now - lastAnalyzeTime < ANALYSIS_COOLDOWN_MS) {
@@ -188,10 +210,10 @@ export default function NewsDetailPage() {
       }
       if (
         mode === 'deep' &&
-        e instanceof Error &&
-        /(premium required|deep analysis entitlement required)/i.test(e.message)
+        e instanceof APIError &&
+        e.errorCode === 'PREMIUM_REQUIRED'
       ) {
-        setAnalyzeError('Disponible en Premium. Activa Analisis profundo con un codigo promocional.');
+        setAnalyzeError(premiumRequiredMessage);
         return;
       }
       setAnalyzeError(e instanceof Error ? e.message : 'Error al analizar');
@@ -269,7 +291,11 @@ export default function NewsDetailPage() {
   }
 
   const isAnalyzed = article.analyzedAt !== null;
-  const hasDeepAnalysisEntitlement = entitlements.deepAnalysis;
+  const canUseDeepAnalysis = isUserPremium({
+    plan: profile?.plan,
+    entitlements,
+  });
+  const hasDeepAnalysisEntitlement = canUseDeepAnalysis;
   const deepSections = article.analysis?.deep?.sections;
   const sentimentInfo = article.analysis?.sentiment ? getSentimentInfo(article.analysis.sentiment) : null;
   const articleLeaningLabels: Record<'progresista' | 'conservadora' | 'extremista' | 'neutral' | 'indeterminada', string> = {
@@ -634,11 +660,11 @@ export default function NewsDetailPage() {
 
                     <DeepAnalysisPanel sections={deepSections} />
                     <DeepAnalysisButton
-                      hasEntitlement={hasDeepAnalysisEntitlement && !entitlementsLoading}
+                      hasEntitlement={hasDeepAnalysisEntitlement && !entitlementsLoading && !profileLoading}
                       isBusy={isAnalyzing || isRevealing}
                       onClick={() => handleAnalyze('standard', 'deep')}
                     />
-                    {!hasDeepAnalysisEntitlement && !entitlementsLoading && (
+                    {!hasDeepAnalysisEntitlement && !entitlementsLoading && !profileLoading && (
                       <Button
                         variant="outline"
                         className="w-full"

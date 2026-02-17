@@ -40,13 +40,19 @@ export class AnalyzeController {
     const validatedInput = analyzeArticleSchema.parse(req.body);
     console.log(`[AnalyzeController]    ✅ Validation passed`);
 
-    const canUseDeepAnalysis = req.user?.entitlements?.deepAnalysis === true;
+    const hasPremiumPlan = req.user?.subscriptionPlan === 'PREMIUM';
+    const hasDeepEntitlement = req.user?.entitlements?.deepAnalysis === true;
+    const canUseDeepAnalysis = hasPremiumPlan || hasDeepEntitlement;
     if (validatedInput.mode === 'deep' && !canUseDeepAnalysis) {
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.status(403).json({
         success: false,
-        error: 'Deep analysis entitlement required',
-        message: 'Activa Analisis profundo con un codigo promocional',
+        code: 'PREMIUM_REQUIRED',
+        message: 'Solo para usuarios Premium',
+        error: {
+          code: 'PREMIUM_REQUIRED',
+          message: 'Solo para usuarios Premium',
+        },
       });
       return;
     }
