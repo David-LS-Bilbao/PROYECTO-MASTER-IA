@@ -3,6 +3,8 @@
  * Pure domain entity - NO external dependencies
  */
 
+export type ArticleAccessStatus = 'PUBLIC' | 'PAYWALLED' | 'RESTRICTED' | 'UNKNOWN';
+
 export interface NewsArticleProps {
   id: string;
   title: string;
@@ -23,6 +25,10 @@ export interface NewsArticleProps {
   analysis: string | null;
   analyzedAt: Date | null;
   internalReasoning: string | null; // Chain-of-Thought for XAI auditing
+  // Content access control (paywall/restrictions)
+  accessStatus?: ArticleAccessStatus;
+  accessReason?: string | null;
+  analysisBlocked?: boolean;
   // User features
   isFavorite: boolean;
   // Metadata
@@ -57,6 +63,7 @@ export interface TokenUsage {
  */
 export interface ArticleAnalysis {
   internal_reasoning?: string; // Chain-of-Thought (XAI auditing only, excluded from client response)
+  formatError?: boolean; // True when model output could not be parsed to valid analysis JSON
   summary: string;
   qualityNotice?: string;
   category?: string; // AI-suggested category for the article
@@ -209,6 +216,18 @@ export class NewsArticle {
     return this.props.internalReasoning;
   }
 
+  get accessStatus(): ArticleAccessStatus {
+    return this.props.accessStatus ?? 'UNKNOWN';
+  }
+
+  get accessReason(): string | null {
+    return this.props.accessReason ?? null;
+  }
+
+  get analysisBlocked(): boolean {
+    return this.props.analysisBlocked ?? false;
+  }
+
   get fetchedAt(): Date {
     return this.props.fetchedAt;
   }
@@ -275,6 +294,23 @@ export class NewsArticle {
   }
 
   /**
+   * Create a new instance with article access status (paywall/restrictions)
+   */
+  withAccessStatus(params: {
+    accessStatus: ArticleAccessStatus;
+    accessReason?: string | null;
+    analysisBlocked: boolean;
+  }): NewsArticle {
+    return NewsArticle.reconstitute({
+      ...this.props,
+      accessStatus: params.accessStatus,
+      accessReason: params.accessReason ?? null,
+      analysisBlocked: params.analysisBlocked,
+      updatedAt: new Date(),
+    });
+  }
+
+  /**
    * Toggle favorite status
    */
   withFavoriteToggle(): NewsArticle {
@@ -288,6 +324,11 @@ export class NewsArticle {
   toJSON(): NewsArticleProps {
     const { internalReasoning, ...publicProps } = this.props;
     // Exclude internalReasoning from client responses (XAI auditing only per AI_RULES.md)
-    return publicProps as NewsArticleProps;
+    return {
+      ...publicProps,
+      accessStatus: this.accessStatus,
+      accessReason: this.accessReason,
+      analysisBlocked: this.analysisBlocked,
+    } as NewsArticleProps;
   }
 }

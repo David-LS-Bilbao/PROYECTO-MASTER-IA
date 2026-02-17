@@ -33,6 +33,13 @@ export class ArticleMapper {
       analysis: prismaArticle.analysis,
       analyzedAt: prismaArticle.analyzedAt,
       internalReasoning: prismaArticle.internalReasoning,
+      accessStatus:
+        (prismaArticle as PrismaArticle & { accessStatus?: NewsArticleProps['accessStatus'] })
+          .accessStatus ?? 'UNKNOWN',
+      accessReason:
+        (prismaArticle as PrismaArticle & { accessReason?: string | null }).accessReason ?? null,
+      analysisBlocked:
+        (prismaArticle as PrismaArticle & { analysisBlocked?: boolean }).analysisBlocked ?? false,
       isFavorite: prismaArticle.isFavorite ?? false,
       fetchedAt: prismaArticle.fetchedAt,
       updatedAt: prismaArticle.updatedAt,
@@ -71,6 +78,9 @@ export class ArticleMapper {
         analysis: article.analysis,
         analyzedAt: article.analyzedAt,
         internalReasoning: article.internalReasoning,
+        accessStatus: article.accessStatus,
+        accessReason: article.accessReason,
+        analysisBlocked: article.analysisBlocked,
         isFavorite: article.isFavorite,
 
         // Sprint 23: Update topic relation if provided
@@ -96,6 +106,9 @@ export class ArticleMapper {
         analysis: article.analysis,
         analyzedAt: article.analyzedAt,
         internalReasoning: article.internalReasoning,
+        accessStatus: article.accessStatus,
+        accessReason: article.accessReason,
+        analysisBlocked: article.analysisBlocked,
         isFavorite: article.isFavorite,
         fetchedAt: article.fetchedAt,
         updatedAt: new Date(),

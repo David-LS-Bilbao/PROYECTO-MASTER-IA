@@ -7,7 +7,8 @@ import Image from 'next/image';
 import DOMPurify from 'dompurify';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ExternalLink, Clock, User, Tag, Sparkles } from 'lucide-react';
-import { analyzeArticleWithMode, type AnalysisMode, type AnalyzeDepthMode } from '@/lib/api';
+import { toast } from 'sonner';
+import { APIError, analyzeArticleWithMode, type AnalysisMode, type AnalyzeDepthMode } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useArticle } from '@/hooks/useArticle';
 import { useEntitlements } from '@/hooks/useEntitlements';
@@ -94,6 +95,7 @@ export default function NewsDetailPage() {
   // Local state for AI analysis
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [paywallBlocked, setPaywallBlocked] = useState(false);
   const [isRedeemSheetOpen, setIsRedeemSheetOpen] = useState(false);
   const [lastAnalyzeTime, setLastAnalyzeTime] = useState<number>(0);
   const [lastScrapedContentLength, setLastScrapedContentLength] = useState<number | null>(null);
@@ -156,6 +158,7 @@ export default function NewsDetailPage() {
 
     setIsAnalyzing(true);
     setAnalyzeError(null);
+    setPaywallBlocked(false);
     setLastAnalyzeTime(now);
 
     try {
@@ -168,12 +171,21 @@ export default function NewsDetailPage() {
 
       const analyzeResponse = await analyzeArticleWithMode(article.id, token, analysisMode, mode);
       setLastScrapedContentLength(analyzeResponse.data.scrapedContentLength);
+      setPaywallBlocked(false);
 
       // Invalidate caches to refetch article and update dashboard buttons
       queryClient.invalidateQueries({ queryKey: ['article', id] });
       queryClient.invalidateQueries({ queryKey: ['news'] });
     } catch (e) {
       console.error(`[page.tsx]    ❌ Analysis failed:`, e);
+      if (e instanceof APIError && e.errorCode === 'PAYWALL_BLOCKED') {
+        const blockedMessage =
+          'Articulo de pago o suscripcion al medio. No se puede realizar el analisis sin el texto completo.';
+        setPaywallBlocked(true);
+        setAnalyzeError(blockedMessage);
+        toast.error(blockedMessage);
+        return;
+      }
       if (
         mode === 'deep' &&
         e instanceof Error &&
@@ -290,7 +302,11 @@ export default function NewsDetailPage() {
   // Determine if we should show analysis content or skeleton
   // Show skeleton if: analyzing OR revealing (artificial delay)
   const showAnalysisSkeleton = isAnalyzing || isRevealing;
-  const showAnalysisContent = isAnalyzed && !showAnalysisSkeleton;
+  const showAnalysisContent = isAnalyzed && !showAnalysisSkeleton && !paywallBlocked;
+  const hasAnalysisFormatError =
+    article.analysis?.formatError === true ||
+    (article.summary ?? '').toLowerCase().includes('no se pudo procesar el formato del analisis');
+  const showAnalysisErrorState = showAnalysisContent && hasAnalysisFormatError;
   const isIndeterminateLeaning =
     articleLeaning === 'indeterminada' || article.analysis?.biasLeaning === 'indeterminada';
   const isLowCostDueToInsufficientContent =
@@ -299,6 +315,7 @@ export default function NewsDetailPage() {
     effectiveContentLength < 800;
   const hasPreliminaryContentWarning =
     showAnalysisContent &&
+    !showAnalysisErrorState &&
     !qualityNotice &&
     (effectiveContentLength < 300 || isIndeterminateLeaning || isLowCostDueToInsufficientContent);
 
@@ -384,6 +401,18 @@ export default function NewsDetailPage() {
                   <div className="h-4 bg-purple-200 dark:bg-purple-800 rounded w-11/12"></div>
                   <div className="h-4 bg-purple-200 dark:bg-purple-800 rounded w-10/12"></div>
                 </div>
+              </div>
+            ) : showAnalysisErrorState ? (
+              <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                <div className="flex items-center gap-2 mb-3">
+                  <Sparkles className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                  <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-300">
+                    Estado del analisis
+                  </h3>
+                </div>
+                <p className="text-sm text-amber-800 dark:text-amber-300 leading-relaxed">
+                  No se pudo procesar el formato del analisis. Reintenta.
+                </p>
               </div>
             ) : showAnalysisContent && article.summary ? (
               <div className="mb-6 p-4 bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-lg">
@@ -482,6 +511,26 @@ export default function NewsDetailPage() {
 
                     <div className="h-10 w-full bg-zinc-300 dark:bg-zinc-700 rounded"></div>
                   </div>
+                ) : showAnalysisErrorState ? (
+                  <>
+                    <div className="text-center py-4">
+                      <p className="text-sm text-amber-700 dark:text-amber-400 mb-4">
+                        No se pudo procesar el formato del analisis. Reintenta.
+                      </p>
+                      <Button
+                        size="lg"
+                        className="w-full gap-2"
+                        onClick={() => handleAnalyze('moderate')}
+                        disabled={isAnalyzing || isRevealing}
+                      >
+                        <Sparkles className="h-5 w-5" />
+                        Reintentar analisis
+                      </Button>
+                    </div>
+                    {analyzeError && (
+                      <p className="text-sm text-red-500">{analyzeError}</p>
+                    )}
+                  </>
                 ) : showAnalysisContent && biasInfo ? (
                   // ========== ACTUAL ANALYSIS CONTENT ==========
                   <>
@@ -684,4 +733,5 @@ export default function NewsDetailPage() {
     </div>
   );
 }
+
 

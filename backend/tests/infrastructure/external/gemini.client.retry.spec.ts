@@ -433,7 +433,7 @@ describe('GeminiClient - Retry Logic & Resilience', () => {
       expect(mockEmbedContent).not.toHaveBeenCalled();
     });
 
-    it('should handle malformed JSON response gracefully', async () => {
+    it('should handle malformed JSON response gracefully without throwing', async () => {
       // ARRANGE: Respuesta que no es JSON válido
       const malformedResponse = {
         response: {
@@ -442,29 +442,21 @@ describe('GeminiClient - Retry Logic & Resilience', () => {
         },
       };
 
-      mockGenerateContent.mockResolvedValue(malformedResponse); // mockResolvedValue (sin Once) para ambas llamadas
+      mockGenerateContent.mockResolvedValueOnce(malformedResponse);
 
-      // ACT & ASSERT
-      await expect(
-        geminiClient.analyzeArticle({
-          title: 'Test',
-          content: 'C'.repeat(100), // Contenido >= 50 chars
-          source: 'Test',
-          language: 'es',
-        })
-      ).rejects.toThrow(ExternalAPIError);
+      // ACT
+      const result = await geminiClient.analyzeArticle({
+        title: 'Test',
+        content: 'C'.repeat(100),
+        source: 'Test',
+        language: 'es',
+      });
 
-      await expect(
-        geminiClient.analyzeArticle({
-          title: 'Test',
-          content: 'C'.repeat(100),
-          source: 'Test',
-          language: 'es',
-        })
-      ).rejects.toThrow(/no JSON found|API error/);
-
-      // Verificar que NO reintentó (error de parseo no es retryable - solo 2 llamadas)
-      expect(mockGenerateContent).toHaveBeenCalledTimes(2);
+      // ASSERT
+      expect(result.summary).toBe('No se pudo procesar el formato del analisis. Reintenta.');
+      expect(result.formatError).toBe(true);
+      expect(result.factCheck.verdict).toBe('InsufficientEvidenceInArticle');
+      expect(mockGenerateContent).toHaveBeenCalledTimes(2); // +1 intento JSON repair
     });
   });
 });

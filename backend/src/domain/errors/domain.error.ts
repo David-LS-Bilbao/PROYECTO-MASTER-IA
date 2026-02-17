@@ -72,6 +72,16 @@ export class ForbiddenError extends DomainError {
   }
 }
 
+export class PaywallBlockedError extends DomainError {
+  constructor(
+    message: string = 'Articulo de pago o suscripcion al medio. No se puede realizar el analisis sin el texto completo.',
+    details?: Record<string, unknown>
+  ) {
+    super(message, 422, 'PAYWALL_BLOCKED', details);
+    this.name = 'PaywallBlockedError';
+  }
+}
+
 export class QuotaExceededError extends DomainError {
   constructor(message: string = 'Monthly quota exceeded', details?: Record<string, unknown>) {
     super(message, 429, 'QUOTA_EXCEEDED', details);

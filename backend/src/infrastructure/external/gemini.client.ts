@@ -101,6 +101,27 @@ const ANALYSIS_HEAD_CHARS = 3000;
 const ANALYSIS_TAIL_CHARS = 2000;
 const ANALYSIS_QUOTES_DATA_CHARS = 2000;
 const AUTO_LOW_COST_CONTENT_THRESHOLD = 800;
+const ANALYSIS_PARSE_FALLBACK_SUMMARY =
+  'No se pudo procesar el formato del analisis. Reintenta.';
+const MAX_JSON_REPAIR_INPUT_CHARS = 12000;
+const JSON_REPAIR_PROMPT = `
+Eres un reparador de JSON.
+TAREA:
+- Recibirás una respuesta rota/no estructurada.
+- Devuelve SOLO un JSON válido (sin markdown, sin texto adicional).
+- Mantén el idioma original.
+
+FORMATO MINIMO OBLIGATORIO:
+{
+  "summary": "string"
+}
+
+Si puedes, incluye también campos válidos del esquema de análisis:
+"biasRaw","biasScoreNormalized","biasIndicators","reliabilityScore","traceabilityScore",
+"factualityStatus","evidence_needed","should_escalate","clickbaitScore","sentiment",
+"mainTopics","factCheck":{"claims":[],"verdict":"SupportedByArticle|NotSupportedByArticle|InsufficientEvidenceInArticle","reasoning":"string"},
+"deep":{"sections":{"known":[],"unknown":[],"quotes":[],"risks":[]}}
+`;
 
 const PROMPT_INJECTION_PATTERNS: RegExp[] = [
   /ignore\s+(all\s+)?previous\s+instructions?/gi,
@@ -229,12 +250,26 @@ export class GeminiClient implements IGeminiClient {
     const selectedContent = this.selectContentForAnalysis(sanitizedContent);
     const requestedMode = this.normalizeAnalysisMode(input.analysisMode);
     const effectiveMode = this.resolveAnalysisMode(requestedMode, sanitizedContent);
+    const inputQuality = this.normalizeInputQuality(
+      input.inputQuality,
+      sanitizedContent.length
+    );
+    const contentChars =
+      typeof input.contentChars === 'number' && input.contentChars > 0
+        ? Math.floor(input.contentChars)
+        : sanitizedContent.length;
+    const textSource = this.normalizeTextSource(input.textSource);
 
     // COST OPTIMIZATION: Seleccion inteligente de contenido para reducir tokens.
-    const analysisPromptTemplate = this.getAnalysisPromptTemplate(effectiveMode);
-    const prompt = analysisPromptTemplate.replace('{title}', sanitizedTitle)
-      .replace('{source}', sanitizedSource)
-      .replace('{content}', selectedContent);
+    const promptDescriptor = this.getAnalysisPromptDescriptor(effectiveMode);
+    const prompt = this.populateAnalysisPrompt(promptDescriptor.template, {
+      title: sanitizedTitle,
+      source: sanitizedSource,
+      content: selectedContent,
+      inputQuality,
+      contentChars,
+      textSource,
+    });
 
     // RESILIENCIA: executeWithRetry maneja reintentos automÃ¡ticos
     return this.executeWithRetry(async () => {
@@ -243,6 +278,11 @@ export class GeminiClient implements IGeminiClient {
           originalContentLength: sanitizedContent.length,
           selectedContentLength: selectedContent.length,
           promptProfile: effectiveMode,
+          analysis_mode: effectiveMode,
+          prompt_name: promptDescriptor.name,
+          inputQuality,
+          contentChars,
+          textSource,
         },
         'Starting article analysis'
       );
@@ -308,12 +348,77 @@ export class GeminiClient implements IGeminiClient {
         logger.debug('Article analysis completed without token metadata');
       }
 
-      return this.parseAnalysisResponse(
-        text,
-        tokenUsage,
-        sanitizedContent,
-        effectiveMode
-      );
+      let parsedAnalysis: ArticleAnalysis;
+      try {
+        parsedAnalysis = this.parseAnalysisResponse(
+          text,
+          tokenUsage,
+          sanitizedContent,
+          effectiveMode
+        );
+      } catch (parseError) {
+        logger.warn(
+          {
+            error:
+              parseError instanceof Error ? parseError.message : String(parseError),
+          },
+          'Initial analysis parsing failed. Attempting one JSON repair.'
+        );
+        const repairedRaw = await this.tryJsonRepair(text);
+        if (repairedRaw) {
+          try {
+            parsedAnalysis = this.parseAnalysisResponse(
+              repairedRaw,
+              tokenUsage,
+              sanitizedContent,
+              effectiveMode
+            );
+            return parsedAnalysis;
+          } catch (repairError) {
+            logger.warn(
+              {
+                error:
+                  repairError instanceof Error ? repairError.message : String(repairError),
+              },
+              'JSON repair parse failed. Returning fallback analysis.'
+            );
+          }
+        }
+
+        return this.parseAnalysisResponse(
+          JSON.stringify({ summary: ANALYSIS_PARSE_FALLBACK_SUMMARY }),
+          tokenUsage,
+          sanitizedContent,
+          effectiveMode
+        );
+      }
+
+      if (parsedAnalysis.formatError) {
+        const repairedRaw = await this.tryJsonRepair(text);
+        if (repairedRaw) {
+          try {
+            const repairedAnalysis = this.parseAnalysisResponse(
+              repairedRaw,
+              tokenUsage,
+              sanitizedContent,
+              effectiveMode
+            );
+            if (!repairedAnalysis.formatError) {
+              return repairedAnalysis;
+            }
+          } catch (repairError) {
+            logger.warn(
+              {
+                error:
+                  repairError instanceof Error ? repairError.message : String(repairError),
+              },
+              'JSON repair attempt failed after fallback parse.'
+            );
+          }
+        }
+      }
+
+      return parsedAnalysis;
     }, 3, 1000); // 3 reintentos, 1s delay inicial
   }
 
@@ -687,12 +792,44 @@ export class GeminiClient implements IGeminiClient {
       .trim();
 
     const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
+    let rawPayload: unknown;
+    let usedParseFallback = false;
+
     if (!jsonMatch) {
-      throw new ExternalAPIError('Gemini', 'Invalid response format: no JSON found', 500);
+      usedParseFallback = true;
+      logger.warn(
+        {
+          reason: 'missing_json_block',
+          responsePreview: cleanText.slice(0, 180),
+          rawModelResponsePreview: text.slice(0, 180),
+        },
+        'Gemini response did not include JSON. Applying fallback payload.'
+      );
+      rawPayload = {
+        summary: ANALYSIS_PARSE_FALLBACK_SUMMARY,
+      };
+    } else {
+      try {
+        rawPayload = JSON.parse(jsonMatch[0]);
+      } catch (parseError) {
+        usedParseFallback = true;
+        logger.warn(
+          {
+            reason: 'invalid_json_syntax',
+            responsePreview: jsonMatch[0].slice(0, 180),
+            rawModelResponsePreview: text.slice(0, 180),
+            parseError:
+              parseError instanceof Error ? parseError.message : String(parseError),
+          },
+          'Gemini response contained malformed JSON. Applying fallback payload.'
+        );
+        rawPayload = {
+          summary: ANALYSIS_PARSE_FALLBACK_SUMMARY,
+        };
+      }
     }
 
     try {
-      const rawPayload = JSON.parse(jsonMatch[0]);
       const repairedPayload = this.repairAnalysisPayload(
         rawPayload,
         analyzedContent,
@@ -814,9 +951,12 @@ export class GeminiClient implements IGeminiClient {
           content: analyzedContent,
         });
       const deepSections = this.normalizeDeepSections(parsed.deep?.sections, maxClaims);
+      const formatError =
+        usedParseFallback || parsed.summary.trim() === ANALYSIS_PARSE_FALLBACK_SUMMARY;
 
       return {
         internal_reasoning,
+        formatError,
         summary: parsed.summary,
         category,
         biasScore: biasScoreNormalized,
@@ -839,7 +979,7 @@ export class GeminiClient implements IGeminiClient {
         mainTopics,
         factCheck,
         explanation,
-        ...(analysisMode === 'deep' || deepSections
+        ...(!formatError && (analysisMode === 'deep' || deepSections)
           ? {
               deep: {
                 sections: deepSections ?? {
@@ -859,6 +999,46 @@ export class GeminiClient implements IGeminiClient {
         `Failed to parse analysis response: ${(error as Error).message}`,
         500
       );
+    }
+  }
+
+  private async tryJsonRepair(rawModelResponse: string): Promise<string | null> {
+    const trimmed = rawModelResponse?.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const safeInput =
+      trimmed.length > MAX_JSON_REPAIR_INPUT_CHARS
+        ? trimmed.slice(0, MAX_JSON_REPAIR_INPUT_CHARS)
+        : trimmed;
+    const repairPrompt = `${JSON_REPAIR_PROMPT}\n\nRAW_RESPONSE:\n${safeInput}`;
+
+    try {
+      const repairResult = await this.model.generateContent({
+        contents: [{ role: 'user', parts: [{ text: repairPrompt }] }],
+        generationConfig: {
+          maxOutputTokens: 1200,
+        },
+      });
+      const repairedText = repairResult.response.text().trim();
+      if (!repairedText) {
+        return null;
+      }
+
+      logger.info(
+        { repairResponseLength: repairedText.length },
+        'JSON repair attempt completed'
+      );
+      return repairedText;
+    } catch (error) {
+      logger.warn(
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'JSON repair request failed'
+      );
+      return null;
     }
   }
 
@@ -1249,18 +1429,86 @@ export class GeminiClient implements IGeminiClient {
     return requestedMode;
   }
 
-  private getAnalysisPromptTemplate(mode: AnalysisMode): string {
+  private getAnalysisPromptDescriptor(mode: AnalysisMode): {
+    name: string;
+    template: string;
+  } {
     switch (mode) {
       case 'deep':
-        return ANALYSIS_PROMPT_DEEP;
+        return {
+          name: 'ANALYSIS_PROMPT_DEEP',
+          template: ANALYSIS_PROMPT_DEEP,
+        };
       case 'moderate':
-        return ANALYSIS_PROMPT_MODERATE;
+        return {
+          name: 'ANALYSIS_PROMPT_MODERATE',
+          template: ANALYSIS_PROMPT_MODERATE,
+        };
       case 'standard':
-        return ANALYSIS_PROMPT;
+        return {
+          name: 'ANALYSIS_PROMPT',
+          template: ANALYSIS_PROMPT,
+        };
       case 'low_cost':
       default:
-        return ANALYSIS_PROMPT_LOW_COST;
+        return {
+          name: 'ANALYSIS_PROMPT_LOW_COST',
+          template: ANALYSIS_PROMPT_LOW_COST,
+        };
     }
+  }
+
+  private populateAnalysisPrompt(
+    template: string,
+    variables: {
+      title: string;
+      source: string;
+      content: string;
+      inputQuality: 'full' | 'snippet_rss' | 'paywall_o_vacio' | 'unknown';
+      contentChars: number;
+      textSource: string;
+    }
+  ): string {
+    return template
+      .replace(/{title}/g, variables.title)
+      .replace(/{source}/g, variables.source)
+      .replace(/{content}/g, variables.content)
+      .replace(/{inputQuality}/g, variables.inputQuality)
+      .replace(/{contentChars}/g, String(variables.contentChars))
+      .replace(/{textSource}/g, variables.textSource);
+  }
+
+  private normalizeInputQuality(
+    inputQuality: AnalyzeContentInput['inputQuality'],
+    contentLength: number
+  ): 'full' | 'snippet_rss' | 'paywall_o_vacio' | 'unknown' {
+    if (
+      inputQuality === 'full' ||
+      inputQuality === 'snippet_rss' ||
+      inputQuality === 'paywall_o_vacio' ||
+      inputQuality === 'unknown'
+    ) {
+      return inputQuality;
+    }
+
+    if (contentLength >= AUTO_LOW_COST_CONTENT_THRESHOLD) {
+      return 'full';
+    }
+
+    if (contentLength > 0) {
+      return 'paywall_o_vacio';
+    }
+
+    return 'unknown';
+  }
+
+  private normalizeTextSource(textSource: unknown): string {
+    if (typeof textSource !== 'string') {
+      return 'unknown';
+    }
+
+    const compact = textSource.trim();
+    return compact.length > 0 ? compact.slice(0, 60) : 'unknown';
   }
 
   private getMaxOutputTokensForMode(mode: AnalysisMode): number {
