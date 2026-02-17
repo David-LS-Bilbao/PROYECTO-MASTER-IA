@@ -16,6 +16,7 @@ RUN apt-get update -y && \
 
 # Copiar archivos de dependencias
 COPY package*.json ./
+COPY prisma.config.ts ./
 COPY prisma ./prisma
 
 # Instalar dependencias (postinstall ejecutará prisma generate automáticamente)
@@ -47,6 +48,7 @@ RUN apt-get update -y && \
 
 # Copiar archivos de dependencias y schema de Prisma
 COPY package*.json ./
+COPY prisma.config.ts ./
 COPY prisma ./prisma
 
 # Instalar solo dependencias de producción
