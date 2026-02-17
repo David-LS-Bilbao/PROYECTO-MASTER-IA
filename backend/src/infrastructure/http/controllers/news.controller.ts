@@ -194,6 +194,7 @@ function sanitizeResponsePayload<T>(value: T): T {
  */
 function toHttpResponse(article: NewsArticle, maskAnalysis = false) {
   const json = article.toJSON();
+  const parsedAnalysis = article.getParsedAnalysis();
 
   // Check if analysis exists globally in DB
   const hasAnalysis = json.analyzedAt !== null;
@@ -214,7 +215,7 @@ function toHttpResponse(article: NewsArticle, maskAnalysis = false) {
   // Normal response with full analysis (user has favorited or analysis doesn't exist)
   return sanitizeResponsePayload({
     ...json,
-    analysis: json.analysis ? JSON.parse(json.analysis) : null,
+    analysis: parsedAnalysis,
     hasAnalysis,
   });
 }

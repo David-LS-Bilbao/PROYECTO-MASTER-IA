@@ -64,7 +64,9 @@ EXPOSE 3001
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3001/api/health/check', (res) => { process.exit(res.statusCode === 200 ? 0 : 1); });"
+  CMD node -e "require('http').get('http://localhost:3001/health/check', (res) => { process.exit(res.statusCode === 200 ? 0 : 1); });"
 
-# Comando de inicio
-CMD ["node", "dist/index.js"]
+# Comando de inicio:
+# - aplica migraciones pendientes en la BD de produccion
+# - arranca API solo si migrate deploy fue exitoso
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]

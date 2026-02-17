@@ -222,6 +222,27 @@ describe('NewsController', () => {
       expect(typeof payload.data[0].publishedAt).toBe('string');
       expect(payload.data[0].publishedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     });
+
+    it('no rompe si analysis legacy tiene JSON invalido', async () => {
+      const { res, jsonMock, statusMock } = createRes();
+      const req = { query: { limit: '10', offset: '0' }, user: { uid: 'user-1' } } as Request;
+
+      const legacyArticle = createArticle({
+        analysis: '{"summary":"texto incompleto"',
+        analyzedAt: new Date('2026-02-01T10:00:00Z'),
+      });
+      repository.findAll.mockResolvedValueOnce([legacyArticle]);
+      repository.count.mockResolvedValueOnce(1);
+      repository.getUserUnlockedArticleIds.mockResolvedValueOnce(new Set(['article-1']));
+
+      await controller.getNews(req, res as Response);
+
+      expect(statusMock).not.toHaveBeenCalled();
+      const payload = jsonMock.mock.calls[0][0];
+      expect(payload.success).toBe(true);
+      expect(payload.data[0].analysis).toBeNull();
+      expect(payload.data[0].hasAnalysis).toBe(true);
+    });
   });
 
   describe('getNewsById', () => {
