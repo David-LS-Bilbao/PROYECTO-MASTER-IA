@@ -20,6 +20,10 @@ export const analyzeArticleSchema = z.object({
   analysisMode: z
     .enum(['low_cost', 'moderate', 'standard'])
     .optional(),
+  mode: z
+    .enum(['standard', 'deep'])
+    .optional()
+    .default('standard'),
 });
 
 /**

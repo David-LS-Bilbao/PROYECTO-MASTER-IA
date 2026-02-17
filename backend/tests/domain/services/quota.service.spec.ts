@@ -4,7 +4,8 @@
 
 import { describe, it, expect } from 'vitest';
 import { QuotaService } from '../../../src/domain/services/quota.service';
-import { QuotaExceededError } from '../../../src/domain/errors/domain.error';
+import { FeatureLockedError, QuotaExceededError } from '../../../src/domain/errors/domain.error';
+import { TRIAL_PERIOD_DAYS } from '../../../src/config/constants';
 
 describe('QuotaService', () => {
   const service = new QuotaService();
@@ -46,5 +47,88 @@ describe('QuotaService', () => {
         'chat'
       )
     ).not.toThrow();
+  });
+
+  it('lanza error cuando excede limite de chat', () => {
+    expect(() =>
+      service.verifyQuota(
+        {
+          id: 'u4',
+          subscriptionPlan: 'PREMIUM',
+          usageStats: { chatMessages: 10000 },
+        },
+        'chat'
+      )
+    ).toThrow(QuotaExceededError);
+  });
+
+  it('en chat usa fallback 0 cuando usageStats/chatMessages no existen', () => {
+    expect(() =>
+      service.verifyQuota(
+        {
+          id: 'u4b',
+          subscriptionPlan: 'PREMIUM',
+          usageStats: undefined,
+        },
+        'chat'
+      )
+    ).not.toThrow();
+  });
+
+  it('usa fallback FREE cuando el plan no esta mapeado', () => {
+    expect(() =>
+      service.verifyQuota(
+        {
+          id: 'u5',
+          subscriptionPlan: 'ENTERPRISE' as any,
+          usageStats: undefined,
+        },
+        'analysis'
+      )
+    ).not.toThrow();
+  });
+
+  it('canAccessChat permite PREMIUM sin mirar trial', () => {
+    expect(
+      service.canAccessChat({
+        id: 'premium-1',
+        subscriptionPlan: 'PREMIUM',
+      })
+    ).toBe(true);
+  });
+
+  it('canAccessChat permite FREE dentro del periodo de prueba', () => {
+    const createdAt = new Date();
+    createdAt.setDate(createdAt.getDate() - Math.max(0, TRIAL_PERIOD_DAYS - 1));
+
+    expect(
+      service.canAccessChat({
+        id: 'free-trial',
+        subscriptionPlan: 'FREE',
+        createdAt,
+      })
+    ).toBe(true);
+  });
+
+  it('canAccessChat bloquea FREE legacy sin createdAt', () => {
+    expect(() =>
+      service.canAccessChat({
+        id: 'legacy-free',
+        subscriptionPlan: 'FREE',
+      })
+    ).toThrow(FeatureLockedError);
+  });
+
+  it('canAccessChat bloquea FREE cuando expira el trial', () => {
+    const createdAt = new Date();
+    createdAt.setDate(createdAt.getDate() - (TRIAL_PERIOD_DAYS + 2));
+
+    expect(() =>
+      service.canAccessChat({
+        id: 'free-expired',
+        subscriptionPlan: 'FREE',
+        createdAt,
+      })
+    ).toThrow(FeatureLockedError);
   });
 });

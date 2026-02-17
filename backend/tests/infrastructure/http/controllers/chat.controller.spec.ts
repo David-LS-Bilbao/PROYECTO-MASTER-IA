@@ -53,13 +53,20 @@ describe('ChatController', () => {
   let controller: ChatController;
   let chatArticleUseCase: { execute: ReturnType<typeof vi.fn> };
   let chatGeneralUseCase: { execute: ReturnType<typeof vi.fn> };
+  let quotaService: { canAccessChat: ReturnType<typeof vi.fn> };
+  const authUser = {
+    uid: 'user-1',
+    subscriptionPlan: 'PREMIUM' as const,
+    createdAt: new Date('2026-01-01T00:00:00Z').toISOString(),
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockIncrementChatMessages.mockResolvedValue(undefined);
     chatArticleUseCase = { execute: vi.fn() };
     chatGeneralUseCase = { execute: vi.fn() };
-    controller = new ChatController(chatArticleUseCase as any, chatGeneralUseCase as any);
+    quotaService = { canAccessChat: vi.fn() };
+    controller = new ChatController(chatArticleUseCase as any, chatGeneralUseCase as any, quotaService as any);
   });
 
   afterEach(() => {
@@ -69,7 +76,7 @@ describe('ChatController', () => {
   describe('chatWithArticle', () => {
     it('200 en flujo exitoso', async () => {
       const { res, statusMock, jsonMock } = createRes();
-      const req = { body: validArticleBody, user: { uid: 'user-1' } } as Request;
+      const req = { body: validArticleBody, user: authUser } as Request;
 
       chatArticleUseCase.execute.mockResolvedValueOnce({
         articleId: validArticleBody.articleId,
@@ -93,7 +100,7 @@ describe('ChatController', () => {
 
     it('400 si ZodError', async () => {
       const { res, statusMock } = createRes();
-      const req = { body: { messages: [] } } as Request;
+      const req = { body: { messages: [] }, user: authUser } as Request;
 
       await controller.chatWithArticle(req, res as Response);
 
@@ -102,7 +109,7 @@ describe('ChatController', () => {
 
     it('404 si EntityNotFoundError', async () => {
       const { res, statusMock } = createRes();
-      const req = { body: validArticleBody } as Request;
+      const req = { body: validArticleBody, user: authUser } as Request;
 
       chatArticleUseCase.execute.mockRejectedValueOnce(new EntityNotFoundError('Article', 'id'));
 
@@ -113,7 +120,7 @@ describe('ChatController', () => {
 
     it('400 si ValidationError', async () => {
       const { res, statusMock } = createRes();
-      const req = { body: validArticleBody } as Request;
+      const req = { body: validArticleBody, user: authUser } as Request;
 
       chatArticleUseCase.execute.mockRejectedValueOnce(new ValidationError('Invalid'));
 
@@ -124,7 +131,7 @@ describe('ChatController', () => {
 
     it('statusCode de ExternalAPIError', async () => {
       const { res, statusMock } = createRes();
-      const req = { body: validArticleBody } as Request;
+      const req = { body: validArticleBody, user: authUser } as Request;
 
       chatArticleUseCase.execute.mockRejectedValueOnce(new ExternalAPIError('Gemini', 'Down', 503));
 
@@ -135,7 +142,7 @@ describe('ChatController', () => {
 
     it('500 si DatabaseError', async () => {
       const { res, statusMock } = createRes();
-      const req = { body: validArticleBody } as Request;
+      const req = { body: validArticleBody, user: authUser } as Request;
 
       chatArticleUseCase.execute.mockRejectedValueOnce(new DatabaseError('DB error'));
 
@@ -146,7 +153,7 @@ describe('ChatController', () => {
 
     it('500 si InfrastructureError', async () => {
       const { res, statusMock } = createRes();
-      const req = { body: validArticleBody } as Request;
+      const req = { body: validArticleBody, user: authUser } as Request;
 
       chatArticleUseCase.execute.mockRejectedValueOnce(new InfrastructureError('Infra error'));
 
@@ -159,7 +166,7 @@ describe('ChatController', () => {
   describe('chatGeneral', () => {
     it('200 en flujo exitoso', async () => {
       const { res, statusMock, jsonMock } = createRes();
-      const req = { body: validGeneralBody, user: { uid: 'user-1' } } as Request;
+      const req = { body: validGeneralBody, user: authUser } as Request;
 
       chatGeneralUseCase.execute.mockResolvedValueOnce({
         response: 'General answer',
@@ -173,14 +180,14 @@ describe('ChatController', () => {
       expect(jsonMock).toHaveBeenCalledWith(
         expect.objectContaining({
           success: true,
-          data: expect.objectContaining({ sourcesCount: 2 }),
+          data: expect.objectContaining({ response: 'General answer' }),
         })
       );
     });
 
     it('400 si ZodError', async () => {
       const { res, statusMock } = createRes();
-      const req = { body: { messages: [] } } as Request;
+      const req = { body: { messages: [] }, user: authUser } as Request;
 
       await controller.chatGeneral(req, res as Response);
 

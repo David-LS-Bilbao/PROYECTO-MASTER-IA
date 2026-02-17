@@ -4,6 +4,11 @@
 
 Este proyecto ha migrado desde ChromaDB (base de datos vectorial externa) a **pgvector** (extensión PostgreSQL) para consolidar toda la infraestructura de almacenamiento en una sola base de datos.
 
+**Estado actual del repo (2026-02):**
+- `docker-compose.yml` usa `pgvector/pgvector:pg16` para PostgreSQL local.
+- El backend principal usa `PgVectorClient` (sin dependencia de Chroma en el flujo core).
+- `chromadb` puede seguir apareciendo en compose/scripts legacy, pero es opcional/deprecado para el camino principal.
+
 ## Beneficios de la Migración
 
 1. **Simplicidad**: Una sola base de datos (PostgreSQL) en lugar de dos (PostgreSQL + ChromaDB)
@@ -63,7 +68,10 @@ brew install pgvector
 - La extensión pgvector ya está disponible automáticamente
 - No requiere instalación adicional
 
-### 2. Desinstalar ChromaDB (opcional)
+### 2. Servicio Chroma (legacy opcional)
+
+No es necesario para el flujo principal con pgvector.
+Si deseas limpiar dependencias legacy en un entorno local:
 ```bash
 cd backend
 npm uninstall chromadb @chroma-core/default-embed
@@ -137,6 +145,7 @@ npm install chromadb@^3.3.0 @chroma-core/default-embed@^0.1.9
 - **Índice HNSW**: Más eficiente que IVFFlat para la mayoría de casos de uso
 - **Distancia coseno**: Usamos el operador `<=>` para búsquedas de similitud
 - **Performance**: pgvector es comparable a ChromaDB en velocidad para volúmenes < 1M vectores
+- **Compose local**: usar `pgvector/pgvector:pg16` (en este proyecto se expone en `localhost:5433`)
 
 ## Soporte
 

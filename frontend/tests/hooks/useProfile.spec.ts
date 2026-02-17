@@ -44,6 +44,7 @@ const mockProfile = {
   name: 'Test User',
   picture: null,
   plan: 'FREE' as const,
+  entitlements: { deepAnalysis: false },
   location: null,
   preferences: { categories: ['Política', 'Economía'] },
   usageStats: { articlesAnalyzed: 10, searchesPerformed: 5, chatMessages: 3 },

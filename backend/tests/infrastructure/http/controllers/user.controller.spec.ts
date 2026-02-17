@@ -132,6 +132,9 @@ describe('UserController', () => {
           data: expect.objectContaining({
             id: 'user-1',
             plan: 'FREE',
+            entitlements: {
+              deepAnalysis: false,
+            },
             counts: { favorites: 1, searchHistory: 2, chats: 3 },
           }),
         })

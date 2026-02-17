@@ -1,17 +1,31 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { TokenTaximeter } from './token-taximeter';
 
+const { mockGauge } = vi.hoisted(() => ({
+  mockGauge: vi.fn(),
+}));
+
+vi.mock('@sentry/node', () => ({
+  metrics: {
+    gauge: mockGauge,
+  },
+}));
+
 describe('TokenTaximeter - Zona Crítica (100% coverage)', () => {
   let taximeter: TokenTaximeter;
   let consoleLogSpy: ReturnType<typeof vi.spyOn>;
+  const originalSentryDsn = process.env.SENTRY_DSN;
 
   beforeEach(() => {
     taximeter = new TokenTaximeter();
     consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    delete process.env.SENTRY_DSN;
   });
 
   afterEach(() => {
     consoleLogSpy.mockRestore();
+    process.env.SENTRY_DSN = originalSentryDsn;
+    vi.restoreAllMocks();
   });
 
   describe('Cost Calculation', () => {
@@ -138,6 +152,40 @@ describe('TokenTaximeter - Zona Crítica (100% coverage)', () => {
       const logs = consoleLogSpy.mock.calls.map((call: any[]) => call[0]).join('\n');
       expect(logs).toContain('A'.repeat(45) + '...');
       expect(logs).not.toContain('A'.repeat(46));
+    });
+
+    it('should send Sentry metrics for analysis when DSN is configured', () => {
+      process.env.SENTRY_DSN = 'https://examplePublicKey@o0.ingest.sentry.io/0';
+      mockGauge.mockClear();
+
+      taximeter.logAnalysis('Metric test article', 123, 45, 168, 0.0001);
+
+      expect(mockGauge).toHaveBeenCalledWith('verity.analysis.count', 1, expect.any(Object));
+      expect(mockGauge).toHaveBeenCalledWith('verity.tokens.total', 168, expect.any(Object));
+      expect(mockGauge).toHaveBeenCalledWith('verity.cost.eur', 0.0001, expect.any(Object));
+    });
+
+    it('should send Sentry metrics for rag chat when DSN is configured', () => {
+      process.env.SENTRY_DSN = 'https://examplePublicKey@o0.ingest.sentry.io/0';
+      mockGauge.mockClear();
+
+      taximeter.logRagChat('Metric test rag', 210, 70, 280, 0.0002);
+
+      expect(mockGauge).toHaveBeenCalledWith('verity.chat.rag.count', 1, expect.any(Object));
+      expect(mockGauge).toHaveBeenCalledWith('verity.chat.rag.tokens', 280, expect.any(Object));
+      expect(mockGauge).toHaveBeenCalledWith('verity.chat.rag.cost', 0.0002, expect.any(Object));
+    });
+
+    it('should send Sentry metrics for grounding chat when DSN is configured', () => {
+      process.env.SENTRY_DSN = 'https://examplePublicKey@o0.ingest.sentry.io/0';
+      mockGauge.mockClear();
+
+      taximeter.logGroundingChat('Metric test grounding', 300, 100, 400, 0.0003);
+
+      expect(mockGauge).toHaveBeenCalledWith('verity.chat.grounding.count', 1, expect.any(Object));
+      expect(mockGauge).toHaveBeenCalledWith('verity.chat.grounding.tokens', 400, expect.any(Object));
+      expect(mockGauge).toHaveBeenCalledWith('verity.chat.grounding.cost', 0.0003, expect.any(Object));
+      expect(mockGauge).toHaveBeenCalledWith('verity.grounding.used', 1, expect.any(Object));
     });
   });
 

@@ -40,39 +40,54 @@ async function fetchWithTimeout(
 }
 
 export type AnalysisMode = 'low_cost' | 'moderate' | 'standard';
+export type AnalyzeDepthMode = 'standard' | 'deep';
 
-function extractApiErrorMessage(errorData: any, fallback: string): string {
+function extractApiError(errorData: any, fallback: string): {
+  message: string;
+  code?: string;
+  details?: any;
+} {
   if (!errorData || typeof errorData !== 'object') {
-    return fallback;
+    return { message: fallback };
   }
 
+  const code =
+    typeof errorData.error?.code === 'string'
+      ? errorData.error.code
+      : undefined;
+  const details =
+    errorData.error && typeof errorData.error === 'object'
+      ? errorData.error.details
+      : undefined;
+
   if (typeof errorData.message === 'string' && errorData.message.trim().length > 0) {
-    return errorData.message;
+    return { message: errorData.message, code, details };
   }
 
   if (typeof errorData.error === 'string' && errorData.error.trim().length > 0) {
-    return errorData.error;
+    return { message: errorData.error, code, details };
   }
 
   if (errorData.error && typeof errorData.error === 'object') {
     const nestedMessage = errorData.error.message;
     if (typeof nestedMessage === 'string' && nestedMessage.trim().length > 0) {
-      return nestedMessage;
+      return { message: nestedMessage, code, details };
     }
 
     const originalMessage = errorData.error?.details?.originalMessage;
     if (typeof originalMessage === 'string' && originalMessage.trim().length > 0) {
-      return originalMessage;
+      return { message: originalMessage, code, details };
     }
   }
 
-  return fallback;
+  return { message: fallback, code, details };
 }
 
 export interface ArticleAnalysis {
+  formatError?: boolean;
   summary: string;
   qualityNotice?: string;
-  analysisModeUsed?: AnalysisMode;
+  analysisModeUsed?: AnalysisMode | 'deep';
   // biasScore normalizado 0-1 para UI (0 = neutral, 1 = extremo)
   biasScore: number;
   // biasRaw: -10 (Extrema Izquierda) a +10 (Extrema Derecha)
@@ -103,6 +118,14 @@ export interface ArticleAnalysis {
       | 'NotSupportedByArticle'
       | 'InsufficientEvidenceInArticle';
     reasoning: string;
+  };
+  deep?: {
+    sections?: {
+      known?: string[];
+      unknown?: string[];
+      quotes?: string[];
+      risks?: string[];
+    };
   };
   // Legacy field
   factualClaims?: string[];
@@ -276,9 +299,8 @@ export async function analyzeArticle(articleId: string, token: string): Promise<
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    throw new Error(
-      extractApiErrorMessage(errorData, `Failed to analyze article: ${res.status}`)
-    );
+    const parsedError = extractApiError(errorData, `Failed to analyze article: ${res.status}`);
+    throw new APIError(parsedError.message, parsedError.code, parsedError.details);
   }
 
   return res.json();
@@ -291,9 +313,10 @@ export async function analyzeArticle(articleId: string, token: string): Promise<
 export async function analyzeArticleWithMode(
   articleId: string,
   token: string,
-  analysisMode: AnalysisMode
+  analysisMode: AnalysisMode,
+  mode: AnalyzeDepthMode = 'standard'
 ): Promise<AnalyzeResponse> {
-  const payload: Record<string, unknown> = { articleId, analysisMode };
+  const payload: Record<string, unknown> = { articleId, analysisMode, mode };
 
   const res = await fetchWithTimeout(`${API_BASE_URL}/api/analyze/article`, {
     method: 'POST',
@@ -306,9 +329,8 @@ export async function analyzeArticleWithMode(
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    throw new Error(
-      extractApiErrorMessage(errorData, `Failed to analyze article: ${res.status}`)
-    );
+    const parsedError = extractApiError(errorData, `Failed to analyze article: ${res.status}`);
+    throw new APIError(parsedError.message, parsedError.code, parsedError.details);
   }
 
   return res.json();
@@ -678,7 +700,8 @@ export async function discoverRssSource(name: string): Promise<string> {
 }
 
 /**
- * Sprint 32: Local Source Discovery Types
+ * Discover local RSS sources for a region using AI
+ * FEATURE: SMART LOCAL SOURCES DISCOVERY (Sprint 32)
  */
 export interface DiscoveredLocalSource {
   name: string;
@@ -688,7 +711,7 @@ export interface DiscoveredLocalSource {
   verified: boolean;
 }
 
-interface DiscoverLocalSourcesResponse {
+export interface DiscoverLocalSourcesResponse {
   success: boolean;
   data?: {
     sources: DiscoveredLocalSource[];
@@ -739,6 +762,7 @@ export interface UserProfile {
   name: string | null;
   picture: string | null;
   plan: 'FREE' | 'PREMIUM';
+  entitlements: UserEntitlements;
   location: string | null; // Sprint 20: Geolocalización (ej: "Madrid, España")
   preferences: {
     categories?: string[];
@@ -757,6 +781,10 @@ export interface UserProfile {
   };
   createdAt: string;
   updatedAt: string;
+}
+
+export interface UserEntitlements {
+  deepAnalysis: boolean;
 }
 
 export interface UserProfileResponse {

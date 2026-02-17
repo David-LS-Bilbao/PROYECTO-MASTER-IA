@@ -45,6 +45,20 @@ describe('sentry monitoring', () => {
     expect(sentry.init).not.toHaveBeenCalled();
   });
 
+  it('no inicializa si SENTRY_DSN es placeholder de ejemplo', async () => {
+    process.env.SENTRY_DSN = 'https://your-sentry-dsn@sentry.io/your-project-id';
+    process.env.NODE_ENV = 'production';
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const mod = await import('../../../src/infrastructure/monitoring/sentry');
+    const sentry = await import('@sentry/node');
+
+    mod.initSentry();
+
+    expect(warnSpy).toHaveBeenCalled();
+    expect(sentry.init).not.toHaveBeenCalled();
+  });
+
   it('inicializa con config de produccion y filtra errores 401/403/404', async () => {
     process.env.SENTRY_DSN = 'dsn';
     process.env.NODE_ENV = 'production';

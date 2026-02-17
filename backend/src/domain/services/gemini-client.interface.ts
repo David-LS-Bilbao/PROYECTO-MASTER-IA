@@ -5,7 +5,7 @@
 
 import { ArticleAnalysis } from '../entities/news-article.entity';
 
-export type AnalysisMode = 'low_cost' | 'moderate' | 'standard';
+export type AnalysisMode = 'low_cost' | 'moderate' | 'standard' | 'deep';
 
 export interface AnalyzeContentInput {
   title: string;
@@ -13,6 +13,9 @@ export interface AnalyzeContentInput {
   source: string;
   language: string;
   analysisMode?: AnalysisMode;
+  inputQuality?: 'full' | 'snippet_rss' | 'paywall_o_vacio' | 'unknown';
+  textSource?: string;
+  contentChars?: number;
 }
 
 export interface ChatMessage {

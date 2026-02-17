@@ -396,12 +396,17 @@ describe('PrismaNewsArticleRepository', () => {
       makePrismaArticle({ id: 'a1', source: 'DEIA', category: 'local', url: 'https://example.com/a1' }),
       makePrismaArticle({ id: 'a2', source: 'DEIA', category: 'local', url: 'https://example.com/a2' }),
       makePrismaArticle({ id: 'a3', source: 'DEIA', category: 'local', url: 'https://example.com/a3' }),
+      makePrismaArticle({ id: 'a4', source: 'DEIA', category: 'local', url: 'https://example.com/a4' }),
       makePrismaArticle({ id: 'b1', source: 'Google News', category: 'local', url: 'https://example.com/b1' }),
+      makePrismaArticle({ id: 'b2', source: 'Google News', category: 'local', url: 'https://example.com/b2' }),
+      makePrismaArticle({ id: 'b3', source: 'Google News', category: 'local', url: 'https://example.com/b3' }),
+      makePrismaArticle({ id: 'b4', source: 'Google News', category: 'local', url: 'https://example.com/b4' }),
     ]);
 
-    const result = await repository.searchLocalArticles('Bilbao', 2, 1);
+    const result = await repository.searchLocalArticles({ city: 'Bilbao' }, 2, 1);
 
-    expect(result.map(article => article.id)).toEqual(['b1', 'a2']);
+    expect(result.articles.map(article => article.id)).toEqual(['b1', 'a2']);
+    expect(result.scopeUsed).toBe('city');
     expect(prisma.article.findMany).toHaveBeenCalledTimes(1);
   });
 
@@ -414,10 +419,24 @@ describe('PrismaNewsArticleRepository', () => {
         makePrismaArticle({ id: 'f3', source: '20 minutos', category: 'local', url: 'https://example.com/f3' }),
       ]);
 
-    const result = await repository.searchLocalArticles('Bilbao', 2, 0);
+    const result = await repository.searchLocalArticles({ city: 'Bilbao' }, 2, 0);
 
-    expect(result.map(article => article.id)).toEqual(['f1', 'f3']);
+    expect(result.articles.map(article => article.id)).toEqual(['f1', 'f3']);
+    expect(result.scopeUsed).toBe('general');
     expect(prisma.article.findMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('searchLocalArticles no rompe si city llega undefined y hace fallback general', async () => {
+    prisma.article.findMany.mockResolvedValueOnce([
+      makePrismaArticle({ id: 'g1', source: 'DEIA', category: 'local', url: 'https://example.com/g1' }),
+      makePrismaArticle({ id: 'g2', source: '20 minutos', category: 'local', url: 'https://example.com/g2' }),
+    ]);
+
+    const result = await repository.searchLocalArticles({ city: undefined as unknown as string }, 2, 0);
+
+    expect(result.scopeUsed).toBe('general');
+    expect(result.articles.map(article => article.id)).toEqual(['g1', 'g2']);
+    expect(prisma.article.findMany).toHaveBeenCalledTimes(1);
   });
 
   it('save lanza DatabaseError si falla', async () => {

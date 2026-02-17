@@ -20,6 +20,13 @@ enum SubscriptionPlan {
   PREMIUM
 }
 
+enum AccessStatus {
+  PUBLIC
+  PAYWALLED
+  RESTRICTED
+  UNKNOWN
+}
+
 model User {
   id          String   @id // Firebase UID como ID primario
   email       String   @unique
@@ -70,6 +77,9 @@ model Article {
   analysis          String?   @db.Text // JSON string with detailed analysis
   analyzedAt        DateTime? // When the article was analyzed
   internalReasoning String?   @db.Text // Chain-of-Thought for XAI auditing (NOT sent to client)
+  accessStatus      AccessStatus @default(UNKNOWN) @map("access_status")
+  accessReason      String?      @db.VarChar(180) @map("access_reason")
+  analysisBlocked   Boolean      @default(false) @map("analysis_blocked")
 
   // User features
   isFavorite Boolean @default(false) // Quick favorite toggle (no auth for MVP)
@@ -86,6 +96,8 @@ model Article {
   @@index([category])
   @@index([topicId]) // Sprint 23: Index for topic filtering
   @@index([analyzedAt])
+  @@index([accessStatus])
+  @@index([analysisBlocked])
   @@map("articles")
 }
 

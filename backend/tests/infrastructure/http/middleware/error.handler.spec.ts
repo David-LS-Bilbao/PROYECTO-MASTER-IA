@@ -23,6 +23,7 @@ import {
   DuplicateEntityError,
   UnauthorizedError,
   ForbiddenError,
+  PaywallBlockedError,
 } from '../../../../src/domain/errors/domain.error';
 import {
   InfrastructureError,
@@ -178,6 +179,29 @@ describe('Error Handler Middleware', () => {
       expect(response.body.error).toMatchObject({
         code: 'FORBIDDEN',
         message: 'Insufficient permissions',
+      });
+    });
+
+    it('should return 422 for PaywallBlockedError', async () => {
+      app.get('/test/paywall-blocked', (_req: Request, _res: Response, next: NextFunction) => {
+        next(
+          new PaywallBlockedError(
+            'Articulo de pago o suscripcion al medio. No se puede realizar el analisis sin el texto completo.',
+            { accessStatus: 'PAYWALLED' }
+          )
+        );
+      });
+
+      app.use(errorHandler);
+
+      const response = await request(app).get('/test/paywall-blocked');
+
+      expect(response.status).toBe(422);
+      expect(response.body.error).toMatchObject({
+        code: 'PAYWALL_BLOCKED',
+        message:
+          'Articulo de pago o suscripcion al medio. No se puede realizar el analisis sin el texto completo.',
+        details: { accessStatus: 'PAYWALLED' },
       });
     });
 

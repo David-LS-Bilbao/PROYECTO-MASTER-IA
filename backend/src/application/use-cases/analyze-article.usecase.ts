@@ -15,15 +15,20 @@
  * - El bucle de batch solo procesa artÃ­culos NO analizados (findUnanalyzed)
  */
 
-import { ArticleAnalysis } from '../../domain/entities/news-article.entity';
+import { ArticleAnalysis, NewsArticle } from '../../domain/entities/news-article.entity';
 import { INewsArticleRepository } from '../../domain/repositories/news-article.repository';
 import { AnalysisMode, IGeminiClient } from '../../domain/services/gemini-client.interface';
 import { IJinaReaderClient } from '../../domain/services/jina-reader-client.interface';
 import { IVectorClient } from '../../domain/services/vector-client.interface';
-import { EntityNotFoundError, ValidationError } from '../../domain/errors/domain.error';
+import {
+  EntityNotFoundError,
+  PaywallBlockedError,
+  ValidationError,
+} from '../../domain/errors/domain.error';
 import { QuotaService } from '../../domain/services/quota.service';
 import { MetadataExtractor } from '../../infrastructure/external/metadata-extractor';
 import { GeminiErrorMapper } from '../../infrastructure/external/gemini-error-mapper';
+import { detectPaywall, type DetectPaywallResult } from '../services/paywall-detector';
 
 // ============================================================================
 // COST OPTIMIZATION CONSTANTS
@@ -45,15 +50,23 @@ const LEGACY_SUMMARY_PREFIX = 'resumen provisional basado en contenido interno:'
 const SUMMARY_MIN_LENGTH_FOR_CACHE = 30;
 const SUMMARY_MAX_WORDS_FULL = 90;
 const SUMMARY_MAX_WORDS_LOW_QUALITY = 45;
-const SUMMARY_LOW_QUALITY_NOTICE = 'Falta el texto completo para confirmar detalles.';
+const SUMMARY_LOW_QUALITY_NOTICE =
+  'Analisis estimado con el fragmento disponible; para mayor precision hace falta el texto completo.';
+const ANALYSIS_FORMAT_ERROR_NOTICE =
+  'No se pudo procesar el formato del analisis. Reintenta.';
 const NEUTRAL_LOW_CONFIDENCE_BIAS_COMMENT =
   'No se observan indicios textuales claros de encuadre ideologico en el texto disponible (confianza baja).';
 const BIAS_INDICATOR_CITATION_PATTERN = /["'`][^"'`]{3,140}["'`]|\([^()]{3,120}\)|\[[^\[\]]{3,120}\]/;
+const INTERNAL_METADATA_LINE_PATTERN =
+  /\b(isSuscriberContent|isSubscriberContent|subscriberContent|flags?|ids?|trackingId|contentId|nodeId|assetId)\b/i;
+const PAYWALL_BLOCKED_MESSAGE =
+  'Articulo de pago o suscripcion al medio. No se puede realizar el analisis sin el texto completo.';
 
 
 export interface AnalyzeArticleInput {
   articleId: string;
   analysisMode?: AnalysisMode;
+  mode?: 'standard' | 'deep';
   user?: {
     id: string;
     subscriptionPlan: 'FREE' | 'PREMIUM';
@@ -98,6 +111,8 @@ interface AnalysisNormalizationContext {
   rssSnippetDetected: boolean;
 }
 
+type AnalysisInputQuality = 'full' | 'snippet_rss' | 'paywall_o_vacio' | 'unknown';
+
 export class AnalyzeArticleUseCase {
   constructor(
     private readonly articleRepository: INewsArticleRepository,
@@ -113,7 +128,11 @@ export class AnalyzeArticleUseCase {
    */
   async execute(input: AnalyzeArticleInput): Promise<AnalyzeArticleOutput> {
     const { articleId, user } = input;
-    const requestedAnalysisMode = this.normalizeAnalysisMode(input.analysisMode);
+    const requestedMode = this.normalizeRequestedMode(input.mode);
+    const requestedAnalysisMode =
+      requestedMode === 'deep'
+        ? 'deep'
+        : this.normalizeAnalysisMode(input.analysisMode);
 
     // Validate input
     if (!articleId || articleId.trim() === '') {
@@ -132,6 +151,37 @@ export class AnalyzeArticleUseCase {
     }
 
     console.log(`\nðŸ” [AnÃ¡lisis] Iniciando noticia: "${article.title}"`);
+    const sourceDomain = this.extractDomain(article.url);
+    const snippetText = `${article.title}\n\n${article.description ?? ''}`;
+
+    if (article.analysisBlocked || this.isAccessStatusBlocked(article.accessStatus)) {
+      throw new PaywallBlockedError(PAYWALL_BLOCKED_MESSAGE, {
+        articleId: article.id,
+        sourceDomain,
+        accessStatus: article.accessStatus,
+        accessReason: article.accessReason ?? 'persisted_block',
+      });
+    }
+
+    const initialDetection = detectPaywall({
+      sourceDomain,
+      metadataFlags: this.extractMetadataFlagsFromRawContent(article.content),
+      extractedText: this.prepareContentForAnalysis(article.content ?? ''),
+      rawContent: article.content,
+      snippet: snippetText,
+      extractionFailed: false,
+    });
+
+    article = await this.persistAccessStatusIfChanged(article, initialDetection);
+
+    if (initialDetection.analysisBlocked) {
+      throw new PaywallBlockedError(PAYWALL_BLOCKED_MESSAGE, {
+        articleId: article.id,
+        sourceDomain,
+        accessStatus: initialDetection.accessStatus,
+        accessReason: initialDetection.accessReason,
+      });
+    }
 
     // =========================================================================
     // SPRINT 17: COST OPTIMIZATION - CACHÃ‰ GLOBAL DE ANÃLISIS
@@ -150,9 +200,12 @@ export class AnalyzeArticleUseCase {
       const existingAnalysis = article.getParsedAnalysis();
       if (existingAnalysis) {
         const cachedContentLength = article.content?.length || 0;
-        const requiredModeForCache = cachedContentLength < AUTO_LOW_COST_CONTENT_THRESHOLD
-          ? 'low_cost'
-          : requestedAnalysisMode;
+        const requiredModeForCache =
+          requestedMode === 'deep'
+            ? 'deep'
+            : cachedContentLength < AUTO_LOW_COST_CONTENT_THRESHOLD
+              ? 'low_cost'
+              : requestedAnalysisMode;
         const shouldUpgradeCachedAnalysis = this.requiresAnalysisUpgrade(
           existingAnalysis,
           requiredModeForCache
@@ -160,8 +213,14 @@ export class AnalyzeArticleUseCase {
         const shouldRegenerateCachedSummary = this.shouldRegenerateCachedSummary(
           article.summary ?? existingAnalysis.summary
         );
+        const shouldRegenerateCachedDeep =
+          requestedMode === 'deep' && !this.hasDeepSections(existingAnalysis);
 
-        if (!shouldUpgradeCachedAnalysis && !shouldRegenerateCachedSummary) {
+        if (
+          !shouldUpgradeCachedAnalysis &&
+          !shouldRegenerateCachedSummary &&
+          !shouldRegenerateCachedDeep
+        ) {
           const normalizedAnalysis = this.normalizeAnalysis(existingAnalysis, {
             scrapedContentLength: article.content?.length || 0,
             usedFallback: false,
@@ -173,7 +232,9 @@ export class AnalyzeArticleUseCase {
           });
           console.log(`   [CACHE GLOBAL] Analisis ya existe en BD (analizado: ${article.analyzedAt?.toLocaleString('es-ES')})`);
           console.log(`   Serving cached analysis -> Gemini NO llamado -> Ahorro de ~1500 tokens`);
-          console.log(`   Score: ${article.biasScore} | Summary: ${article.summary?.substring(0, 50)}...`);
+          console.log(
+            `   Score: ${article.biasScore} | Summary: ${normalizedAnalysis.summary.substring(0, 50)}...`
+          );
 
           // Sprint 18.2: Auto-favorite WITH unlocked analysis (user requested it)
           if (user?.id) {
@@ -194,7 +255,9 @@ export class AnalyzeArticleUseCase {
           };
         }
 
-        if (shouldRegenerateCachedSummary) {
+        if (shouldRegenerateCachedDeep) {
+          console.log('   [CACHE GLOBAL] Se fuerza re-analisis por cache deep inexistente o incompleta.');
+        } else if (shouldRegenerateCachedSummary) {
           console.log('   [CACHE GLOBAL] Se fuerza re-analisis por summary legacy o demasiado corto.');
         } else {
           console.log(
@@ -208,23 +271,35 @@ export class AnalyzeArticleUseCase {
     let contentToAnalyze = article.content;
     let scrapedContentLength = contentToAnalyze?.length || 0;
     let usedFallback = false;
+    let textSource = contentToAnalyze ? 'db_content' : 'unknown';
+    let scrapeAttempted = false;
+    let scrapedMetadataFlags: Record<string, unknown> | undefined;
 
     // COST OPTIMIZATION: Verificar si el contenido justifica una llamada a Gemini
     // Contenido muy corto (<MIN_CONTENT_LENGTH chars) no vale la pena analizar
+    const shouldForceRescrapeForDeep =
+      requestedMode === 'deep' &&
+      (!!contentToAnalyze &&
+        (contentToAnalyze.length < AUTO_LOW_COST_CONTENT_THRESHOLD ||
+          this.detectRssSnippet(contentToAnalyze)));
     const isContentInvalid =
       !contentToAnalyze ||
       contentToAnalyze.length < MIN_CONTENT_LENGTH ||
-      contentToAnalyze.includes('JinaReader API Error');
+      contentToAnalyze.includes('JinaReader API Error') ||
+      shouldForceRescrapeForDeep;
 
     if (isContentInvalid) {
       console.log(`   ðŸŒ Scraping contenido con Jina Reader (URL: ${article.url})...`);
       
       try {
+        scrapeAttempted = true;
         const scrapedData = await this.jinaReaderClient.scrapeUrl(article.url);
+        scrapedMetadataFlags = scrapedData.metadataFlags;
         
         if (scrapedData.content && scrapedData.content.length >= MIN_CONTENT_LENGTH) {
           contentToAnalyze = scrapedData.content;
           scrapedContentLength = scrapedData.content.length;
+          textSource = 'extracted_jina';
           console.log(`   âœ… Scraping OK (${scrapedContentLength} caracteres).`);
 
           // Update article with scraped content
@@ -237,6 +312,7 @@ export class AnalyzeArticleUseCase {
           }
           
           await this.articleRepository.save(articleWithContent);
+          article = articleWithContent;
         } else {
           throw new Error('Contenido scrapeado vacÃ­o o muy corto');
         }
@@ -249,6 +325,7 @@ export class AnalyzeArticleUseCase {
         contentToAnalyze = fallbackContent;
         scrapedContentLength = 0; // Indicar que no se hizo scraping
         usedFallback = true;
+        textSource = 'fallback_snippet';
       }
     } else {
         console.log(`   ðŸ“‚ Usando contenido existente en DB.`);
@@ -281,11 +358,44 @@ export class AnalyzeArticleUseCase {
 
     const rawAnalyzedContent = contentToAnalyze || '';
     const rssSnippetDetected = this.detectRssSnippet(rawAnalyzedContent);
+    if (usedFallback && rssSnippetDetected) {
+      textSource = 'rss_snippet';
+    }
     const cleanedContentForAnalysis = this.prepareContentForAnalysis(rawAnalyzedContent);
     const normalizedContentForAnalysis =
       cleanedContentForAnalysis.trim().length > 0
         ? cleanedContentForAnalysis
         : rawAnalyzedContent;
+    const extractedTextForDetection =
+      textSource === 'fallback_snippet' || textSource === 'rss_snippet'
+        ? ''
+        : normalizedContentForAnalysis;
+    const postExtractionDetection = detectPaywall({
+      sourceDomain,
+      metadataFlags: this.mergeMetadataFlags(
+        this.extractMetadataFlagsFromRawContent(rawAnalyzedContent),
+        scrapedMetadataFlags
+      ),
+      extractedText: extractedTextForDetection,
+      rawContent: rawAnalyzedContent,
+      snippet: snippetText,
+      extractionFailed: scrapeAttempted && usedFallback,
+    });
+    article = await this.persistAccessStatusIfChanged(article, postExtractionDetection);
+    if (postExtractionDetection.analysisBlocked) {
+      throw new PaywallBlockedError(PAYWALL_BLOCKED_MESSAGE, {
+        articleId: article.id,
+        sourceDomain,
+        accessStatus: postExtractionDetection.accessStatus,
+        accessReason: postExtractionDetection.accessReason,
+        textSource,
+      });
+    }
+    const inputQuality = this.resolveInputQuality({
+      usedFallback,
+      rssSnippetDetected,
+      scrapedContentLength,
+    });
 
     // 4. Analyze with Gemini
     console.log(`   ðŸ¤– [NUEVA ANÃLISIS] Generando anÃ¡lisis con IA (este resultado se cachearÃ¡ globalmente)...`);
@@ -301,6 +411,10 @@ export class AnalyzeArticleUseCase {
       scrapedContentLength,
       usedFallback,
     });
+    const promptContentChars = normalizedContentForAnalysis.length;
+    console.log(
+      `   [PROMPT DEBUG] analysis_mode=${effectiveAnalysisMode} | inputQuality=${inputQuality} | contentChars=${promptContentChars} | textSource=${textSource}`
+    );
 
     let analysis: ArticleAnalysis;
     try {
@@ -310,6 +424,9 @@ export class AnalyzeArticleUseCase {
         source: article.source,
         language: article.language,
         analysisMode: effectiveAnalysisMode,
+        inputQuality,
+        contentChars: promptContentChars,
+        textSource,
       });
       analysis = this.normalizeAnalysis(analysis, {
         scrapedContentLength,
@@ -418,15 +535,24 @@ export class AnalyzeArticleUseCase {
         ? this.clampNumber(analysis.biasScoreNormalized, 0, 1, Math.abs(parsedBiasRaw) / 10)
         : Math.abs(parsedBiasRaw) / 10;
 
+    const maxBiasIndicators = analysisModeUsed === 'deep' ? 8 : 5;
+    const maxClaims = analysisModeUsed === 'deep' ? 10 : 5;
+
     const modelBiasIndicators = Array.isArray(analysis.biasIndicators)
       ? analysis.biasIndicators
       : [];
-    const modelCitedBiasIndicators = this.extractQuotedBiasIndicators(modelBiasIndicators);
+    const modelCitedBiasIndicators = this.extractQuotedBiasIndicators(
+      modelBiasIndicators,
+      maxBiasIndicators
+    );
     const rawBiasIndicators = this.withTitleBiasIndicator(
       modelBiasIndicators,
       context?.articleTitle
     );
-    const citedBiasIndicators = this.extractQuotedBiasIndicators(rawBiasIndicators);
+    const citedBiasIndicators = this.extractQuotedBiasIndicators(
+      rawBiasIndicators,
+      maxBiasIndicators
+    );
     const hasCalibratedBiasSignals = this.hasThreeQuotedBiasIndicators(modelBiasIndicators);
     const biasRaw = hasCalibratedBiasSignals ? parsedBiasRaw : 0;
     const biasScoreNormalized = hasCalibratedBiasSignals ? parsedBiasScoreNormalized : 0;
@@ -499,7 +625,7 @@ export class AnalyzeArticleUseCase {
         });
 
     const claims = Array.isArray(analysis.factCheck?.claims)
-      ? analysis.factCheck.claims.slice(0, 5)
+      ? analysis.factCheck.claims.slice(0, maxClaims)
       : [];
     const summaryContext = {
       scrapedContentLength,
@@ -507,7 +633,11 @@ export class AnalyzeArticleUseCase {
       rssSnippetDetected: context?.rssSnippetDetected === true,
     };
     const normalizedSummary = this.normalizeSummaryText(analysis.summary, summaryContext);
-    const qualityNotice = this.buildQualityNotice(summaryContext);
+    const hasFormatError =
+      analysis.formatError === true || this.isFormatFallbackSummary(normalizedSummary);
+    const qualityNotice = hasFormatError
+      ? ANALYSIS_FORMAT_ERROR_NOTICE
+      : this.buildQualityNotice(summaryContext);
     const forceInsufficientEvidenceVerdict = this.shouldForceInsufficientVerdict({
       scrapedContentLength,
       usedFallback: context?.usedFallback === true,
@@ -571,6 +701,7 @@ export class AnalyzeArticleUseCase {
 
     const normalizedResult: ArticleAnalysis = {
       ...analysis,
+      formatError: hasFormatError,
       summary: normalizedSummary,
       qualityNotice,
       biasRaw,
@@ -594,7 +725,19 @@ export class AnalyzeArticleUseCase {
       factCheck,
     };
 
-    return this.sanitizeAnalysisTextFields(normalizedResult);
+    const enrichedResult =
+      analysisModeUsed === 'deep' && !hasFormatError
+        ? this.ensureDeepSections(normalizedResult, {
+            scrapedContentLength,
+            usedFallback: context?.usedFallback === true,
+            rssSnippetDetected: context?.rssSnippetDetected === true,
+            analyzedText: context?.analyzedText ?? '',
+          })
+        : hasFormatError
+          ? { ...normalizedResult, deep: undefined }
+          : normalizedResult;
+
+    return this.sanitizeAnalysisTextFields(enrichedResult);
   }
 
   private applyLengthScoreCaps(
@@ -626,10 +769,10 @@ export class AnalyzeArticleUseCase {
     return this.extractQuotedBiasIndicators(indicators).length >= 3;
   }
 
-  private extractQuotedBiasIndicators(indicators: string[]): string[] {
+  private extractQuotedBiasIndicators(indicators: string[], maxItems: number = 5): string[] {
     return indicators
       .filter((indicator) => BIAS_INDICATOR_CITATION_PATTERN.test(indicator))
-      .slice(0, 5);
+      .slice(0, maxItems);
   }
 
   private withTitleBiasIndicator(
@@ -736,7 +879,7 @@ export class AnalyzeArticleUseCase {
   }): string {
     if (params.shouldForceIndeterminateBias) {
       return this.normalizeUiComment(
-        'No hay suficientes se\u00f1ales citadas para inferir una tendencia ideol\u00f3gica y, con este nivel de evidencia interna, el sesgo se mantiene indeterminado'
+        'Analisis estimado: con el fragmento disponible no se puede estimar una tendencia ideologica con confianza'
       );
     }
     if (!params.hasCalibratedBiasSignals) {
@@ -987,7 +1130,7 @@ export class AnalyzeArticleUseCase {
         'Aparece explicitamente en el texto (soportado por el articulo), no verificado externamente.';
     } else if (verdict === 'InsufficientEvidenceInArticle' && !this.reasoningIndicatesInsufficientEvidence(reasoning)) {
       reasoning =
-        'La evidencia interna es insuficiente en el texto; no verificable con fuentes internas.';
+        'Analisis estimado con el fragmento disponible; con este texto no se puede verificar.';
     }
 
     return {
@@ -1092,6 +1235,108 @@ export class AnalyzeArticleUseCase {
     );
   }
 
+  private async persistAccessStatusIfChanged(
+    article: NewsArticle,
+    detection: DetectPaywallResult
+  ): Promise<NewsArticle> {
+    const reasonToPersist =
+      detection.analysisBlocked || detection.accessStatus === 'PUBLIC'
+        ? detection.accessReason.slice(0, 180)
+        : null;
+
+    const unchanged =
+      article.accessStatus === detection.accessStatus &&
+      article.analysisBlocked === detection.analysisBlocked &&
+      (article.accessReason ?? null) === reasonToPersist;
+
+    if (unchanged) {
+      return article;
+    }
+
+    const updatedArticle = article.withAccessStatus({
+      accessStatus: detection.accessStatus,
+      accessReason: reasonToPersist,
+      analysisBlocked: detection.analysisBlocked,
+    });
+
+    await this.articleRepository.save(updatedArticle);
+    return updatedArticle;
+  }
+
+  private mergeMetadataFlags(
+    ...metadataChunks: Array<Record<string, unknown> | undefined>
+  ): Record<string, unknown> | undefined {
+    const merged: Record<string, unknown> = {};
+    for (const chunk of metadataChunks) {
+      if (!chunk) {
+        continue;
+      }
+      Object.assign(merged, chunk);
+    }
+
+    return Object.keys(merged).length > 0 ? merged : undefined;
+  }
+
+  private extractMetadataFlagsFromRawContent(
+    rawContent: string | null | undefined
+  ): Record<string, unknown> | undefined {
+    if (!rawContent) {
+      return undefined;
+    }
+
+    const trimmed = rawContent.trim();
+    if (!trimmed || (!trimmed.startsWith('{') && !trimmed.startsWith('['))) {
+      return undefined;
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      const flags: Record<string, unknown> = {};
+      this.collectSubscriberFlags(parsed, flags, 0);
+      return Object.keys(flags).length > 0 ? flags : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private collectSubscriberFlags(
+    value: unknown,
+    result: Record<string, unknown>,
+    depth: number
+  ): void {
+    if (depth > 6 || !value || typeof value !== 'object') {
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        this.collectSubscriberFlags(item, result, depth + 1);
+      }
+      return;
+    }
+
+    for (const [key, nestedValue] of Object.entries(value as Record<string, unknown>)) {
+      if (/^is(su)?scribercontent$/i.test(key)) {
+        result[key] = nestedValue;
+      }
+      if (nestedValue && typeof nestedValue === 'object') {
+        this.collectSubscriberFlags(nestedValue, result, depth + 1);
+      }
+    }
+  }
+
+  private extractDomain(url: string): string {
+    try {
+      return new URL(url).hostname.replace(/^www\./i, '').toLowerCase();
+    } catch {
+      return '';
+    }
+  }
+
+  private isAccessStatusBlocked(status: string | undefined): boolean {
+    return status === 'PAYWALLED' || status === 'RESTRICTED';
+  }
+
   private detectRssSnippet(content: string): boolean {
     if (!content) {
       return false;
@@ -1105,7 +1350,11 @@ export class AnalyzeArticleUseCase {
       return '';
     }
 
-    const withAnchorUrls = content.replace(
+    const extractedFromJson = this.tryExtractTextFromJsonPayload(content);
+    const decodedInput = this.decodeUnicodeEscapes(extractedFromJson ?? content);
+    const sanitizedInput = this.removeKnownMetadataNoise(decodedInput);
+
+    const withAnchorUrls = sanitizedInput.replace(
       /<a\b[^>]*href\s*=\s*['"]([^'"]+)['"][^>]*>([\s\S]*?)<\/a>/gi,
       (_match, href: string, anchorText: string) => {
         const decodedAnchorText = this.decodeHtmlEntities(anchorText)
@@ -1120,10 +1369,139 @@ export class AnalyzeArticleUseCase {
 
     const withoutTags = this.stripHtmlTags(withAnchorUrls);
     const decoded = this.decodeHtmlEntities(withoutTags);
-    return decoded
+    const withoutMetadataNoise = this.removeKnownMetadataNoise(decoded);
+
+    return withoutMetadataNoise
       .replace(/\s+/g, ' ')
       .replace(/\s+([.,;:!?])/g, '$1')
       .trim();
+  }
+
+  private tryExtractTextFromJsonPayload(content: string): string | undefined {
+    const trimmed = content.trim();
+    if (!trimmed || (!trimmed.startsWith('{') && !trimmed.startsWith('['))) {
+      return undefined;
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      return this.extractFirstTextFieldFromObject(parsed);
+    } catch {
+      return undefined;
+    }
+  }
+
+  private extractFirstTextFieldFromObject(value: unknown, depth: number = 0): string | undefined {
+    if (depth > 5 || value == null) {
+      return undefined;
+    }
+
+    if (typeof value === 'string') {
+      const compact = value.replace(/\s+/g, ' ').trim();
+      return compact.length >= 40 ? compact : undefined;
+    }
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const nested = this.extractFirstTextFieldFromObject(item, depth + 1);
+        if (nested) {
+          return nested;
+        }
+      }
+      return undefined;
+    }
+
+    if (typeof value !== 'object') {
+      return undefined;
+    }
+
+    const record = value as Record<string, unknown>;
+    const preferredKeys = ['content', 'text', 'articleText', 'body', 'rawText', 'description'];
+    for (const key of preferredKeys) {
+      if (!(key in record)) {
+        continue;
+      }
+      const nested = this.extractFirstTextFieldFromObject(record[key], depth + 1);
+      if (nested) {
+        return nested;
+      }
+    }
+
+    const containerKeys = ['data', 'result', 'payload', 'article'];
+    for (const key of containerKeys) {
+      if (!(key in record)) {
+        continue;
+      }
+      const nested = this.extractFirstTextFieldFromObject(record[key], depth + 1);
+      if (nested) {
+        return nested;
+      }
+    }
+
+    for (const nestedValue of Object.values(record)) {
+      const nested = this.extractFirstTextFieldFromObject(nestedValue, depth + 1);
+      if (nested) {
+        return nested;
+      }
+    }
+
+    return undefined;
+  }
+
+  private removeKnownMetadataNoise(content: string): string {
+    if (!content) {
+      return '';
+    }
+
+    const strippedKeyValuePairs = content
+      .replace(
+        /=+\s*\{\s*"content"\s*:\s*\{\s*"data"\s*:\s*\{[\s\S]{0,12000}?\}\s*\}\s*=*/gi,
+        ' '
+      )
+      .replace(
+        /\{\s*"content"\s*:\s*\{\s*"data"\s*:\s*\{[\s\S]{0,12000}?\}\s*\}\s*\}/gi,
+        ' '
+      )
+      .replace(
+        /"?(isSuscriberContent|isSubscriberContent|subscriberContent|flags?|ids?|trackingId|contentId|nodeId|assetId)"?\s*:\s*("[^"]*"|'[^']*'|true|false|null|-?\d+),?/gi,
+        ' '
+      )
+      .replace(/\b[a-z][a-z0-9]*_\d{1,6}\b/gi, ' ')
+      .replace(/\b\d{6,}_\d+\b/g, ' ');
+
+    const filteredLines = strippedKeyValuePairs
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => {
+        if (!line) {
+          return false;
+        }
+
+        if (INTERNAL_METADATA_LINE_PATTERN.test(line) && /[:=]/.test(line)) {
+          return false;
+        }
+
+        if (/^["'{[]/.test(line) && /[:=]/.test(line) && INTERNAL_METADATA_LINE_PATTERN.test(line)) {
+          return false;
+        }
+
+        return true;
+      });
+
+    return filteredLines.join('\n');
+  }
+
+  private decodeUnicodeEscapes(content: string): string {
+    return content
+      .replace(/\\u([0-9a-fA-F]{4})/g, (_match, hexCode) => {
+        const parsedCode = Number.parseInt(hexCode, 16);
+        return Number.isNaN(parsedCode) ? _match : String.fromCodePoint(parsedCode);
+      })
+      .replace(/\\n/g, '\n')
+      .replace(/\\r/g, '\n')
+      .replace(/\\t/g, ' ')
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, '\\');
   }
 
   private stripHtmlTags(content: string): string {
@@ -1203,11 +1581,15 @@ export class AnalyzeArticleUseCase {
   }
 
   private normalizeAnalysisMode(value: unknown): AnalysisMode {
-    if (value === 'moderate' || value === 'standard' || value === 'low_cost') {
+    if (value === 'moderate' || value === 'standard' || value === 'low_cost' || value === 'deep') {
       return value;
     }
 
     return 'low_cost';
+  }
+
+  private normalizeRequestedMode(value: unknown): 'standard' | 'deep' {
+    return value === 'deep' ? 'deep' : 'standard';
   }
 
   private resolveEffectiveAnalysisMode(params: {
@@ -1215,11 +1597,39 @@ export class AnalyzeArticleUseCase {
     scrapedContentLength: number;
     usedFallback: boolean;
   }): AnalysisMode {
+    if (params.requestedMode === 'deep') {
+      return 'deep';
+    }
+
     if (params.usedFallback || params.scrapedContentLength < AUTO_LOW_COST_CONTENT_THRESHOLD) {
       return 'low_cost';
     }
 
     return params.requestedMode;
+  }
+
+  private resolveInputQuality(params: {
+    usedFallback: boolean;
+    rssSnippetDetected: boolean;
+    scrapedContentLength: number;
+  }): AnalysisInputQuality {
+    if (params.usedFallback) {
+      return params.rssSnippetDetected ? 'snippet_rss' : 'paywall_o_vacio';
+    }
+
+    if (params.rssSnippetDetected) {
+      return 'snippet_rss';
+    }
+
+    if (params.scrapedContentLength >= AUTO_LOW_COST_CONTENT_THRESHOLD) {
+      return 'full';
+    }
+
+    if (params.scrapedContentLength > 0) {
+      return 'paywall_o_vacio';
+    }
+
+    return 'unknown';
   }
 
   private requiresAnalysisUpgrade(
@@ -1228,6 +1638,24 @@ export class AnalyzeArticleUseCase {
   ): boolean {
     const cachedMode = this.normalizeAnalysisMode(existingAnalysis.analysisModeUsed);
     return this.getAnalysisModeRank(cachedMode) < this.getAnalysisModeRank(requestedMode);
+  }
+
+  private hasDeepSections(analysis: ArticleAnalysis): boolean {
+    const sections = analysis.deep?.sections;
+    if (!sections) {
+      return false;
+    }
+
+    return (
+      Array.isArray(sections.known) &&
+      Array.isArray(sections.unknown) &&
+      Array.isArray(sections.quotes) &&
+      Array.isArray(sections.risks) &&
+      sections.known.length > 0 &&
+      sections.unknown.length > 0 &&
+      sections.quotes.length > 0 &&
+      sections.risks.length > 0
+    );
   }
 
   private shouldRegenerateCachedSummary(summary: string | null | undefined): boolean {
@@ -1263,7 +1691,8 @@ export class AnalyzeArticleUseCase {
       rssSnippetDetected: boolean;
     }
   ): string {
-    let normalized = typeof summary === 'string' ? summary : '';
+    const extractedSummary = this.extractSummaryFromJsonString(summary);
+    let normalized = extractedSummary ?? (typeof summary === 'string' ? summary : '');
     normalized = normalized.replace(/\s+/g, ' ').trim();
     normalized = this.removeLegacySummaryPrefix(normalized);
     normalized = this.removeBannedSummaryPhrases(normalized);
@@ -1297,6 +1726,47 @@ export class AnalyzeArticleUseCase {
       context.scrapedContentLength < 300;
 
     return isLowQualityInput ? SUMMARY_LOW_QUALITY_NOTICE : undefined;
+  }
+
+  private extractSummaryFromJsonString(summary: string | undefined): string | undefined {
+    if (typeof summary !== 'string') {
+      return undefined;
+    }
+
+    const trimmed = summary.trim();
+    if (!trimmed.startsWith('{')) {
+      return undefined;
+    }
+
+    const prefixedMatch = trimmed.match(/^\{\s*"summary"\s*:\s*"([\s\S]*)$/i);
+    if (prefixedMatch) {
+      const recovered = prefixedMatch[1]
+        .replace(/"\s*,[\s\S]*$/g, '')
+        .replace(/"\s*}\s*$/g, '')
+        .replace(/\\"/g, '"')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (recovered.length > 0) {
+        return recovered;
+      }
+    }
+
+    const jsonCandidate = trimmed.match(/\{[\s\S]*\}/)?.[0];
+    if (!jsonCandidate) {
+      return undefined;
+    }
+
+    try {
+      const parsed = JSON.parse(jsonCandidate) as Record<string, unknown>;
+      const nestedSummary = parsed.summary;
+      if (typeof nestedSummary !== 'string') {
+        return undefined;
+      }
+      const compact = nestedSummary.replace(/\s+/g, ' ').trim();
+      return compact.length > 0 ? compact : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   private removeLegacySummaryPrefix(summary: string): string {
@@ -1335,6 +1805,19 @@ export class AnalyzeArticleUseCase {
       .replace(/\s{2,}/g, ' ')
       .replace(/^[,;:\-]+\s*/g, '')
       .trim();
+  }
+
+  private isFormatFallbackSummary(summary: string): boolean {
+    if (!summary) {
+      return false;
+    }
+
+    const normalized = summary
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+
+    return normalized.includes('no se pudo procesar el formato del analisis');
   }
 
   private takeFirstSentences(summary: string, maxSentences: number): string {
@@ -1386,6 +1869,178 @@ export class AnalyzeArticleUseCase {
     }
 
     return this.clampNumber(params.reliabilityScore, 20, 60, 45);
+  }
+
+  private ensureDeepSections(
+    analysis: ArticleAnalysis,
+    context: {
+      scrapedContentLength: number;
+      usedFallback: boolean;
+      rssSnippetDetected: boolean;
+      analyzedText: string;
+    }
+  ): ArticleAnalysis {
+    const existingSections = analysis.deep?.sections;
+    const known = this.normalizeDeepSectionArray(existingSections?.known, 10);
+    const unknown = this.normalizeDeepSectionArray(existingSections?.unknown, 10);
+    const risks = this.normalizeDeepSectionArray(existingSections?.risks, 4);
+    const quotes = this.normalizeDeepQuotes(
+      existingSections?.quotes,
+      context.analyzedText,
+      analysis.factCheck?.claims ?? []
+    );
+
+    if (known.length === 0) {
+      known.push(...(analysis.factCheck?.claims ?? []).slice(0, 8));
+      if (known.length === 0 && typeof analysis.summary === 'string') {
+        known.push(this.limitSummaryWords(analysis.summary, 24));
+      }
+    }
+
+    const lowQualityInput =
+      context.usedFallback ||
+      context.rssSnippetDetected ||
+      context.scrapedContentLength < 300;
+    if (lowQualityInput) {
+      unknown.unshift(
+        'El contenido disponible es insuficiente (snippet/paywall o texto incompleto), por lo que faltan detalles para confirmar el contexto completo.'
+      );
+    }
+    if (unknown.length === 0) {
+      unknown.push('No hay verificacion externa independiente en este analisis.');
+    }
+
+    if (risks.length === 0) {
+      if (analysis.factualityStatus === 'no_determinable') {
+        risks.push('La evidencia interna no permite verificar hechos externos de forma concluyente.');
+      }
+      if ((analysis.biasIndicators ?? []).length < 2) {
+        risks.push('La lectura de sesgo tiene confianza baja por pocos indicios textuales citados.');
+      }
+      if (risks.length === 0) {
+        risks.push('El encuadre puede cambiar con contexto adicional o documentos primarios no incluidos.');
+      }
+    }
+
+    return {
+      ...analysis,
+      deep: {
+        sections: {
+          known: known.slice(0, 10),
+          unknown: unknown.slice(0, 10),
+          quotes: quotes.slice(0, 4),
+          risks: risks.slice(0, 4),
+        },
+      },
+    };
+  }
+
+  private normalizeDeepSectionArray(
+    items: string[] | undefined,
+    maxItems: number,
+    maxWords: number = 35
+  ): string[] {
+    if (!Array.isArray(items)) {
+      return [];
+    }
+
+    const unique = new Set<string>();
+    for (const item of items) {
+      if (typeof item !== 'string') {
+        continue;
+      }
+      const compact = this.decodeUnicodeEscapes(item).replace(/\s+/g, ' ').trim();
+      if (!compact) {
+        continue;
+      }
+      unique.add(this.limitSummaryWords(compact, maxWords));
+      if (unique.size >= maxItems) {
+        break;
+      }
+    }
+
+    return Array.from(unique);
+  }
+
+  private normalizeDeepQuotes(
+    quotes: string[] | undefined,
+    analyzedText: string,
+    claims: string[]
+  ): string[] {
+    const normalizedQuotes = this.normalizeDeepSectionArray(quotes, 4, 24).filter(
+      (quote) => !this.isGarbageQuote(quote)
+    );
+    if (normalizedQuotes.length >= 2) {
+      return normalizedQuotes;
+    }
+
+    const extractedFromText = this.extractCandidateQuotes(analyzedText);
+    const extractedFromClaims = this.normalizeDeepSectionArray(claims, 4, 24).map(
+      (claim) => `"${claim}"`
+    );
+    const merged = [...normalizedQuotes, ...extractedFromText, ...extractedFromClaims];
+    const unique = new Set<string>();
+    for (const quote of merged) {
+      const compact = quote.replace(/\s+/g, ' ').trim();
+      if (!compact) {
+        continue;
+      }
+      if (this.isGarbageQuote(compact)) {
+        continue;
+      }
+      unique.add(this.limitSummaryWords(compact, 24));
+      if (unique.size >= 4) {
+        break;
+      }
+    }
+
+    return Array.from(unique);
+  }
+
+  private extractCandidateQuotes(text: string): string[] {
+    if (!text) {
+      return [];
+    }
+
+    const matches = text.match(/["'“”][^"'“”]{8,180}["'“”]/g) ?? [];
+    const unique = new Set<string>();
+    for (const rawMatch of matches) {
+      const compact = rawMatch.replace(/\s+/g, ' ').trim();
+      if (!compact) {
+        continue;
+      }
+      unique.add(this.limitSummaryWords(compact, 24));
+      if (unique.size >= 4) {
+        break;
+      }
+    }
+
+    return Array.from(unique);
+  }
+
+  private isGarbageQuote(quote: string): boolean {
+    const compact = quote.replace(/\s+/g, ' ').trim();
+    if (!compact) {
+      return true;
+    }
+
+    if (/isSuscriberContent|isSubscriberContent|subscriberContent/i.test(compact)) {
+      return true;
+    }
+    if (/^\s*["']?\d{6,}_\d+["']?\s*$/.test(compact)) {
+      return true;
+    }
+    if (/^\s*["']?[a-z][a-z0-9]*_\d{1,6}["']?\s*$/i.test(compact)) {
+      return true;
+    }
+    if (/"?(flags?|ids?|trackingId|contentId|nodeId|assetId)"?\s*:/i.test(compact)) {
+      return true;
+    }
+    if (/^\s*[{[]/.test(compact) && /"content"\s*:\s*\{\s*"data"\s*:/i.test(compact)) {
+      return true;
+    }
+
+    return false;
   }
 
   private sanitizeAnalysisTextFields(analysis: ArticleAnalysis): ArticleAnalysis {
@@ -1459,6 +2114,8 @@ export class AnalyzeArticleUseCase {
 
   private getAnalysisModeRank(mode: AnalysisMode): number {
     switch (mode) {
+      case 'deep':
+        return 4;
       case 'standard':
         return 3;
       case 'moderate':

@@ -40,6 +40,17 @@ export class AnalyzeController {
     const validatedInput = analyzeArticleSchema.parse(req.body);
     console.log(`[AnalyzeController]    ✅ Validation passed`);
 
+    const canUseDeepAnalysis = req.user?.entitlements?.deepAnalysis === true;
+    if (validatedInput.mode === 'deep' && !canUseDeepAnalysis) {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.status(403).json({
+        success: false,
+        error: 'Deep analysis entitlement required',
+        message: 'Activa Analisis profundo con un codigo promocional',
+      });
+      return;
+    }
+
     // Sprint 14: Pass user to use case for quota enforcement
     const input = {
       ...validatedInput,

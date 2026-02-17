@@ -803,7 +803,10 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
         language: 'es',
       });
 
-      const promptUsed = mockGenerateContent.mock.calls[0][0] as string;
+      const requestUsed = mockGenerateContent.mock.calls[0][0] as {
+        contents?: Array<{ parts?: Array<{ text?: string }> }>;
+      };
+      const promptUsed = requestUsed?.contents?.[0]?.parts?.[0]?.text ?? '';
       expect(promptUsed).toContain('Analiza SOLO el texto dado en <ARTICLE>');
     });
 
@@ -826,7 +829,10 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
         language: 'es',
       });
 
-      const promptUsed = mockGenerateContent.mock.calls[0][0] as string;
+      const requestUsed = mockGenerateContent.mock.calls[0][0] as {
+        contents?: Array<{ parts?: Array<{ text?: string }> }>;
+      };
+      const promptUsed = requestUsed?.contents?.[0]?.parts?.[0]?.text ?? '';
       expect(promptUsed).toContain('Analiza SOLO el texto dado en <ARTICLE>');
     });
 
@@ -850,8 +856,12 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
         analysisMode: 'moderate',
       });
 
-      const promptUsed = mockGenerateContent.mock.calls[0][0] as string;
-      expect(promptUsed).toContain('Actua como auditor OSINT de analisis textual.');
+      const requestUsed = mockGenerateContent.mock.calls[0][0] as {
+        contents?: Array<{ parts?: Array<{ text?: string }> }>;
+      };
+      const promptUsed = requestUsed?.contents?.[0]?.parts?.[0]?.text ?? '';
+      expect(promptUsed).toMatch(/auditor OSINT/i);
+      expect(promptUsed).toContain('INPUT_QUALITY:');
     });
 
     it('usa prompt STANDARD cuando se solicita analysisMode=standard', async () => {
@@ -874,7 +884,10 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
         analysisMode: 'standard',
       });
 
-      const promptUsed = mockGenerateContent.mock.calls[0][0] as string;
+      const requestUsed = mockGenerateContent.mock.calls[0][0] as {
+        contents?: Array<{ parts?: Array<{ text?: string }> }>;
+      };
+      const promptUsed = requestUsed?.contents?.[0]?.parts?.[0]?.text ?? '';
       expect(promptUsed).toContain('FEW-SHOT 1');
     });
 
@@ -900,7 +913,10 @@ describe('GeminiClient - Token Taximeter & Cost Calculation (ZONA CRÍTICA)', ()
         analysisMode: 'moderate',
       });
 
-      const promptUsed = mockGenerateContent.mock.calls[0][0] as string;
+      const requestUsed = mockGenerateContent.mock.calls[0][0] as {
+        contents?: Array<{ parts?: Array<{ text?: string }> }>;
+      };
+      const promptUsed = requestUsed?.contents?.[0]?.parts?.[0]?.text ?? '';
       expect(promptUsed).toContain('Analiza SOLO el texto dado en <ARTICLE>');
     });
   });

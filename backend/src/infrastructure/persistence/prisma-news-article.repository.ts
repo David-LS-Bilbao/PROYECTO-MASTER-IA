@@ -630,8 +630,17 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
    *
    * SPRINT 19.3.1 - ACCENT-INSENSITIVE SEARCH
    */
-  private normalizeText(text: string): string {
-    return text
+  private normalizeText(text: string | null | undefined): string {
+    if (typeof text !== 'string') {
+      return '';
+    }
+
+    const trimmed = text.trim();
+    if (trimmed.length === 0) {
+      return '';
+    }
+
+    return trimmed
       .normalize('NFD') // Decompose accented characters
       .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
       .toLowerCase();
@@ -790,6 +799,10 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
    * Helper: Query local articles by city name
    */
   private async queryCityArticles(city: string, limit: number): Promise<Prisma.ArticleGetPayload<{}>[]> {
+    if (!city || city.trim().length === 0) {
+      return [];
+    }
+
     const normalized = this.normalizeText(city);
     const variants = this.generateAccentVariants(normalized);
 
@@ -816,6 +829,10 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
    * Helper: Query local articles by province name
    */
   private async queryProvinceArticles(province: string, limit: number): Promise<Prisma.ArticleGetPayload<{}>[]> {
+    if (!province || province.trim().length === 0) {
+      return [];
+    }
+
     const normalized = this.normalizeText(province);
     const variants = this.generateAccentVariants(normalized);
 

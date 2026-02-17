@@ -1,8 +1,28 @@
 # Estado del Proyecto - Verity News
 
-> **Última actualización**: Sprint 28 (2026-02-12) - Geolocalización Automática + Local News Fix
+> **Última actualización**: 2026-02-17 - Endurecimiento de análisis (paywall + Jina + JSON repair)
 > **Stack**: Next.js + Express + PostgreSQL + Prisma + Gemini AI + pgvector
 > **Arquitectura**: Clean Architecture (Hexagonal) + DDD
+
+---
+
+## Actualización Pre-Merge (2026-02-17)
+
+### Estado de features recientes
+
+- ✅ Extracción de texto robusta con Jina (soporte payload anidado `data.content`).
+- ✅ Pipeline de limpieza previo al LLM (ruido JSON/HTML/flags internas/IDs).
+- ✅ Detección de paywall y bloqueo duro de análisis (`PAYWALL_BLOCKED`).
+- ✅ Gate de paywall aplicado también cuando existe cache legacy.
+- ✅ Resiliencia Gemini: parseo JSON estricto + 1 intento de JSON repair.
+- ✅ UI: estado de error de formato sin contaminar secciones deep.
+- ✅ Entitlements deep-analysis + promo codes en endpoints dedicados.
+
+### Tareas reales abiertas (post-merge)
+
+- [ ] Backfill/auditoría de artículos legacy para recalcular `accessStatus` y `analysisBlocked` donde falte. (Suposición razonable)
+- [ ] Reducir deuda de nombres legacy en comentarios/tests (referencias antiguas a Chroma). (Suposición razonable)
+- [ ] Consolidar documentación histórica para evitar contradicciones entre sprints antiguos y estado actual. (Suposición razonable)
 
 ---
 
@@ -640,7 +660,7 @@ backend/src/
 │   └── use-cases/         # Lógica de negocio
 ├── infrastructure/
 │   ├── persistence/       # Prisma repositories
-│   ├── external/          # Gemini, ChromaDB, RSS
+│   ├── external/          # Gemini, pgvector, RSS/Jina
 │   ├── http/              # Controllers, routes, middleware
 │   └── config/            # DependencyContainer
 └── index.ts
@@ -680,7 +700,7 @@ PostgreSQL 17
 - **Database**: PostgreSQL 17 (con adapter PrismaPg)
 - **Auth**: Firebase Admin SDK
 - **AI**: Google Gemini 2.0 Flash
-- **Vector DB**: ChromaDB 3.2
+- **Vector DB**: pgvector (PostgreSQL extension)
 - **Logger**: Pino 10
 - **Monitoring**: Sentry
 - **Testing**: Vitest
@@ -755,22 +775,19 @@ PostgreSQL 17
 
 ## 🚀 Roadmap Futuro
 
-### Corto Plazo (Sprint 21-22)
-- [ ] **Sprint 21**: Backend API Topics (Repositories, Use Cases, Controllers)
-- [ ] **Sprint 22**: Frontend Topics (TopicSelector, LocationPicker, routing)
+### Corto plazo (pre-main)
+- [ ] Backfill de artículos legacy para estado de acceso (`paywall/restricted/public`). (Suposición razonable)
+- [ ] Homogeneizar copy/error handling en frontend para códigos API (`422/403/401`). (Suposición razonable)
+- [ ] Reducir referencias históricas a componentes legacy en docs/tests. (Suposición razonable)
 
-### Medio Plazo
-- [ ] Filtrado de noticias por geolocalización (Local)
-- [ ] Sistema de notificaciones push
-- [ ] PWA (Progressive Web App)
-- [ ] Multi-idioma (i18n)
-- [ ] Dark mode avanzado con preferencias granulares
+### Medio plazo
+- [ ] Observabilidad de calidad de input (`inputQuality`, `textSource`) en panel interno. (Suposición razonable)
+- [ ] Alertas sobre tasa de `formatError` y fallos de extractor. (Suposición razonable)
+- [ ] Política de reanálisis controlada para cache legacy. (Suposición razonable)
 
-### Largo Plazo
-- [ ] Mobile apps (React Native)
-- [ ] Integración con más fuentes RSS
-- [ ] ML para recomendaciones personalizadas
-- [ ] Análisis de tendencias con IA
+### Largo plazo
+- [ ] Integración de billing real manteniendo contrato de `entitlements`. (Suposición razonable)
+- [ ] Mejoras de explainability y auditoría sobre citas/claims. (Suposición razonable)
 
 ---
 

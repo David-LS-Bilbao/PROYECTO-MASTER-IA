@@ -19,10 +19,18 @@
 'use client';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
-import { useState, useMemo } from 'react';
+import dynamic from 'next/dynamic';
+import { useState, useMemo, useEffect } from 'react';
+
+const ReactQueryDevtools = dynamic(
+  () =>
+    import('@tanstack/react-query-devtools').then(
+      (mod) => mod.ReactQueryDevtools
+    ),
+  { ssr: false }
+);
 
 // =============================================================================
 // PERSISTENCIA: Configuración del almacenamiento en localStorage
@@ -54,9 +62,15 @@ function createPersister() {
  * Patrón Singleton para SSR:
  * - useState evita reinicializaciones en re-renders
  * - QueryClient se crea solo una vez por usuario
- * - Persister se crea con useMemo (SSR-safe: solo en cliente)
+ * - Persister se habilita tras mount para evitar hydration mismatch
  */
 export function QueryProvider({ children }: { children: React.ReactNode }) {
+  const [hasMounted, setHasMounted] = useState(false);
+
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
+
   // Inicialización lazy del QueryClient (solo una vez)
   const [queryClient] = useState(
     () =>
@@ -102,8 +116,11 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       })
   );
 
-  // Persister se crea solo en el cliente (SSR-safe)
-  const persister = useMemo(() => createPersister(), []);
+  // Evita hydration mismatch: el primer render (SSR + cliente) debe ser idéntico.
+  const persister = useMemo(
+    () => (hasMounted ? createPersister() : undefined),
+    [hasMounted]
+  );
 
   // =========================================================================
   // RENDER: PersistQueryClientProvider envuelve la app
@@ -112,9 +129,8 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
   // - Si persister es undefined (SSR), se comporta como QueryClientProvider normal
   // =========================================================================
   if (!persister) {
-    // SSR fallback: sin persistencia (primer render en servidor)
-    // Esto no debería ocurrir en la práctica porque 'use client' lo previene,
-    // pero es un guard seguro que usa el provider estándar sin persistencia.
+    // Render inicial (SSR + primer render cliente): sin persistencia.
+    // Tras el mount, se activa PersistQueryClientProvider con localStorage.
     return (
       <QueryClientProvider client={queryClient}>
         {children}
@@ -132,7 +148,7 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
     >
       {children}
       {/* DevTools: Solo visible en desarrollo */}
-      {process.env.NODE_ENV === 'development' && (
+      {hasMounted && process.env.NODE_ENV === 'development' && (
         <ReactQueryDevtools initialIsOpen={false} position="bottom" />
       )}
     </PersistQueryClientProvider>

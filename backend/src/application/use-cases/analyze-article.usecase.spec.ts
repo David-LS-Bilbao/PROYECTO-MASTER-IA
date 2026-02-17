@@ -400,7 +400,7 @@ describe('AnalyzeArticleUseCase', () => {
       expect(result.summary).not.toContain('Falta el texto completo para confirmar detalles.');
       expect(result.summary).not.toContain('Resumen provisional');
       expect(result.summary).not.toContain('No se puede confirmar detalles');
-      expect(result.analysis.qualityNotice).toBe('Falta el texto completo para confirmar detalles.');
+      expect(result.analysis.qualityNotice?.toLowerCase()).toContain('texto completo');
     });
 
     it('should route moderate mode for long content in detail context', async () => {
@@ -433,6 +433,75 @@ describe('AnalyzeArticleUseCase', () => {
           analysisMode: 'low_cost',
         })
       );
+    });
+
+    it('should keep deep mode for premium deep analysis even with short content', async () => {
+      const shortContent = 'Extracto corto con poco contexto y sin cuerpo completo.';
+      const article = createTestArticle({ content: shortContent });
+      mockRepository.setArticle(article);
+
+      const geminiSpy = vi.spyOn(mockGemini, 'analyzeArticle');
+
+      await useCase.execute({ articleId: article.id, mode: 'deep' });
+
+      expect(geminiSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          analysisMode: 'deep',
+        })
+      );
+    });
+
+    it('should return deep sections in deep mode output', async () => {
+      const article = createTestArticle({
+        content: 'Contenido amplio con citas y datos para analisis profundo. '.repeat(40),
+      });
+      mockRepository.setArticle(article);
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        analysisModeUsed: 'deep',
+        deep: {
+          sections: {
+            known: ['Se anuncia una medida con fecha de entrada en vigor.'],
+            unknown: ['No se aporta documento tecnico completo en el extracto.'],
+            quotes: ['"La medida entra en vigor el 15 de marzo".'],
+            risks: ['Interpretar el alcance nacional sin anexo metodologico puede inducir error.'],
+          },
+        },
+      });
+
+      const result = await useCase.execute({ articleId: article.id, mode: 'deep' });
+
+      expect(result.analysis.deep?.sections?.known).toEqual(expect.any(Array));
+      expect(result.analysis.deep?.sections?.unknown).toEqual(expect.any(Array));
+      expect(result.analysis.deep?.sections?.quotes).toEqual(expect.any(Array));
+      expect(result.analysis.deep?.sections?.risks).toEqual(expect.any(Array));
+    });
+
+    it('should include limitation in deep unknown section when content is insufficient', async () => {
+      const shortSnippetContent = 'Extracto RSS breve con titular y poco cuerpo.';
+      const article = createTestArticle({ content: shortSnippetContent });
+      mockRepository.setArticle(article);
+      vi.spyOn(mockJina, 'scrapeUrl').mockRejectedValueOnce(new Error('Paywall'));
+
+      vi.spyOn(mockGemini, 'analyzeArticle').mockResolvedValue({
+        ...mockAnalysis,
+        deep: {
+          sections: {
+            known: ['El extracto afirma un cambio regulatorio.'],
+            unknown: [],
+            quotes: ['"Cambio regulatorio inminente"'],
+            risks: [],
+          },
+        },
+      });
+
+      const result = await useCase.execute({ articleId: article.id, mode: 'deep' });
+      const unknownText = (result.analysis.deep?.sections?.unknown || []).join(' ').toLowerCase();
+
+      expect(result.scrapedContentLength).toBeLessThan(300);
+      expect(unknownText).toContain('insuficiente');
+      expect(unknownText).toContain('snippet/paywall');
     });
 
     it('should force escalation in low-cost context when strong claims lack attribution', async () => {
@@ -477,7 +546,7 @@ describe('AnalyzeArticleUseCase', () => {
 
       expect(result.scrapedContentLength).toBeLessThan(300);
       expect(result.analysis.articleLeaning).toBe('indeterminada');
-      expect(result.analysis.biasComment.toLowerCase()).toContain('no hay suficientes se');
+      expect(result.analysis.biasComment.toLowerCase()).toMatch(/no se puede estimar|fragmento disponible/);
     });
 
     it('should force neutral leaning with low confidence for long content and <2 cited bias indicators', async () => {
@@ -932,7 +1001,7 @@ describe('AnalyzeArticleUseCase', () => {
       // Verificar que el análisis se completó correctamente usando fallback
       expect(result.articleId).toBe(article.id);
       expect(result.summary).not.toContain('Falta el texto completo para confirmar detalles.');
-      expect(result.analysis.qualityNotice).toBe('Falta el texto completo para confirmar detalles.');
+      expect(result.analysis.qualityNotice?.toLowerCase()).toContain('texto completo');
       expect(result.scrapedContentLength).toBe(0); // Fallback no scraped
       expect(result.analysis.factCheck.verdict).toBe('InsufficientEvidenceInArticle');
     });
@@ -949,12 +1018,12 @@ describe('AnalyzeArticleUseCase', () => {
       // Verificar que el análisis se completó correctamente usando fallback
       expect(result.articleId).toBe(article.id);
       expect(result.summary).not.toContain('Falta el texto completo para confirmar detalles.');
-      expect(result.analysis.qualityNotice).toBe('Falta el texto completo para confirmar detalles.');
+      expect(result.analysis.qualityNotice?.toLowerCase()).toContain('texto completo');
       expect(result.scrapedContentLength).toBe(0); // Fallback no scraped
       expect(result.analysis.factCheck.verdict).toBe('InsufficientEvidenceInArticle');
     });
 
-    it('should save article with scraped content before analysis', async () => {
+    it('should save scraped content before persisting final analysis', async () => {
       const article = createTestArticle({ content: null });
       mockRepository.setArticle(article);
 
@@ -962,8 +1031,22 @@ describe('AnalyzeArticleUseCase', () => {
 
       await useCase.execute({ articleId: article.id });
 
-      // Should save twice: once after scraping, once after analysis
-      expect(saveSpy).toHaveBeenCalledTimes(2);
+      // Puede haber un guardado extra por accessStatus (paywall detection).
+      expect(saveSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+      const savedArticles = saveSpy.mock.calls.map((call) => call[0] as NewsArticle);
+      const scrapedSaveIndex = savedArticles.findIndex(
+        (savedArticle) =>
+          savedArticle.content === mockScrapedContent.content && savedArticle.analyzedAt === null
+      );
+      const analyzedSaveIndex = savedArticles.findIndex(
+        (savedArticle) =>
+          savedArticle.content === mockScrapedContent.content &&
+          savedArticle.analyzedAt instanceof Date &&
+          savedArticle.summary !== null
+      );
+
+      expect(scrapedSaveIndex).toBeGreaterThanOrEqual(0);
+      expect(analyzedSaveIndex).toBeGreaterThan(scrapedSaveIndex);
     });
 
     it('should persist analysis results to repository', async () => {

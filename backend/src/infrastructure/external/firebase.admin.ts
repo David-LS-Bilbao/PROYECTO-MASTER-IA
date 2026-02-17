@@ -16,6 +16,26 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { firebaseAuthMock } from './firebase.admin.mock';
 
+function hasUsableEnvCredentials(
+  projectId: string | undefined,
+  privateKey: string | undefined,
+  clientEmail: string | undefined
+): boolean {
+  if (!projectId || !privateKey || !clientEmail) {
+    return false;
+  }
+
+  const combined = `${projectId}|${clientEmail}|${privateKey}`.toLowerCase();
+  const placeholderMarkers = [
+    'your-firebase-project-id',
+    'firebase-adminsdk-xxxxx',
+    'your-project.iam.gserviceaccount.com',
+    'your_private_key_here',
+  ];
+
+  return !placeholderMarkers.some((marker) => combined.includes(marker));
+}
+
 /**
  * Inicializa Firebase Admin SDK si no está ya inicializado
  */
@@ -31,6 +51,8 @@ function initializeFirebaseAdmin(): admin.app.App {
   console.log('🔥 Inicializando Firebase Admin SDK...');
 
   try {
+    let envInitializationError: unknown;
+
     // =========================================================================
     // OPCIÓN 1: Cargar desde variables de entorno (PRODUCCIÓN)
     // =========================================================================
@@ -38,20 +60,27 @@ function initializeFirebaseAdmin(): admin.app.App {
     const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
     const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
 
-    if (projectId && privateKey && clientEmail) {
+    if (hasUsableEnvCredentials(projectId, privateKey, clientEmail)) {
       console.log('✅ Cargando credenciales desde variables de entorno...');
-      
-      admin.initializeApp({
-        credential: admin.credential.cert({
-          projectId,
-          privateKey,
-          clientEmail,
-        }),
-        projectId,
-      });
 
-      console.log(`✅ Firebase Admin inicializado con proyecto: ${projectId}`);
-      return admin.apps[0]!;
+      try {
+        admin.initializeApp({
+          credential: admin.credential.cert({
+            projectId,
+            privateKey,
+            clientEmail,
+          }),
+          projectId,
+        });
+
+        console.log(`✅ Firebase Admin inicializado con proyecto: ${projectId}`);
+        return admin.apps[0]!;
+      } catch (error) {
+        envInitializationError = error;
+        console.warn('⚠️ Credenciales de entorno inválidas. Intentando archivo local...');
+      }
+    } else if (projectId || privateKey || clientEmail) {
+      console.warn('⚠️ Credenciales de entorno incompletas/placeholder. Intentando archivo local...');
     }
 
     // =========================================================================
@@ -78,10 +107,15 @@ function initializeFirebaseAdmin(): admin.app.App {
     // =========================================================================
     // ERROR: No se encontraron credenciales
     // =========================================================================
-    throw new Error(
+    const baseMessage =
       'Firebase Admin: No se encontraron credenciales. ' +
-      'Por favor, configura las variables de entorno o crea service-account.json'
-    );
+      'Por favor, configura las variables de entorno o crea service-account.json';
+    const details =
+      envInitializationError instanceof Error
+        ? ` Último error con variables de entorno: ${envInitializationError.message}`
+        : '';
+
+    throw new Error(`${baseMessage}${details}`);
 
   } catch (error) {
     console.error('❌ Error al inicializar Firebase Admin:', error);

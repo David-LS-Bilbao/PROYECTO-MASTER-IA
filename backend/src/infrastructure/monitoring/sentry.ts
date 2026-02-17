@@ -21,9 +21,11 @@ import { httpIntegration } from '@sentry/node';
  */
 export function initSentry(): void {
   const isDevelopment = process.env.NODE_ENV !== 'production';
-  const dsn = process.env.SENTRY_DSN;
+  const dsn = (process.env.SENTRY_DSN || '').trim();
+  const isPlaceholderDsn =
+    dsn.includes('your-sentry-dsn') || dsn.includes('your-project-id');
 
-  if (!dsn) {
+  if (!dsn || isPlaceholderDsn) {
     console.warn('⚠️ SENTRY_DSN not configured. Error tracking disabled.');
     return;
   }
