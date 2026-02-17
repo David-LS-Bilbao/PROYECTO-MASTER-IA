@@ -13,6 +13,7 @@ import {
   globalIngestRateLimiter,
   categoryIngestRateLimiter,
   statusCheckRateLimiter,
+  publicTriggerRateLimiter,
 } from '../middleware/rate-limit.middleware';
 
 function requireCronSecret(req: Request, res: Response, next: NextFunction): void {
@@ -32,6 +33,22 @@ function requireCronSecret(req: Request, res: Response, next: NextFunction): voi
 
 export function createIngestRoutes(ingestController: IngestController): Router {
   const router = Router();
+
+  /**
+   * POST /api/ingest/trigger
+   * PUBLIC ENDPOINT - User-triggered manual refresh (Sprint 35)
+   *
+   * Rate Limit: 1 request per 5 minutes (STRICT)
+   * Security: No CRON_SECRET required (public access)
+   *
+   * IMPORTANT: This endpoint is placed BEFORE protected routes
+   * to ensure it's accessible without authentication.
+   */
+  router.post(
+    '/trigger',
+    publicTriggerRateLimiter, // 1 req/5min to prevent abuse
+    (req, res) => ingestController.triggerPublicIngest(req, res)
+  );
 
   /**
    * POST /api/ingest/news

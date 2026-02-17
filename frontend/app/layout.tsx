@@ -11,6 +11,7 @@ import { SentryProvider } from "@/components/providers/sentry-provider"; // Spri
 import Footer from "@/components/layout/footer";
 import CookieBanner from "@/components/ui/cookie-banner";
 import { ClientOnlyScrollToTop } from "@/components/ui/client-only-scroll-to-top";
+import { AutoIngestProvider } from "@/components/providers/auto-ingest-provider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -44,15 +45,17 @@ export default function RootLayout({
             <QueryProvider>
               <BackendStatusProvider>
                 <GlobalErrorBoundary>
-                  <AuthProvider>
-                   {children}
-                   <Toaster />
-                   <ClientOnlyScrollToTop />
-                   {/* Footer global */}
-                   <Footer />
-                   {/* Cookie Banner */}
-                   <CookieBanner />
-                  </AuthProvider>
+                  <AutoIngestProvider>
+                    <AuthProvider>
+                     {children}
+                     <Toaster />
+                     <ClientOnlyScrollToTop />
+                     {/* Footer global */}
+                     <Footer />
+                     {/* Cookie Banner */}
+                     <CookieBanner />
+                    </AuthProvider>
+                  </AutoIngestProvider>
                 </GlobalErrorBoundary>
               </BackendStatusProvider>
             </QueryProvider>

@@ -62,3 +62,16 @@ export const ingestNewsSchema = z.object({
 });
 
 export type IngestNewsInput = z.infer<typeof ingestNewsSchema>;
+
+/**
+ * Public Trigger Schema (Sprint 35)
+ * Validation for user-triggered manual refresh
+ */
+export const publicTriggerSchema = z.object({
+  categories: z
+    .array(z.enum(validCategories))
+    .optional()
+    .describe('Optional list of categories to ingest (defaults to all)'),
+});
+
+export type PublicTriggerInput = z.infer<typeof publicTriggerSchema>;

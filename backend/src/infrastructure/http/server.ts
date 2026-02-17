@@ -17,6 +17,7 @@ import { createHealthRoutes } from './routes/health.routes';
 import { createSubscriptionRoutes } from './routes/subscription.routes';
 import { errorHandler } from './middleware/error.handler';
 import { requestLogger } from './middleware/request.logger';
+import { createAutoIngestMiddleware } from './middleware/auto-ingest.middleware';
 import { EntityNotFoundError } from '../../domain/errors/domain.error';
 
 export function createServer(): Application {
@@ -64,6 +65,14 @@ export function createServer(): Application {
   // Body parser
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
+
+  // Sprint 35: Auto-ingest middleware - triggers background ingestion when threshold exceeded
+  const autoIngestMiddleware = createAutoIngestMiddleware(
+    container.ingestionTracker,
+    container.ingestNewsUseCase,
+    60 // Threshold: 60 minutes
+  );
+  app.use('/api/', autoIngestMiddleware);
 
   // Health Routes - basic health check and readiness probe
   app.use('/health', createHealthRoutes(container.healthController));

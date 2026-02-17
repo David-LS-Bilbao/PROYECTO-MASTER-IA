@@ -15,6 +15,7 @@ import { PgVectorClient } from '../external/pgvector.client';
 import { TokenTaximeter } from '../monitoring/token-taximeter';
 import { PrismaNewsArticleRepository } from '../persistence/prisma-news-article.repository';
 import { PrismaTopicRepository } from '../persistence/prisma-topic.repository';
+import { IngestionTrackerRepository } from '../persistence/ingestion-tracker.repository';
 import { IngestNewsUseCase } from '../../application/use-cases/ingest-news.usecase';
 import { AnalyzeArticleUseCase } from '../../application/use-cases/analyze-article.usecase';
 import { ChatArticleUseCase } from '../../application/use-cases/chat-article.usecase';
@@ -45,6 +46,8 @@ export class DependencyContainer {
   public readonly geminiClient: GeminiClient;
   public readonly newsRepository: PrismaNewsArticleRepository;
   public readonly topicRepository: PrismaTopicRepository;
+  public readonly ingestionTracker: IngestionTrackerRepository; // Sprint 35
+  public readonly ingestNewsUseCase: IngestNewsUseCase; // Sprint 35: Exposed for auto-ingest middleware
   public readonly ingestController: IngestController;
   public readonly analyzeController: AnalyzeController;
   public readonly newsController: NewsController;
@@ -84,6 +87,7 @@ export class DependencyContainer {
     this.vectorClient = new PgVectorClient(this.prisma);
     this.newsRepository = new PrismaNewsArticleRepository(this.prisma);
     this.topicRepository = new PrismaTopicRepository(this.prisma);
+    this.ingestionTracker = new IngestionTrackerRepository(this.prisma); // Sprint 35
 
     // Domain Services
     const quotaService = new QuotaService();
@@ -95,7 +99,7 @@ export class DependencyContainer {
     );
 
     // Application Layer
-    const ingestNewsUseCase = new IngestNewsUseCase(
+    this.ingestNewsUseCase = new IngestNewsUseCase(
       newsAPIClient,
       this.newsRepository,
       this.prisma,
@@ -131,12 +135,12 @@ export class DependencyContainer {
     const toggleFavoriteUseCase = new ToggleFavoriteUseCase(this.newsRepository);
 
     // Presentation Layer
-    this.ingestController = new IngestController(ingestNewsUseCase);
+    this.ingestController = new IngestController(this.ingestNewsUseCase);
     this.analyzeController = new AnalyzeController(analyzeArticleUseCase);
     this.newsController = new NewsController(
       this.newsRepository,
       toggleFavoriteUseCase,
-      ingestNewsUseCase // Sprint 19: Inject for reactive ingestion in search
+      this.ingestNewsUseCase // Sprint 19: Inject for reactive ingestion in search
     );
     this.chatController = new ChatController(chatArticleUseCase, chatGeneralUseCase, quotaService);
     this.searchController = new SearchController(searchNewsUseCase);
