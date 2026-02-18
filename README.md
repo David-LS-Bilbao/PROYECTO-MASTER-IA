@@ -604,7 +604,7 @@ El backend implementa **arquitectura hexagonal** (ports & adapters) con 3 capas:
 
 ### 1. Ingesta Automática de Noticias
 
-**Descripción**: Sistema de ingesta multi-fuente que recopila noticias españolas desde 58+ medios verificados.
+**Descripción**: Sistema de ingesta multi-fuente que recopila noticias españolas desde 58+ medios verificados con actualización automática y manual.
 
 **Características**:
 - **RSS Parser Directo**: Parseo de feeds RSS nativos (más rápido y confiable)
@@ -614,13 +614,21 @@ El backend implementa **arquitectura hexagonal** (ports & adapters) con 3 capas:
 - **Auto-fill Inteligente**: Detecta categorías vacías y dispara ingesta automática
 - **Geolocalización**: Noticias locales basadas en `User.location` (Sprint 20)
 - **Fallback a Google News**: Si RSS directos fallan, usa Google News RSS como backup
+- **🆕 Sprint 35 - Auto-Refresh System**:
+  - **Endpoint Público**: `/api/ingest/trigger` sin necesidad de CRON_SECRET (rate-limited 1 req/5min)
+  - **Botón Manual**: Refresh button en header y sidebar para actualización manual
+  - **Auto-Trigger**: Middleware que dispara ingesta automática tras 1h de inactividad
+  - **Session Detection**: Hook que detecta entrada/reanudación de sesión y actualiza contenido
+  - **Fire-and-Forget**: Patrón no-bloqueante para no afectar rendimiento de requests
 
 **Tecnología**:
 - RSS Parser para parseo de XML
 - Jina Reader API para extracción de metadatos Open Graph (og:image, og:description)
 - Exponential backoff para retry en fallos de red
+- Express Rate Limiter para protección contra abuso (3 capas: endpoint, middleware, cliente)
+- IngestMetadata tracker para control de TTL global
 
-**Beneficio**: Los usuarios siempre ven noticias frescas sin necesidad de refrescar manualmente.
+**Beneficio**: Los usuarios siempre ven noticias frescas sin necesidad de refrescar manualmente, con opción de actualización manual instantánea.
 
 ---
 

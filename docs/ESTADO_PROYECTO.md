@@ -1,15 +1,20 @@
 # Estado del Proyecto - Verity News
 
-> **Última actualización**: 2026-02-17 - Endurecimiento de análisis (paywall + Jina + JSON repair)
+> **Última actualización**: 2026-02-18 - Sprint 35: Sistema de Auto-Ingestion con triggers manuales y automáticos
 > **Stack**: Next.js + Express + PostgreSQL + Prisma + Gemini AI + pgvector
 > **Arquitectura**: Clean Architecture (Hexagonal) + DDD
 
 ---
 
-## Actualización Pre-Merge (2026-02-17)
+## Actualización Post-Merge Sprint 35 (2026-02-18)
 
 ### Estado de features recientes
 
+- ✅ **Sprint 35 - Auto-Ingestion System**: Endpoint público `/api/ingest/trigger` (rate-limited 1 req/5min)
+- ✅ **Sprint 35 - Manual Refresh**: Botones de actualización manual en header y sidebar
+- ✅ **Sprint 35 - Auto-Trigger Middleware**: Fire-and-forget middleware que dispara ingesta tras 1h inactividad
+- ✅ **Sprint 35 - Session Detection**: Hook que detecta entrada/reanudación y actualiza contenido
+- ✅ **Sprint 35 - Ingestion Tracker**: Repository con TTL tracking para evitar ingesta excesiva
 - ✅ Extracción de texto robusta con Jina (soporte payload anidado `data.content`).
 - ✅ Pipeline de limpieza previo al LLM (ruido JSON/HTML/flags internas/IDs).
 - ✅ Detección de paywall y bloqueo duro de análisis (`PAYWALL_BLOCKED`).
@@ -47,6 +52,7 @@
 ## 🗂️ Índice de Sprints
 
 ### Producción (✅ Completados)
+- [Sprint 35](#sprint-35) - Sistema de Auto-Ingestion con Refresh Manual y Automático (2026-02-18)
 - [Sprint 28](#sprint-28) - Geolocalización Automática + Local News Fix (2026-02-12)
 - [Sprint 27.3](#sprint-273) - Hotfix Producción + Responsive Móvil (2026-02-11)
 - [Sprint 27.2](#sprint-272) - Fix Entretenimiento y Calidad de Ingesta (2026-02-10)
@@ -866,8 +872,50 @@ npm run dev
 
 ---
 
-**Última revisión**: 2026-02-11
-**Versión del documento**: 2.2 (Actualizado Sprint 27.3)
+## Sprint 35
+
+**Fecha**: 2026-02-18
+**Objetivo**: Sistema de auto-ingestion con triggers manuales y automáticos
+
+### Implementación
+
+**Backend**:
+- ✅ Endpoint público `/api/ingest/trigger` (POST) sin necesidad de CRON_SECRET
+- ✅ Rate limiter multi-capa: endpoint (1/5min), middleware (1/1h), cliente (5min)
+- ✅ `IngestionTrackerRepository` para tracking de última ingesta
+- ✅ `createAutoIngestMiddleware` con patrón fire-and-forget (non-blocking)
+- ✅ Integrado en Express server con threshold de 60 minutos
+- ✅ 19 tests nuevos (TDD Red-Green-Refactor): ingestion tracker, middleware, routes
+
+**Frontend**:
+- ✅ `RefreshSourcesButton` componente con cooldown de 5 minutos
+- ✅ Integrado en header (icono) y sidebar (botón "Actualizar Todo")
+- ✅ `useAutoIngest` hook que detecta entrada/reanudación de sesión
+- ✅ `AutoIngestProvider` wrapper para integración en layout
+- ✅ Actualizado `useGlobalRefresh` para usar endpoint público (fix 401/404)
+
+**Tests**:
+- ✅ 708/711 tests pasando (19/19 específicos de Sprint 35)
+- ✅ TypeScript sin errores en backend y frontend
+- ✅ Docker build validado pre-merge
+
+### Beneficios
+
+- **UX**: Usuarios pueden refrescar fuentes manualmente sin esperar al auto-trigger
+- **Seguridad**: No requiere CRON_SECRET en frontend (endpoint protegido por rate limiter)
+- **Performance**: Middleware non-blocking (fire-and-forget) no afecta latencia de requests
+- **Automatización**: Contenido siempre fresco con ingesta automática cada hora
+
+### Commits
+
+- `8a72d36` - Implementación inicial (backend + frontend + tests)
+- `5e86a2a` - Fix: frontend usando endpoint público en lugar de /api/ingest/all
+- `d97dd4d` - Merge a main con 963 líneas añadidas
+
+---
+
+**Última revisión**: 2026-02-18
+**Versión del documento**: 2.3 (Actualizado Sprint 35)
 
 
 
