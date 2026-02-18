@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Request, Response } from 'express';
 import { ChatController } from '../../../../src/infrastructure/http/controllers/chat.controller';
-import { ValidationError, EntityNotFoundError } from '../../../../src/domain/errors/domain.error';
+import { ValidationError, EntityNotFoundError, FeatureLockedError } from '../../../../src/domain/errors/domain.error';
 import { ExternalAPIError, DatabaseError, InfrastructureError } from '../../../../src/domain/errors/infrastructure.error';
 
 // ============================================================================
@@ -57,7 +57,7 @@ describe('ChatController', () => {
   const authUser = {
     uid: 'user-1',
     subscriptionPlan: 'PREMIUM' as const,
-    createdAt: new Date('2026-01-01T00:00:00Z').toISOString(),
+    entitlements: { deepAnalysis: true },
   };
 
   beforeEach(() => {
@@ -87,6 +87,11 @@ describe('ChatController', () => {
       await controller.chatWithArticle(req, res as Response);
 
       expect(statusMock).toHaveBeenCalledWith(200);
+      expect(quotaService.canAccessChat).toHaveBeenCalledWith({
+        id: 'user-1',
+        subscriptionPlan: 'PREMIUM',
+        entitlements: { deepAnalysis: true },
+      });
       expect(mockIncrementChatMessages).toHaveBeenCalledWith('user-1', 1);
       expect(jsonMock).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -161,6 +166,36 @@ describe('ChatController', () => {
 
       expect(statusMock).toHaveBeenCalledWith(500);
     });
+
+    it('403 PREMIUM_REQUIRED para FREE sin acceso premium', async () => {
+      const { res, statusMock, jsonMock } = createRes();
+      const req = {
+        body: validArticleBody,
+        user: {
+          uid: 'free-user',
+          subscriptionPlan: 'FREE',
+          entitlements: { deepAnalysis: false },
+        },
+      } as Request;
+
+      quotaService.canAccessChat.mockImplementationOnce(() => {
+        throw new FeatureLockedError('Chat', 'Solo para usuarios Premium', {
+          reason: 'PREMIUM_REQUIRED',
+        });
+      });
+
+      await controller.chatWithArticle(req, res as Response);
+
+      expect(statusMock).toHaveBeenCalledWith(403);
+      expect(chatArticleUseCase.execute).not.toHaveBeenCalled();
+      expect(jsonMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: 'PREMIUM_REQUIRED',
+          errorCode: 'PREMIUM_REQUIRED',
+          message: 'Solo para usuarios Premium',
+        })
+      );
+    });
   });
 
   describe('chatGeneral', () => {
@@ -192,6 +227,31 @@ describe('ChatController', () => {
       await controller.chatGeneral(req, res as Response);
 
       expect(statusMock).toHaveBeenCalledWith(400);
+    });
+
+    it('200 para FREE con entitlement deepAnalysis', async () => {
+      const { res, statusMock } = createRes();
+      const req = {
+        body: validGeneralBody,
+        user: {
+          uid: 'free-entitled',
+          subscriptionPlan: 'FREE',
+          entitlements: { deepAnalysis: true },
+        },
+      } as Request;
+
+      chatGeneralUseCase.execute.mockResolvedValueOnce({
+        response: 'General answer',
+      });
+
+      await controller.chatGeneral(req, res as Response);
+
+      expect(statusMock).toHaveBeenCalledWith(200);
+      expect(quotaService.canAccessChat).toHaveBeenCalledWith({
+        id: 'free-entitled',
+        subscriptionPlan: 'FREE',
+        entitlements: { deepAnalysis: true },
+      });
     });
   });
 });
