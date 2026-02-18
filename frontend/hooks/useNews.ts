@@ -140,24 +140,23 @@ export function useNewsRefresh() {
 /**
  * Global Refresh Hook - Ingesta masiva de todas las categorías
  *
- * Llama al endpoint POST /api/ingest/all para actualizar
- * todas las categorías de noticias de una sola vez.
+ * Sprint 35: Actualizado para usar el endpoint público /api/ingest/trigger
+ * que no requiere CRON_SECRET (protegido por rate limiter 1 req/5min)
  */
 export function useGlobalRefresh() {
   const queryClient = useQueryClient();
 
   return useCallback(async () => {
     const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-    const cronSecret = process.env.NEXT_PUBLIC_CRON_SECRET || '';
 
     try {
-      // POST to /api/ingest/all
-      const response = await fetch(`${API_BASE_URL}/api/ingest/all`, {
+      // POST to /api/ingest/trigger (público, sin CRON_SECRET)
+      const response = await fetch(`${API_BASE_URL}/api/ingest/trigger`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-cron-secret': cronSecret,
         },
+        body: JSON.stringify({}), // Sprint 35: Acepta categories[] opcional
       });
 
       if (!response.ok) {
