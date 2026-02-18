@@ -2,7 +2,7 @@
  * Chat Controller (Infrastructure/Presentation Layer)
  * Handles HTTP requests for article chat conversations
  *
- * Sprint 30: Premium Chat - Endpoints require PREMIUM subscription (7-day trial for new users)
+ * Sprint 30: Premium Chat - Endpoints require Premium access
  */
 
 import { Request, Response } from 'express';
@@ -29,7 +29,7 @@ export class ChatController {
   /**
    * POST /api/chat/article
    * Send a chat message about an article
-   * Sprint 30: PREMIUM-only with 7-day trial for new users
+   * Sprint 30: Premium gate (plan or entitlement)
    */
   async chatWithArticle(req: Request, res: Response): Promise<void> {
     try {
@@ -44,7 +44,7 @@ export class ChatController {
       this.quotaService.canAccessChat({
         id: req.user.uid,
         subscriptionPlan: req.user.subscriptionPlan || 'FREE',
-        createdAt: req.user.createdAt ? new Date(req.user.createdAt) : undefined,
+        entitlements: req.user.entitlements,
       });
 
       // Validate request body with Zod (Shift Left Security)
@@ -78,7 +78,7 @@ export class ChatController {
    * POST /api/chat/general
    * Send a general chat message about all news
    * Sprint 19.6 - Tarea 3: Chat General
-   * Sprint 30: PREMIUM-only with 7-day trial for new users
+   * Sprint 30: Premium gate (plan or entitlement)
    */
   async chatGeneral(req: Request, res: Response): Promise<void> {
     try {
@@ -93,7 +93,7 @@ export class ChatController {
       this.quotaService.canAccessChat({
         id: req.user.uid,
         subscriptionPlan: req.user.subscriptionPlan || 'FREE',
-        createdAt: req.user.createdAt ? new Date(req.user.createdAt) : undefined,
+        entitlements: req.user.entitlements,
       });
 
       // Validate request body with Zod (Shift Left Security)
@@ -150,12 +150,21 @@ export class ChatController {
     // PREMIUM GATE (Sprint 30): Feature Locked - Show Upgrade CTA
     // =========================================================================
     if (error instanceof FeatureLockedError) {
+      const premiumRequired = error.details?.reason === 'PREMIUM_REQUIRED';
+      const errorCode = premiumRequired ? 'PREMIUM_REQUIRED' : error.errorCode;
+      const message = premiumRequired ? 'Solo para usuarios Premium' : error.message;
+
       res.status(403).json({
         success: false,
-        error: 'Feature Locked',
-        errorCode: error.errorCode, // 'CHAT_FEATURE_LOCKED'
-        message: error.message,
-        details: error.details, // { feature, reason, trialExpired, daysRemaining }
+        error: premiumRequired ? 'Premium Required' : 'Feature Locked',
+        code: errorCode,
+        errorCode,
+        message,
+        errorDetails: {
+          code: errorCode,
+          message,
+        },
+        details: error.details,
       });
       return;
     }

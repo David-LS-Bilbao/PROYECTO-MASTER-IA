@@ -44,7 +44,7 @@ export function GeneralChatDrawer({ isOpen, onOpenChange, initialQuestion }: Gen
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
 
-  // Sprint 30: Check if user can access Chat (PREMIUM or trial)
+  // Chat access follows same rule as deep analysis (premium plan or entitlement)
   const chatAccess = useCanAccessChat();
 
   // Auto-scroll to bottom when new messages arrive
@@ -115,8 +115,8 @@ export function GeneralChatDrawer({ isOpen, onOpenChange, initialQuestion }: Gen
       // =========================================================================
       // PREMIUM GATE (Sprint 30): Detect CHAT_FEATURE_LOCKED error
       // =========================================================================
-      if (err.errorCode === 'CHAT_FEATURE_LOCKED') {
-        setError('Tu periodo de prueba ha expirado. Actualiza a Premium para continuar usando el Chat.');
+      if (err.errorCode === 'CHAT_FEATURE_LOCKED' || err.errorCode === 'PREMIUM_REQUIRED') {
+        setError('Solo para usuarios Premium');
       } else {
         const errorMessage = err instanceof Error ? err.message : 'Error al enviar mensaje';
         setError(errorMessage);
@@ -256,20 +256,20 @@ export function GeneralChatDrawer({ isOpen, onOpenChange, initialQuestion }: Gen
               <div className="flex items-center gap-2 mb-2">
                 <Crown className="size-5 text-purple-600 dark:text-purple-400" />
                 <h3 className="font-semibold text-purple-900 dark:text-purple-100">
-                  {chatAccess.reason === 'TRIAL_EXPIRED' ? 'Periodo de prueba finalizado' : 'Funcionalidad Premium'}
+                  {chatAccess.reason === 'NOT_AUTHENTICATED' ? 'Inicia sesion' : 'Solo para usuarios Premium'}
                 </h3>
               </div>
               <p className="text-sm text-purple-700 dark:text-purple-300 mb-3">
-                {chatAccess.reason === 'TRIAL_EXPIRED'
-                  ? 'Tu periodo de prueba de 7 días ha expirado. Actualiza a Premium para seguir usando el Chat con IA.'
+                {chatAccess.reason === 'NOT_AUTHENTICATED'
+                  ? 'Debes iniciar sesion para usar el Chat con IA.'
                   : 'El acceso al Chat con IA es exclusivo para usuarios Premium.'}
               </p>
               <Button
-                onClick={() => router.push('/pricing')}
+                onClick={() => router.push(chatAccess.reason === 'NOT_AUTHENTICATED' ? '/login' : '/pricing')}
                 className="w-full bg-linear-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white gap-2"
               >
                 <Crown className="size-4" />
-                Actualizar a Premium
+                {chatAccess.reason === 'NOT_AUTHENTICATED' ? 'Iniciar sesion' : 'Actualizar a Premium'}
               </Button>
             </div>
           </div>

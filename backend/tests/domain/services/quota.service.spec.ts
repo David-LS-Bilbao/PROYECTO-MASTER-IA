@@ -5,7 +5,6 @@
 import { describe, it, expect } from 'vitest';
 import { QuotaService } from '../../../src/domain/services/quota.service';
 import { FeatureLockedError, QuotaExceededError } from '../../../src/domain/errors/domain.error';
-import { TRIAL_PERIOD_DAYS } from '../../../src/config/constants';
 
 describe('QuotaService', () => {
   const service = new QuotaService();
@@ -97,38 +96,28 @@ describe('QuotaService', () => {
     ).toBe(true);
   });
 
-  it('canAccessChat permite FREE dentro del periodo de prueba', () => {
-    const createdAt = new Date();
-    createdAt.setDate(createdAt.getDate() - Math.max(0, TRIAL_PERIOD_DAYS - 1));
-
+  it('canAccessChat permite FREE con entitlement deepAnalysis', () => {
     expect(
       service.canAccessChat({
-        id: 'free-trial',
+        id: 'free-entitled',
         subscriptionPlan: 'FREE',
-        createdAt,
+        entitlements: { deepAnalysis: true },
       })
     ).toBe(true);
   });
 
-  it('canAccessChat bloquea FREE legacy sin createdAt', () => {
+  it('canAccessChat bloquea FREE sin entitlement', () => {
     expect(() =>
       service.canAccessChat({
-        id: 'legacy-free',
+        id: 'free-no-entitlement',
         subscriptionPlan: 'FREE',
       })
     ).toThrow(FeatureLockedError);
-  });
-
-  it('canAccessChat bloquea FREE cuando expira el trial', () => {
-    const createdAt = new Date();
-    createdAt.setDate(createdAt.getDate() - (TRIAL_PERIOD_DAYS + 2));
-
     expect(() =>
       service.canAccessChat({
-        id: 'free-expired',
+        id: 'free-no-entitlement',
         subscriptionPlan: 'FREE',
-        createdAt,
       })
-    ).toThrow(FeatureLockedError);
+    ).toThrow('Solo para usuarios Premium');
   });
 });
