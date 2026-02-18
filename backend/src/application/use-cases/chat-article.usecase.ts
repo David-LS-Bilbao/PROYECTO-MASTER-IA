@@ -178,6 +178,30 @@ export class ChatArticleUseCase {
     );
 
     // =========================================================================
+    // DETAILED RAG LOGGING (para memoria técnica TFM)
+    // =========================================================================
+    console.log(`\n📊 [RAG RETRIEVAL RESULTS]`);
+    console.log(`   topK solicitado: ${MAX_RAG_DOCUMENTS}`);
+    console.log(`   Chunks recuperados: ${results.length}`);
+
+    if (results.length > 0) {
+      console.log(`\n   📄 Chunks detallados:`);
+      results.forEach((result, index) => {
+        const score = 1 - (result.distance ?? 1); // Cosine similarity score
+        console.log(`\n   [Chunk ${index + 1}]`);
+        console.log(`     - chunkId: ${result.id}`);
+        console.log(`     - docId: ${result.id}`);
+        console.log(`     - score (similarity): ${score.toFixed(4)}`);
+        console.log(`     - distance (cosine): ${(result.distance ?? 1).toFixed(4)}`);
+        console.log(`     - source: ${result.metadata.source}`);
+        console.log(`     - publishedAt: ${result.metadata.publishedAt}`);
+        console.log(`     - title: ${result.metadata.title}`);
+        console.log(`     - contentLength: ${result.document.length} chars`);
+      });
+    }
+    console.log(`\n`);
+
+    // =========================================================================
     // GRACEFUL DEGRADATION (Sprint 29): Detectar preguntas fuera de contexto
     // =========================================================================
     // Si no hay resultados O el mejor resultado tiene score muy bajo:

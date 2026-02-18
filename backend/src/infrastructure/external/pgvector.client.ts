@@ -121,17 +121,49 @@ export class PgVectorClient implements IVectorClient {
 
       // Use cosine distance operator (<=>) for similarity search
       // Order by distance ASC (smallest distance = most similar)
-      const results = await this.prisma.$queryRaw<Array<{ id: string; distance: number }>>`
-        SELECT id, embedding <=> ${vectorString}::vector AS distance
+      const results = await this.prisma.$queryRaw<Array<{
+        id: string;
+        title: string;
+        source: string;
+        category: string;
+        publishedAt: Date;
+        distance: number;
+      }>>`
+        SELECT
+          id,
+          title,
+          source,
+          category,
+          "publishedAt",
+          embedding <=> ${vectorString}::vector AS distance
         FROM articles
         WHERE embedding IS NOT NULL
         ORDER BY distance ASC
         LIMIT ${limit}
       `;
 
-      const ids = results.map(r => r.id);
-      console.log(`[PgVectorClient] Found ${ids.length} similar articles`);
+      // Detailed logging for TFM technical report
+      console.log(`\n📊 [VECTOR SEARCH RESULTS - querySimilar]`);
+      console.log(`   topK solicitado: ${limit}`);
+      console.log(`   Resultados encontrados: ${results.length}`);
 
+      if (results.length > 0) {
+        console.log(`\n   📄 Documentos detallados:`);
+        results.forEach((result, index) => {
+          const score = 1 - result.distance; // Cosine similarity score
+          console.log(`\n   [Doc ${index + 1}]`);
+          console.log(`     - docId: ${result.id}`);
+          console.log(`     - score (similarity): ${score.toFixed(4)}`);
+          console.log(`     - distance (cosine): ${result.distance.toFixed(4)}`);
+          console.log(`     - source: ${result.source}`);
+          console.log(`     - category: ${result.category}`);
+          console.log(`     - publishedAt: ${result.publishedAt.toISOString()}`);
+          console.log(`     - title: ${result.title.substring(0, 80)}...`);
+        });
+      }
+      console.log(`\n`);
+
+      const ids = results.map(r => r.id);
       return ids;
     } catch (error) {
       const err = error as Error;
