@@ -121,3 +121,50 @@ export const statusCheckRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+/**
+ * Public Trigger Rate Limiter (Sprint 35)
+ *
+ * Protects POST /api/ingest/trigger from abuse by frontend users.
+ *
+ * WHY THIS IS NEEDED:
+ * - Public endpoint (no CRON_SECRET required)
+ * - Allows users to manually refresh all news sources
+ * - Must prevent spam and API cost explosion
+ *
+ * CONFIGURATION:
+ * - Window: 5 minutes
+ * - Max Requests: 1 per IP per 5 minutes (production)
+ * - Test: 1000 req/5min (allows multiple tests to run)
+ * - Response: 429 Too Many Requests
+ *
+ * SECURITY:
+ * - Without this, a malicious user could spam ingestion and cost us money
+ * - 1 req/5min is generous for manual refresh (12 req/hour max)
+ * - Still allows legitimate use without frustration
+ */
+export const publicTriggerRateLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: process.env.NODE_ENV === 'test' ? 1000 : 1, // 1000 in test, 1 in prod/dev
+  message: {
+    success: false,
+    error: 'Please wait before refreshing sources again. Try again in 5 minutes.',
+    retryAfter: '5 minutes',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    console.warn(`[RATE LIMIT] 🔄 Public trigger blocked for IP: ${req.ip}`);
+    console.warn(`   Endpoint: ${req.method} ${req.originalUrl}`);
+
+    res.status(429).json({
+      success: false,
+      error: 'Please wait before refreshing sources again. Try again in 5 minutes.',
+      retryAfter: '5 minutes',
+      details: {
+        limit: process.env.NODE_ENV === 'test' ? 1000 : 1,
+        windowMs: 5 * 60 * 1000,
+      },
+    });
+  },
+});

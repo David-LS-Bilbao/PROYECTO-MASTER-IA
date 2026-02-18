@@ -44,7 +44,8 @@ describe('rate-limit.middleware', () => {
     const mod = await import('../../../../src/infrastructure/http/middleware/rate-limit.middleware');
     const globalLimiter = mod.globalIngestRateLimiter as MockMiddleware;
 
-    expect(rateLimitMock).toHaveBeenCalledTimes(3);
+    // Sprint 35: Now we have 4 rate limiters (global, category, status, publicTrigger)
+    expect(rateLimitMock).toHaveBeenCalledTimes(4);
     expect(globalLimiter.__options.max).toBe(100);
     expect(globalLimiter.__options.windowMs).toBe(60 * 60 * 1000);
 

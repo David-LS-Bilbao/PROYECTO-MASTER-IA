@@ -5,7 +5,7 @@
 
 import { Request, Response } from 'express';
 import { IngestNewsUseCase } from '../../../application/use-cases/ingest-news.usecase';
-import { ingestNewsSchema } from '../schemas/ingest.schema';
+import { ingestNewsSchema, publicTriggerSchema } from '../schemas/ingest.schema';
 import { ValidationError } from '../../../domain/errors/domain.error';
 import {
   ExternalAPIError,
@@ -87,6 +87,47 @@ export class IngestController {
           categoryResults: result.results,
         },
         message: `Global ingestion completed: ${result.processed} categories processed, ${totalNew} new articles`,
+      });
+    } catch (error) {
+      this.handleError(error, res);
+    }
+  }
+
+  /**
+   * POST /api/ingest/trigger
+   * Public endpoint for user-triggered manual refresh (Sprint 35)
+   *
+   * SECURITY:
+   * - Rate limited to 1 request per 5 minutes per IP
+   * - No CRON_SECRET required (public access)
+   * - Validates input with Zod (Shift Left Security)
+   */
+  async triggerPublicIngest(req: Request, res: Response): Promise<void> {
+    try {
+      // Validate request body with Zod
+      const validatedInput = publicTriggerSchema.parse(req.body);
+
+      console.log('🔄 [IngestController] Public trigger activated');
+      console.log(`   IP: ${req.ip}`);
+      console.log(`   Categories: ${validatedInput.categories?.join(', ') || 'ALL'}`);
+
+      // Execute global ingestion (categories parameter currently ignored - always ingests all)
+      // TODO: Support selective category ingestion if needed
+      const result = await this.ingestNewsUseCase.ingestAll();
+
+      // Calculate totals
+      const totalNew = Object.values(result.results).reduce(
+        (sum, r) => sum + r.newArticles,
+        0
+      );
+
+      res.status(200).json({
+        success: true,
+        message: 'Ingestion triggered successfully',
+        data: {
+          totalNewArticles: totalNew,
+          categoriesProcessed: result.processed,
+        },
       });
     } catch (error) {
       this.handleError(error, res);

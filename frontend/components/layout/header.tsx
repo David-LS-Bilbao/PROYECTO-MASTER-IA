@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { Newspaper } from 'lucide-react';
 import { SearchBar } from '@/components/search-bar';
+import { RefreshSourcesButton } from '@/components/ui/refresh-sources-button';
 
 /**
  * Header Component - Google News Style
@@ -41,8 +42,14 @@ export function Header() {
           />
         </div>
 
-        {/* Spacer for balance (optional) */}
-        <div className="w-6 shrink-0 hidden sm:block" />
+        {/* Refresh Sources Button (Sprint 35) */}
+        <div className="ml-4 shrink-0">
+          <RefreshSourcesButton
+            variant="outline"
+            size="icon"
+            className="hidden sm:flex"
+          />
+        </div>
       </div>
     </header>
   );

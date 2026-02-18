@@ -60,8 +60,8 @@ export function Sidebar({
   const currentTopic = searchParams.get('topic') || 'general';
   const globalRefresh = useGlobalRefresh();
   const queryClient = useQueryClient();
-  const cronSecret = process.env.NEXT_PUBLIC_CRON_SECRET;
-  const canGlobalRefresh = !!cronSecret;
+  // Sprint 35: Public endpoint, no CRON_SECRET needed
+  const canGlobalRefresh = true; // Rate-limited in backend (1 req/5min)
   const canRefreshCurrentTopic = currentTopic === 'local' ? !!user : canGlobalRefresh;
 
   // Sprint 28: Save detected location to backend and navigate to local news
@@ -82,14 +82,6 @@ export function Sidebar({
   // Handler para actualización global de TODAS las categorías
   const handleGlobalRefresh = async () => {
     if (isRefreshing) return; // Prevenir múltiples clicks
-
-    if (currentTopic !== 'local' && !cronSecret) {
-      toast.error('Actualización global deshabilitada', {
-        description: 'Configura NEXT_PUBLIC_CRON_SECRET para habilitar esta acción.',
-        duration: 5000,
-      });
-      return;
-    }
 
     setIsRefreshing(true);
 
