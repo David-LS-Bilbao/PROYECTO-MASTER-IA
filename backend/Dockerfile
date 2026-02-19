@@ -75,4 +75,9 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
 # - aplica migraciones pendientes en la BD de produccion
 # - arranca API solo si migrate deploy fue exitoso
 # IMPORTANTE: usar binario local de Prisma (evita que npx descargue en runtime = menos memoria)
-CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && node dist/index.js"]
+#
+# NEON POOLER FIX: prisma migrate deploy necesita conexion directa (sin PgBouncer) porque
+# usa pg_advisory_lock de nivel sesion. PgBouncer en modo transaccion no soporta locks
+# de sesion → P1002 timeout. Se sobreescribe DATABASE_URL con DIRECT_URL solo para
+# el comando migrate (prefix assignment: no afecta a node dist/index.js).
+CMD ["sh", "-c", "DATABASE_URL=${DIRECT_URL:-$DATABASE_URL} ./node_modules/.bin/prisma migrate deploy && node dist/index.js"]
