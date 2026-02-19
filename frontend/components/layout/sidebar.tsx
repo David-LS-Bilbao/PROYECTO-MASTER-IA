@@ -136,13 +136,25 @@ export function Sidebar({
         }
 
         if (refresh?.ingest) {
-          toast.success('Noticias locales actualizadas', {
-            description:
-              refresh.ingest.newArticles > 0
-                ? `${refresh.ingest.newArticles} noticias nuevas encontradas en RSS.`
-                : 'No hay noticias nuevas en RSS en este momento.',
-            duration: 5000,
-          });
+          if (refresh.ingest.newArticles > 0) {
+            toast.success('Noticias locales actualizadas', {
+              description: `${refresh.ingest.newArticles} noticias nuevas encontradas en RSS.`,
+              duration: 5000,
+            });
+          } else {
+            // Sprint 37.3: When city has 0 new articles, province ingestion may still be
+            // running in background. Schedule a delayed refetch (20s) to pick up results.
+            toast.info('Buscando noticias en la provincia...', {
+              description: 'No hay noticias nuevas sobre tu ciudad. Ampliando búsqueda a la provincia.',
+              duration: 8000,
+            });
+            setTimeout(() => {
+              queryClient.invalidateQueries({
+                queryKey: ['news-infinite', 'local', 20, localQueryUserKey],
+                refetchType: 'active',
+              });
+            }, 20000);
+          }
         } else {
           toast.success('Noticias locales actualizadas', {
             description: 'Recarga completada.',

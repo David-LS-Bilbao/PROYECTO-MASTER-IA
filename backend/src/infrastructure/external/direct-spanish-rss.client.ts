@@ -307,8 +307,12 @@ export class DirectSpanishRssClient implements INewsAPIClient {
       const pageSize = params.pageSize || 20;
 
       // Calculate how many articles to take per source for balanced distribution
-      // This ensures we get content from multiple sources, not just the most frequently updated one
-      const articlesPerSource = Math.max(2, Math.ceil(pageSize / feedUrls.length));
+      // Sprint 38: Minimum raised from 2 → 15 to avoid missing fresh articles.
+      // Section-specific feeds (espana, salud, entretenimiento) publish at ~5-10 articles/day.
+      // With only 7 articles/source (old value for pageSize=50, 8 feeds), those 7 could all be
+      // >15 hours old and already in the DB, yielding newArticles=0 despite fresh content existing
+      // deeper in the feed. 15 per source gives a larger candidate pool before the global sort.
+      const articlesPerSource = Math.max(15, Math.ceil(pageSize / feedUrls.length));
 
       feedResults.forEach((result: PromiseSettledResult<NewsAPIArticle[]>, index: number) => {
         const source = getSourceFromUrl(feedUrls[index]);

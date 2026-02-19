@@ -21,9 +21,10 @@ import { PrismaClient } from '@prisma/client';
 import { LocalSourceDiscoveryService } from '../services/local-source-discovery.service';
 
 // OPTIMIZATION: Limit items per ingestion to avoid flooding the database
-// Sprint 37: Increased from 30 to 60 for better multi-source coverage
-// With 8-10 RSS feeds per category and pageSize=50, this allows ~5-7 articles/source
-const MAX_ITEMS_PER_SOURCE = 60;
+// Sprint 38: Increased from 60 to 120 to match new articlesPerSource=15 minimum.
+// With 8-10 RSS feeds and 15 articles/source: 15*10=150 candidates → top 120 UPSERTed.
+// This ensures fresh articles surface even in slow-publishing section feeds (espana, salud).
+const MAX_ITEMS_PER_SOURCE = 120;
 
 // Valid categories (Spanish) - Sprint 22: Extended with new topics
 const VALID_CATEGORIES = [
