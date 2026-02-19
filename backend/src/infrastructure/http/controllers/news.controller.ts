@@ -51,7 +51,8 @@ const LOCAL_INGEST_TTL =
   Number.isFinite(parsedLocalIngestTtlMinutes) && parsedLocalIngestTtlMinutes > 0
     ? parsedLocalIngestTtlMinutes * 60 * 1000
     : DEFAULT_LOCAL_INGEST_TTL_MINUTES * 60 * 1000;
-const DEFAULT_LOCAL_INGEST_TIMEOUT_MS = 6000;
+// Sprint 37: increased from 6000 → 12000 (Google News RSS can take 8-10s on cold start)
+const DEFAULT_LOCAL_INGEST_TIMEOUT_MS = 12000;
 const parsedLocalIngestTimeoutMs = Number(
   process.env.LOCAL_INGEST_TIMEOUT_MS ?? DEFAULT_LOCAL_INGEST_TIMEOUT_MS
 );
@@ -59,7 +60,7 @@ const LOCAL_INGEST_TIMEOUT_MS =
   Number.isFinite(parsedLocalIngestTimeoutMs) && parsedLocalIngestTimeoutMs > 0
     ? parsedLocalIngestTimeoutMs
     : DEFAULT_LOCAL_INGEST_TIMEOUT_MS;
-const DEFAULT_LOCAL_FORCE_REFRESH_TIMEOUT_MS = 15000;
+const DEFAULT_LOCAL_FORCE_REFRESH_TIMEOUT_MS = 20000;
 const parsedLocalForceRefreshTimeoutMs = Number(
   process.env.LOCAL_FORCE_REFRESH_TIMEOUT_MS ?? DEFAULT_LOCAL_FORCE_REFRESH_TIMEOUT_MS
 );
@@ -320,7 +321,7 @@ export class NewsController {
             category: 'local',
             topicSlug: 'local',
             query: ingestQuery,
-            pageSize: 20,
+            pageSize: 40, // Sprint 37: increased from 20 → 40 for better local coverage
             language: 'es',
           })
             .then((result) => ({ kind: 'completed' as const, result }))

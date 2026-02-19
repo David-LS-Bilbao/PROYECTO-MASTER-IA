@@ -21,8 +21,9 @@ import { PrismaClient } from '@prisma/client';
 import { LocalSourceDiscoveryService } from '../services/local-source-discovery.service';
 
 // OPTIMIZATION: Limit items per ingestion to avoid flooding the database
-// Increased from 5 to 30 to allow better coverage for dynamic categories like sports
-const MAX_ITEMS_PER_SOURCE = 30;
+// Sprint 37: Increased from 30 to 60 for better multi-source coverage
+// With 8-10 RSS feeds per category and pageSize=50, this allows ~5-7 articles/source
+const MAX_ITEMS_PER_SOURCE = 60;
 
 // Valid categories (Spanish) - Sprint 22: Extended with new topics
 const VALID_CATEGORIES = [
@@ -517,7 +518,7 @@ export class IngestNewsUseCase {
             category,
             topicSlug: category, // Use category as topicSlug
             language: 'es',
-            pageSize: 20,
+            pageSize: 50, // Sprint 37: increased from 20 → 50 for better source coverage
           });
 
           results[category] = result;

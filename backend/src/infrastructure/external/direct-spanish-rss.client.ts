@@ -113,6 +113,41 @@ const RSS_SOURCES: Record<string, string[]> = {
     'https://www.abc.es/rss/2.0/cultura/',
     'https://e00-elmundo.uecdn.es/elmundo/rss/cultura.xml',
   ],
+
+  // 9. SALUD (Sprint 37 - feeds dedicados)
+  salud: [
+    'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/salud',
+    'https://www.20minutos.es/rss/salud/',
+    'https://www.abc.es/rss/2.0/salud/',
+    'https://www.lavanguardia.com/rss/salud.xml',
+    'https://www.elespanol.com/rss/ciencia/salud',
+    'https://www.elmundo.es/ciencia-y-salud/salud.html?formato=RSS',
+    'https://www.consumer.es/rss.xml',
+    'https://www.webconsultas.com/rss.xml',
+  ],
+
+  // 10. ESPAÑA - Noticias nacionales (Sprint 37 - feeds dedicados)
+  espana: [
+    'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/espana/portada',
+    'https://e00-elmundo.uecdn.es/elmundo/rss/espana.xml',
+    'https://www.abc.es/rss/2.0/espana/',
+    'https://www.lavanguardia.com/rss/politica.xml',
+    'https://rss.elconfidencial.com/espana/',
+    'https://www.eldiario.es/rss/',
+    'https://www.20minutos.es/rss/nacional/',
+    'https://www.europapress.es/rss/rss.aspx?ch=00069',
+  ],
+
+  // 11. ENTRETENIMIENTO (Sprint 37 - feeds dedicados, más allá de cultura)
+  entretenimiento: [
+    'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/television',
+    'https://www.20minutos.es/rss/television/',
+    'https://www.abc.es/rss/2.0/play/',
+    'https://e00-elmundo.uecdn.es/elmundo/rss/television.xml',
+    'https://www.elespanol.com/rss/corazon',
+    'https://www.formulatv.com/rss/',
+    'https://www.vanitatis.elconfidencial.com/rss/',
+  ],
 };
 
 /**
@@ -190,6 +225,14 @@ function getSourceFromUrl(url: string): { name: string; id: string } {
   if (url.includes('theobjective.com')) return { name: 'The Objective', id: 'theobjective' };
   if (url.includes('moncloa.com')) return { name: 'Moncloa.com', id: 'moncloa' };
   if (url.includes('elplural.com')) return { name: 'El Plural', id: 'elplural' };
+
+  // Salud
+  if (url.includes('consumer.es')) return { name: 'Consumer', id: 'consumer' };
+  if (url.includes('webconsultas.com')) return { name: 'WebConsultas', id: 'webconsultas' };
+
+  // Entretenimiento
+  if (url.includes('formulatv.com')) return { name: 'FormulaTV', id: 'formulatv' };
+  if (url.includes('vanitatis')) return { name: 'Vanitatis', id: 'vanitatis' };
 
   return { name: 'Unknown', id: 'unknown' };
 }
@@ -347,18 +390,16 @@ export class DirectSpanishRssClient implements INewsAPIClient {
     // Direct category match
     if (RSS_SOURCES[normalized]) return normalized;
 
-    // Aliases
-    if (normalized === 'entretenimiento' || normalized === 'entertainment') {
-      return 'cultura';
-    }
-
-    // Keyword mapping
+    // Keyword mapping - Sprint 37: added espana, salud, entretenimiento as first-class categories
     const categoryMap: Record<string, string[]> = {
+      espana: ['españa', 'espana', 'nacional', 'spain'],
+      salud: ['salud', 'medicina', 'hospital', 'enfermedad', 'sanitario', 'health'],
+      entretenimiento: ['entretenimiento', 'entertainment', 'televisión', 'television', 'famosos', 'celebrities', 'corazon'],
       deportes: ['deporte', 'futbol', 'fútbol', 'liga', 'baloncesto', 'tenis', 'f1'],
       economia: ['economía', 'dinero', 'bolsa', 'mercados', 'finanzas', 'empresas'],
       politica: ['política', 'gobierno', 'congreso', 'elecciones', 'partidos'],
       tecnologia: ['tecnología', 'tech', 'ia', 'inteligencia artificial', 'apps', 'móvil'],
-      ciencia: ['ciencia', 'salud', 'medicina', 'investigación', 'espacio', 'clima'],
+      ciencia: ['ciencia', 'investigación', 'espacio', 'clima', 'descubrimiento'],
       cultura: ['cultura', 'cine', 'música', 'arte', 'libros', 'teatro', 'series', 'videojuegos', 'espectáculos', 'espectaculos'],
       internacional: ['internacional', 'mundo', 'global', 'europa', 'eeuu', 'asia'],
     };

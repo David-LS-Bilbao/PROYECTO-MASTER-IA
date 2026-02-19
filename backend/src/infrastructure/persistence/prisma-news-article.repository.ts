@@ -870,7 +870,8 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
     userId?: string
   ): Promise<{ articles: NewsArticle[]; scopeUsed: 'city' | 'province' | 'region' | 'general' }> {
     try {
-      const MIN_RESULTS = 8;
+      // Sprint 37: lowered from 8 → 5 to be more permissive with smaller cities
+      const MIN_RESULTS = 5;
       const bufferSize = Math.max((offset + limit) * 3, 60);
 
       console.log(`[Repository.searchLocalArticles] 📍 Location:`, location);

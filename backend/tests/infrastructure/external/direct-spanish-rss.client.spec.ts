@@ -22,10 +22,16 @@ describe('DirectSpanishRssClient', () => {
 
     expect(resolveCategory()).toBe('general');
     expect(resolveCategory('deportes')).toBe('deportes');
-    expect(resolveCategory('entretenimiento')).toBe('cultura');
-    expect(resolveCategory('entertainment')).toBe('cultura');
+    // Sprint 37: entretenimiento now has dedicated feeds (returns 'entretenimiento', not 'cultura')
+    expect(resolveCategory('entretenimiento')).toBe('entretenimiento');
+    expect(resolveCategory('entertainment')).toBe('entretenimiento');
     expect(resolveCategory('futbol y liga')).toBe('deportes');
     expect(resolveCategory('tema-desconocido')).toBe('general');
+    // Sprint 37: new dedicated categories
+    expect(resolveCategory('salud')).toBe('salud');
+    expect(resolveCategory('medicina')).toBe('salud');
+    expect(resolveCategory('espana')).toBe('espana');
+    expect(resolveCategory('españa')).toBe('espana');
   });
 
   it('cleanDescription elimina HTML, decodifica entidades y trunca', () => {
@@ -151,6 +157,10 @@ describe('DirectSpanishRssClient', () => {
     await client.fetchTopHeadlines({ category: 'politica', pageSize: 3 });
     await client.fetchTopHeadlines({ category: 'internacional', pageSize: 3 });
     await client.fetchTopHeadlines({ category: 'cultura', pageSize: 3 });
+    // Sprint 37: new dedicated categories
+    await client.fetchTopHeadlines({ category: 'salud', pageSize: 3 });
+    await client.fetchTopHeadlines({ category: 'espana', pageSize: 3 });
+    await client.fetchTopHeadlines({ category: 'entretenimiento', pageSize: 3 });
 
     expect(fetchSingleFeed).toHaveBeenCalled();
   });
