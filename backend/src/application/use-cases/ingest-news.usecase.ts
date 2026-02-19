@@ -141,26 +141,40 @@ export class IngestNewsUseCase {
       let allArticles: NewsAPIArticle[] = [];
 
       if (isLocalCategory && request.query) {
+        // Extract primary city name from compound query (e.g., "Mostoles Madrid" → "Mostoles")
+        // This avoids sending "Mostoles Madrid" to Gemini which is not a valid city name
+        const primaryCity = request.query.split(' ')[0];
+
         // STEP 1: Discover local sources (if not already in DB)
         if (this.localSourceDiscoveryService) {
           try {
-            console.log(`[IngestNewsUseCase] 🔍 Discovering local sources for "${request.query}"...`);
-            await this.localSourceDiscoveryService.discoverAndSave(request.query);
+            console.log(`[IngestNewsUseCase] 🔍 Discovering local sources for "${primaryCity}" (query: "${request.query}")...`);
+            await this.localSourceDiscoveryService.discoverAndSave(primaryCity);
           } catch (error) {
-            console.error(`[IngestNewsUseCase] ⚠️ Source discovery failed for "${request.query}":`, error);
+            console.error(`[IngestNewsUseCase] ⚠️ Source discovery failed for "${primaryCity}":`, error);
             // Continue with ingestion even if discovery fails
           }
         }
 
-        // STEP 2: Fetch discovered sources from DB
-        const localSources = await this.prisma.source.findMany({
+        // STEP 2: Fetch discovered sources from DB (try primary city, then full query)
+        let localSources = await this.prisma.source.findMany({
           where: {
-            location: request.query,
+            location: primaryCity,
             isActive: true,
           },
         });
 
-        console.log(`[IngestNewsUseCase] 📰 Found ${localSources.length} local sources for "${request.query}"`);
+        // Fallback: also search by full query in case sources were saved with full query
+        if (localSources.length === 0 && primaryCity !== request.query) {
+          localSources = await this.prisma.source.findMany({
+            where: {
+              location: request.query,
+              isActive: true,
+            },
+          });
+        }
+
+        console.log(`[IngestNewsUseCase] 📰 Found ${localSources.length} local sources for "${primaryCity}"`);
 
         // STEP 3: Multi-source RSS ingestion (fetch from each discovered source)
         if (localSources.length > 0) {

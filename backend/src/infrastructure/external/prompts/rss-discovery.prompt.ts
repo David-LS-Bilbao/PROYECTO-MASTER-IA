@@ -40,13 +40,14 @@ REGLA CONFIANZA DE FORMATO:
  * @returns Prompt estructurado para extracción de fuentes locales
  */
 export function buildLocationSourcesPrompt(city: string): string {
-  return `TAREA: Identifica los 5 medios de noticias digitales MÁS IMPORTANTES y FIABLES específicos para "${city}" (España).
+  return `TAREA: Identifica los 5 medios de noticias digitales MÁS IMPORTANTES que cubran noticias de "${city}" (España).
 
-CRITERIOS DE SELECCIÓN:
-1. Medios con sede física o redacción en ${city} o su área metropolitana
-2. Cobertura principal: noticias locales de ${city}
-3. Priorizar: periódicos digitales consolidados > radios digitales > TV locales > portales independientes
-4. Excluir: medios nacionales (El País, ABC, etc.) salvo ediciones locales específicas
+CRITERIOS DE SELECCIÓN (en orden de prioridad):
+1. Medios estrictamente locales con sede o redacción en ${city} o su municipio
+2. Si no existen suficientes medios locales: periódicos provinciales/regionales que cubran ${city}
+3. Si ${city} es una localidad pequeña o municipio de una gran ciudad: incluir los medios de la capital de provincia o comunidad autónoma que habitualmente cubren esa zona
+4. Priorizar: periódicos digitales consolidados > radios digitales > TV locales > portales independientes
+5. Permitir ediciones locales de medios regionales si tienen cobertura específica de ${city}
 
 FORMATO DE SALIDA (JSON estricto):
 [
@@ -64,25 +65,18 @@ INSTRUCCIONES PARA CADA CAMPO:
   - Formato: https://www.[dominio].com
   - NO inventes subdominios (solo el principal)
   - Ejemplos válidos: "https://www.levante-emv.com", "https://www.eldiario.es"
-- "media_group": Grupo editorial al que pertenece (si lo conoces)
-  - Ejemplos: "Vocento", "Prensa Ibérica", "Prisa", "Godó", "Henneo", "Independent"
-  - Si no pertenece a un grupo conocido: "Independent"
-  - Si no estás seguro: "Unknown"
-- "reliability": Nivel de confiabilidad del medio
-  - "high": Periódicos consolidados (>10 años), grupo editorial reconocido
-  - "medium": Medios regionales con presencia digital (5-10 años)
-  - "low": Portales locales pequeños, blogs comunitarios
+- "media_group": Grupo editorial al que pertenece (si lo conoces), o "Independent" / "Unknown"
+- "reliability": "high" (>10 años, grupo conocido) | "medium" (5-10 años) | "low" (portal local pequeño)
 
 REGLAS ESTRICTAS:
 1. NO predecir URLs RSS - SOLO proporcionar el dominio principal
 2. NO inventar dominios - si no conoces el dominio exacto, OMITE ese medio
 3. Los dominios deben ser reales y verificables
-4. Priorizar medios con grupo editorial conocido (mayor credibilidad)
 
 IMPORTANTE:
 - Devolver SOLO el array JSON, SIN markdown (\`\`\`json), SIN explicaciones
-- Máximo 5 fuentes
-- Si no existen 5 medios fiables para ${city}, devuelve menos (mínimo 2)
-- Si no conoces ningún medio local fiable, devuelve array vacío: []`;
+- Máximo 5 fuentes, mínimo 1
+- Si ${city} es un municipio pequeño, prioriza los medios de la provincia/comunidad que lo cubran
+- NUNCA devolver array vacío [] si existen medios provinciales/regionales que cubran la zona`;
 }
 

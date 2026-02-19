@@ -90,19 +90,24 @@ export class DiscoverLocalSourcesUseCase {
   private buildDiscoveryPrompt(location: string, limit: number): string {
     return `Actúa como un experto en medios de comunicación españoles.
 
-Tarea: Listar periódicos LOCALES/REGIONALES de "${location}" (España) con sus feeds RSS públicos.
+Tarea: Listar medios de comunicación que cubren noticias de "${location}" (España), incluyendo sus feeds RSS.
 
-Requisitos CRÍTICOS:
-1. Solo periódicos LOCALES/REGIONALES (NO nacionales como El País, El Mundo, ABC, La Razón...)
-2. Solo incluir si el feed RSS está VERIFICADO y público
-3. Máximo ${limit} periódicos
-4. Priorizar periódicos activos y relevantes
+Prioridad de fuentes (en orden):
+1. Periódicos estrictamente locales/municipales de ${location}
+2. Periódicos provinciales/regionales que cubren ${location}
+3. Ediciones regionales de medios nacionales con cobertura de ${location}
+
+Requisitos:
+- Máximo ${limit} fuentes
+- Ordenar de más local a más regional
+- Si ${location} es una ciudad pequeña, incluir los periódicos de la provincia/comunidad autónoma que la cubren
+- Las URLs de RSS deben ser rutas habituales (ej: /feed, /rss, /rss.xml, /rss/portada)
 
 Formato JSON (OBLIGATORIO):
 {
   "sources": [
     {
-      "name": "Nombre exacto del periódico",
+      "name": "Nombre exacto del medio",
       "url": "https://sitio-web-oficial.com",
       "rssUrl": "https://sitio-web-oficial.com/rss/feed.xml",
       "region": "${location}",
@@ -112,9 +117,10 @@ Formato JSON (OBLIGATORIO):
 }
 
 IMPORTANTE:
-- NO incluyas periódicos nacionales
-- NO inventes URLs de RSS si no las conoces verificadas
-- Si no conoces suficientes fuentes verificadas, devuelve menos de ${limit}`;
+- No inventes URLs de RSS si no las conoces; usa las rutas más probables (/feed, /rss, /rss.xml)
+- Incluye medios aunque no sean estrictamente municipales si cubren la zona
+- Si no encuentras fuentes para la ciudad, devuelve fuentes de la provincia/comunidad que la cubren
+- Marca verified:true solo si conoces el feed, verified:false si es una estimación razonable`;
   }
 
   private parseGeminiResponse(
@@ -133,15 +139,17 @@ IMPORTANTE:
         return [];
       }
 
-      // Validate and filter sources
+      // Validate and filter sources (allow verified:false too - URLs can still be tested)
       return parsed.sources
         .filter((src: any) => {
           return (
             src &&
             typeof src.name === 'string' &&
+            src.name.length > 0 &&
             typeof src.url === 'string' &&
+            src.url.startsWith('http') &&
             typeof src.rssUrl === 'string' &&
-            src.verified === true
+            src.rssUrl.startsWith('http')
           );
         })
         .map((src: any) => ({

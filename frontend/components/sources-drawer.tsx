@@ -77,8 +77,16 @@ const REGION_TO_SOURCES: Record<string, string[]> = {
   'Cataluña': ['diaridebarcelona', 'elperiodico', 'regio7', 'diaritarragona'],
   'Catalunya': ['diaridebarcelona', 'elperiodico', 'regio7', 'diaritarragona'],
 
-  // Madrid
-  'Madrid': ['telemadrid', 'madriddiario', 'somosmadrid'],
+  // Madrid - Comunidad de Madrid (ampliado con fuentes regionales)
+  'Madrid': ['telemadrid', 'madriddiario', 'somosmadrid', 'comunidad_madrid_news', 'el_espanol_madrid', 'abc_madrid'],
+  'Mostoles': ['telemadrid', 'madriddiario', 'somosmadrid', 'comunidad_madrid_news', 'el_espanol_madrid'],
+  'Móstoles': ['telemadrid', 'madriddiario', 'somosmadrid', 'comunidad_madrid_news', 'el_espanol_madrid'],
+  'Alcalá de Henares': ['telemadrid', 'comunidad_madrid_news', 'el_espanol_madrid'],
+  'Leganés': ['telemadrid', 'madriddiario', 'comunidad_madrid_news'],
+  'Fuenlabrada': ['telemadrid', 'madriddiario', 'comunidad_madrid_news'],
+  'Alcorcón': ['telemadrid', 'madriddiario', 'comunidad_madrid_news'],
+  'Getafe': ['telemadrid', 'madriddiario', 'comunidad_madrid_news'],
+  'Comunidad de Madrid': ['telemadrid', 'madriddiario', 'somosmadrid', 'comunidad_madrid_news', 'el_espanol_madrid', 'abc_madrid'],
 
   // Andalucía
   'Málaga': ['diariosur'],
@@ -250,10 +258,13 @@ const DEFAULT_SOURCES: RssSource[] = [
   { id: 'regio7', name: 'Regió7 (Barcelona)', url: 'https://www.regio7.cat/rss/', active: false, category: 'Local', region: 'Cataluña' },
   { id: 'diaritarragona', name: 'Diari de Tarragona', url: 'https://www.diaridetarragona.com/rss/', active: false, category: 'Local', region: 'Cataluña' },
 
-  // Madrid (3 fuentes)
-  { id: 'telemadrid', name: 'Telemadrid', url: 'https://www.telemadrid.es/rss/', active: false, category: 'Local', region: 'Madrid' },
-  { id: 'madriddiario', name: 'Madrid Diario', url: 'https://www.madriddiario.es/rss', active: false, category: 'Local', region: 'Madrid' },
-  { id: 'somosmadrid', name: 'Somos Madrid', url: 'https://www.somosmalasana.com/feed/', active: false, category: 'Local', region: 'Madrid' },
+  // Madrid - Comunidad de Madrid (6 fuentes)
+  { id: 'telemadrid', name: 'Telemadrid', url: 'https://www.telemadrid.es/rss/', active: true, category: 'Local', region: 'Madrid' },
+  { id: 'madriddiario', name: 'Madrid Diario', url: 'https://www.madriddiario.es/rss', active: true, category: 'Local', region: 'Madrid' },
+  { id: 'somosmadrid', name: 'Somos Madrid', url: 'https://www.somosmalasana.com/feed/', active: true, category: 'Local', region: 'Madrid' },
+  { id: 'comunidad_madrid_news', name: 'Comunidad de Madrid (Noticias)', url: 'https://www.comunidad.madrid/rss-noticias', active: true, category: 'Local', region: 'Madrid' },
+  { id: 'el_espanol_madrid', name: 'El Español - Madrid', url: 'https://www.elespanol.com/rss/madrid', active: true, category: 'Local', region: 'Madrid' },
+  { id: 'abc_madrid', name: 'ABC Madrid', url: 'https://www.abc.es/rss/2.0/madrid/', active: false, category: 'Local', region: 'Madrid' },
 
   // Andalucía (5 fuentes)
   { id: 'diariosur', name: 'Diario Sur (Málaga)', url: 'https://www.diariosur.es/rss/2.0/?section=portada', active: false, category: 'Local', region: 'Andalucía' },
@@ -524,16 +535,33 @@ export function SourcesDrawer({ isOpen, onOpenChange }: SourcesDrawerProps) {
     setSelectedDiscovered(new Set());
 
     try {
-      const location = profile.location.split(',')[0].trim(); // "Madrid, España" -> "Madrid"
-      console.log(`[SourcesDrawer] 🔍 Discovering local sources for "${location}"`);
+      const locationParts = profile.location.split(',').map(p => p.trim());
+      const city = locationParts[0]; // "Mostoles, Madrid" -> "Mostoles"
+      const province = locationParts[1]; // "Mostoles, Madrid" -> "Madrid"
 
-      const discovered = await discoverLocalSources(location, 10);
+      console.log(`[SourcesDrawer] 🔍 Discovering local sources for "${city}" (province: "${province ?? 'none'}")`);
+
+      // Buscar primero por ciudad específica
+      let discovered = await discoverLocalSources(city, 10);
+
+      // Si la ciudad devuelve pocos resultados (<3) y hay provincia, intentar por provincia
+      if (discovered.length < 3 && province) {
+        console.log(`[SourcesDrawer] ⚠️ Few results for "${city}" (${discovered.length}), falling back to province: "${province}"`);
+        const provinceResults = await discoverLocalSources(province, 10);
+
+        // Combinar resultados, evitando duplicados por nombre
+        const existingNames = new Set(discovered.map(d => d.name.toLowerCase()));
+        const uniqueProvince = provinceResults.filter(d => !existingNames.has(d.name.toLowerCase()));
+        discovered = [...discovered, ...uniqueProvince];
+
+        console.log(`[SourcesDrawer] ✅ Combined: ${discovered.length} sources (city + province)`);
+      }
 
       console.log(`[SourcesDrawer] ✅ Found ${discovered.length} sources`);
       setDiscoveredSources(discovered);
 
       if (discovered.length === 0) {
-        alert(`No se encontraron fuentes locales para ${location}. Intenta con el buscador manual.`);
+        alert(`No se encontraron fuentes locales para ${city}${province ? ` ni para ${province}` : ''}. Intenta con el buscador manual.`);
       }
     } catch (error) {
       console.error('[SourcesDrawer] Error discovering local sources:', error);
