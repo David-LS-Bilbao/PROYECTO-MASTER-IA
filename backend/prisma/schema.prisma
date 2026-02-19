@@ -8,11 +8,6 @@ generator client {
 
 datasource db {
   provider   = "postgresql"
-  // url is overridden at runtime by prisma.config.ts (DATABASE_URL → pooler)
-  // directUrl is used by prisma migrate deploy to bypass PgBouncer advisory lock issue (P1002)
-  // In Render: set DIRECT_URL = DATABASE_URL value with "-pooler" removed from hostname
-  url        = env("DATABASE_URL")
-  directUrl  = env("DIRECT_URL")
   extensions = [vector]
 }
 
