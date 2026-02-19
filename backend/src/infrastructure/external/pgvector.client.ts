@@ -47,7 +47,7 @@ export class PgVectorClient implements IVectorClient {
       `;
       const count = Number(countResult[0]?.count || 0);
 
-      console.log(`[PgVectorClient] pgvector extension ready. Articles with embeddings: ${count}`);
+      console.info(`[PgVectorClient] pgvector extension ready. Articles with embeddings: ${count}`);
       return true;
     } catch (error) {
       const err = error as Error;
@@ -97,7 +97,7 @@ export class PgVectorClient implements IVectorClient {
         WHERE id = ${id}
       `;
 
-      console.log(`[PgVectorClient] Embedding updated for article: ${id.substring(0, 8)}...`);
+      console.info(`[PgVectorClient] Embedding updated for article: ${id.substring(0, 8)}...`);
     } catch (error) {
       const err = error as Error;
       console.error(`[PgVectorClient] Error upserting embedding: ${err.message}`);
@@ -143,25 +143,25 @@ export class PgVectorClient implements IVectorClient {
       `;
 
       // Detailed logging for TFM technical report
-      console.log(`\n📊 [VECTOR SEARCH RESULTS - querySimilar]`);
-      console.log(`   topK solicitado: ${limit}`);
-      console.log(`   Resultados encontrados: ${results.length}`);
+      console.info(`\n📊 [VECTOR SEARCH RESULTS - querySimilar]`);
+      console.info(`   topK solicitado: ${limit}`);
+      console.info(`   Resultados encontrados: ${results.length}`);
 
       if (results.length > 0) {
-        console.log(`\n   📄 Documentos detallados:`);
+        console.info(`\n   📄 Documentos detallados:`);
         results.forEach((result, index) => {
           const score = 1 - result.distance; // Cosine similarity score
-          console.log(`\n   [Doc ${index + 1}]`);
-          console.log(`     - docId: ${result.id}`);
-          console.log(`     - score (similarity): ${score.toFixed(4)}`);
-          console.log(`     - distance (cosine): ${result.distance.toFixed(4)}`);
-          console.log(`     - source: ${result.source}`);
-          console.log(`     - category: ${result.category}`);
-          console.log(`     - publishedAt: ${result.publishedAt.toISOString()}`);
-          console.log(`     - title: ${result.title.substring(0, 80)}...`);
+          console.info(`\n   [Doc ${index + 1}]`);
+          console.info(`     - docId: ${result.id}`);
+          console.info(`     - score (similarity): ${score.toFixed(4)}`);
+          console.info(`     - distance (cosine): ${result.distance.toFixed(4)}`);
+          console.info(`     - source: ${result.source}`);
+          console.info(`     - category: ${result.category}`);
+          console.info(`     - publishedAt: ${result.publishedAt.toISOString()}`);
+          console.info(`     - title: ${result.title.substring(0, 80)}...`);
         });
       }
-      console.log(`\n`);
+      console.info(`\n`);
 
       const ids = results.map(r => r.id);
       return ids;
@@ -224,7 +224,7 @@ export class PgVectorClient implements IVectorClient {
         distance: row.distance,
       }));
 
-      console.log(`[PgVectorClient] RAG Query - Found ${queryResults.length} articles with content`);
+      console.info(`[PgVectorClient] RAG Query - Found ${queryResults.length} articles with content`);
 
       return queryResults;
     } catch (error) {

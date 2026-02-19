@@ -23,7 +23,8 @@
 7. [Arquitectura](#arquitectura-del-proyecto)
 8. [Testing](#testing)
 9. [Deployment](#deployment)
-10. [Documentación Técnica](#documentación-técnica)
+10. [DevOps & Infrastructure](#devops--infrastructure)
+11. [Documentación Técnica](#documentación-técnica)
 
 ---
 
@@ -1167,21 +1168,17 @@ NEXT_PUBLIC_ADSENSE_CLIENT_ID=ca-pub-...
 ### Backend (Render)
 
 - **URL**: https://verity-news-api.onrender.com
-- **Plataforma**: Render (Web Service)
-- **Build**: Automático en cada push a `main`
+- **Plataforma**: Render (Web Service - plan Starter, 512MB RAM)
+- **Build**: Automático en cada push a `main` vía Docker
 - **Region**: Frankfurt (EU)
 
-**Configuración**:
-```bash
-# Build command
-npm install && npm run build
+**Optimizaciones de arranque (Sprint 36)**:
 
-# Start command
-npm start
-
-# Health check
-/api/health/check
-```
+| Optimización | Motivo |
+|---|---|
+| `NODE_OPTIONS=--max-old-space-size=350` | Evita OOM kill (exit 134) en cold start limitando el heap de Node.js a 350MB |
+| `./node_modules/.bin/prisma migrate deploy` | Evita que `npx` descargue y ejecute Prisma CLI en cada arranque (~50-80MB menos) |
+| `start-period=90s` en healthcheck | El cold start (Docker pull + migrate + Firebase init) puede tardar hasta 80s |
 
 **Variables de entorno** (configuradas en Render Dashboard):
 - `DATABASE_URL`: Connection string de Neon PostgreSQL
@@ -1229,6 +1226,34 @@ jobs:
 **Uptime Monitoring**:
 - Health checks cada 5 minutos
 - Alertas si downtime > 2 minutos
+
+---
+
+## 🚀 DevOps & Infrastructure
+
+Verity-News is deployed on a Linux VPS using Docker-based containerization.
+
+### Stack
+
+- VPS (IONOS)
+- Docker & Docker Compose
+- Nginx Reverse Proxy + HTTPS
+- PostgreSQL
+- ChromaDB (Vector Store)
+- Sentry Monitoring
+
+### CI/CD
+
+- GitHub repository
+- Automated tests before deployment
+- Production build reproducibility
+- Environment-based configuration
+
+### Scalability
+
+- Vertical scaling via VPS upgrade
+- Horizontal scaling via service separation
+- Future Kubernetes-ready architecture
 
 ---
 
@@ -1475,16 +1500,18 @@ Para reportar bugs o sugerir features:
 
 ---
 
-**🚀 Proyecto completado - Sprint 30**
+**🚀 Proyecto en producción - Sprint 36**
 
 **Estado**: En producción y funcional
-**Última actualización**: 12 de febrero de 2026
-**Líneas de código**: ~31,500 (sin dependencias)
+**Última actualización**: 19 de febrero de 2026
+**Líneas de código**: ~32,000 (sin dependencias)
 **Tests**: 328 (95% coverage)
-**Tiempo de desarrollo**: 6 semanas
-**Commits**: 530+
+**Tiempo de desarrollo**: 7 semanas
+**Commits**: 540+
 
 ---
+
+
 
 *Desarrollado con ❤️ y ☕ como Trabajo Final de Máster*
 

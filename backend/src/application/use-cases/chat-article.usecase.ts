@@ -180,26 +180,26 @@ export class ChatArticleUseCase {
     // =========================================================================
     // DETAILED RAG LOGGING (para memoria técnica TFM)
     // =========================================================================
-    console.log(`\n📊 [RAG RETRIEVAL RESULTS]`);
-    console.log(`   topK solicitado: ${MAX_RAG_DOCUMENTS}`);
-    console.log(`   Chunks recuperados: ${results.length}`);
+    console.info(`\n📊 [RAG RETRIEVAL RESULTS]`);
+    console.info(`   topK solicitado: ${MAX_RAG_DOCUMENTS}`);
+    console.info(`   Chunks recuperados: ${results.length}`);
 
     if (results.length > 0) {
-      console.log(`\n   📄 Chunks detallados:`);
+      console.info(`\n   📄 Chunks detallados:`);
       results.forEach((result, index) => {
         const score = 1 - (result.distance ?? 1); // Cosine similarity score
-        console.log(`\n   [Chunk ${index + 1}]`);
-        console.log(`     - chunkId: ${result.id}`);
-        console.log(`     - docId: ${result.id}`);
-        console.log(`     - score (similarity): ${score.toFixed(4)}`);
-        console.log(`     - distance (cosine): ${(result.distance ?? 1).toFixed(4)}`);
-        console.log(`     - source: ${result.metadata.source}`);
-        console.log(`     - publishedAt: ${result.metadata.publishedAt}`);
-        console.log(`     - title: ${result.metadata.title}`);
-        console.log(`     - contentLength: ${result.document.length} chars`);
+        console.info(`\n   [Chunk ${index + 1}]`);
+        console.info(`     - chunkId: ${result.id}`);
+        console.info(`     - docId: ${result.id}`);
+        console.info(`     - score (similarity): ${score.toFixed(4)}`);
+        console.info(`     - distance (cosine): ${(result.distance ?? 1).toFixed(4)}`);
+        console.info(`     - source: ${result.metadata.source}`);
+        console.info(`     - publishedAt: ${result.metadata.publishedAt}`);
+        console.info(`     - title: ${result.metadata.title}`);
+        console.info(`     - contentLength: ${result.document.length} chars`);
       });
     }
-    console.log(`\n`);
+    console.info(`\n`);
 
     // =========================================================================
     // GRACEFUL DEGRADATION (Sprint 29): Detectar preguntas fuera de contexto
