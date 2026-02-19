@@ -163,7 +163,8 @@ describe('NewsController', () => {
         scopeUsed: 'city',
       });
       repository.getUserUnlockedArticleIds.mockResolvedValueOnce(new Set(['article-1']));
-      ingestNewsUseCase.execute.mockResolvedValueOnce({ newArticles: 0 });
+      ingestNewsUseCase.execute.mockResolvedValueOnce({ newArticles: 0 }); // city ingestion
+      ingestNewsUseCase.execute.mockResolvedValueOnce({ newArticles: 0 }); // province ingestion (Sprint 37.3)
 
       await controller.getNews(req, res as Response);
 

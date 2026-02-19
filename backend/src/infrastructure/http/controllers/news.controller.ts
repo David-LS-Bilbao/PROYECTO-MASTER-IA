@@ -371,6 +371,35 @@ export class NewsController {
 
           // Avoid repeated blocking attempts during TTL window.
           markLocalIngested(city);
+
+          // Sprint 37.3: Secondary background ingestion for province level
+          // Populates DB with province-tagged articles so searchLocalArticles level 2
+          // (queryProvinceArticles) has data for small cities (e.g., Basauri → Bizkaia)
+          const province = parsed.province;
+          if (province && (forceRefresh || shouldIngestLocal(`province:${province}`))) {
+            markLocalIngested(`province:${province}`);
+            this.ingestNewsUseCase
+              .execute({
+                category: 'local',
+                topicSlug: 'local',
+                query: province, // e.g., "Bizkaia"
+                pageSize: 30,
+                language: 'es',
+              })
+              .then(() => {
+                console.log(
+                  `[NewsController.getNews] ✅ Province bg ingestion "${province}" completed`
+                );
+              })
+              .catch((err: Error) => {
+                console.warn(
+                  `[NewsController.getNews] ⚠️ Province bg ingestion failed for "${province}": ${err.message}`
+                );
+              });
+            console.log(
+              `[NewsController.getNews] 🗺️ Background province ingestion triggered for "${province}"`
+            );
+          }
         }
 
         // Sprint 28 BUG #1 FIX + vNext: searchLocalArticles con fallback progresivo
