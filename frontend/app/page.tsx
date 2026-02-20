@@ -471,6 +471,16 @@ function HomeContent() {
 
             {/* Sprint 22: CategoryPills ELIMINADO - Navegación ahora en Sidebar */}
 
+            {/* Backend down + React Query ya finalizó + sin datos → pantalla de error */}
+            {backendStatus !== 'ready' && !isLoading && !newsData && (
+              <WarmUpBanner
+                status={backendStatus}
+                retryCount={retryCount}
+                onRetry={retryBackend}
+                fullScreen
+              />
+            )}
+
             {/* Loading State - Carga inicial O cambio de topic */}
             {(isLoading || isChangingTopic) && (
               backendStatus !== 'ready' && !isChangingTopic && !hasCachedData ? (

@@ -75,9 +75,7 @@ export function BackendStatusProvider({ children }: { children: React.ReactNode 
     if (!mountedRef.current) return;
 
     if (ok) {
-      if (status === 'warming') {
-        console.log('✅ Backend warmed up successfully!');
-      }
+      console.log('✅ Backend warmed up successfully!');
       setStatus('ready');
       setRetryCount(0);
       return;
@@ -99,7 +97,8 @@ export function BackendStatusProvider({ children }: { children: React.ReactNode 
         return next;
       });
     }
-  }, [status]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Auto-retry cuando está en warming
   useEffect(() => {
