@@ -39,11 +39,13 @@ export class PrismaNewsArticleRepository implements INewsArticleRepository {
       console.log(`[Repository] Categorias: ${categories.join(', ')}`);
       console.log(`[Repository] Primeras URLs: ${urls.slice(0, 3).join(' | ')}...`);
 
-      await this.prisma.$transaction(async (tx) => {
-        for (const article of articles) {
-          await tx.article.upsert(this.mapper.toUpsertData(article));
-        }
-      });
+      // Upserts individuales sin transaction: cada upsert es atómico por URL (unique constraint).
+      // Evitamos el form callback de $transaction que mantiene una conexión abierta durante
+      // todo el bucle (incompatible con Neon PgBouncer bajo alta concurrencia → P2028 timeout).
+      // La ingesta es idempotente (upsert por URL), así que la atomicidad global no es necesaria.
+      for (const article of articles) {
+        await this.prisma.article.upsert(this.mapper.toUpsertData(article));
+      }
 
       console.log(`[Repository] UPSERT completado exitosamente para ${articles.length} articulos`);
     } catch (error) {

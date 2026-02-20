@@ -46,7 +46,12 @@
       "Bash(git ls-tree:*)",
       "Bash(npx next build:*)",
       "Bash(grep:*)",
-      "Bash(npm ls:*)"
+      "Bash(npm ls:*)",
+      "Bash(git checkout:*)",
+      "Bash(docker build:*)",
+      "Bash(git merge:*)",
+      "Bash(echo:*)",
+      "Bash(python3:*)"
     ]
   }
 }
