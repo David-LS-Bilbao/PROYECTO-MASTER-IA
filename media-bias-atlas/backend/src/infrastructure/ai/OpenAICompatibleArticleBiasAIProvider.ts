@@ -1,4 +1,5 @@
 import { ArticleBiasAIInput, ArticleBiasAIResponse, IArticleBiasAIProvider } from '../../application/contracts/IArticleBiasAIProvider';
+import { buildArticleBiasInputContext, buildArticleBiasInstructions } from './articleBiasPrompt';
 
 interface OpenAICompatibleProviderConfig {
   apiKey: string;
@@ -50,27 +51,11 @@ export class OpenAICompatibleArticleBiasAIProvider implements IArticleBiasAIProv
           messages: [
             {
               role: 'system',
-              content: [
-                'Eres un analista de sesgo ideologico de noticias politicas.',
-                'Solo puedes usar el titular proporcionado; si no hay evidencia suficiente usa UNCLEAR y baja confianza.',
-                'Devuelve SOLO un JSON estricto sin markdown ni texto extra.',
-                'El JSON debe tener exactamente estas claves:',
-                '{',
-                '  "ideologyLabel": "LEFT|CENTER_LEFT|CENTER|CENTER_RIGHT|RIGHT|UNCLEAR",',
-                '  "confidence": 0.0,',
-                '  "summary": "resumen corto",',
-                '  "reasoningShort": "justificacion breve"',
-                '}'
-              ].join('\n'),
+              content: buildArticleBiasInstructions(),
             },
             {
               role: 'user',
-              content: [
-                `articleId: ${input.articleId}`,
-                `title: ${input.title}`,
-                `url: ${input.url}`,
-                `publishedAt: ${input.publishedAt}`,
-              ].join('\n'),
+              content: buildArticleBiasInputContext(input),
             }
           ]
         }),

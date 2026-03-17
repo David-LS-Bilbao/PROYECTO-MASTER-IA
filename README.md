@@ -24,7 +24,8 @@
 8. [Testing](#testing)
 9. [Deployment](#deployment)
 10. [DevOps & Infrastructure](#devops--infrastructure)
-11. [Documentación Técnica](#documentación-técnica)
+11. [Media Bias Atlas](#-subproyecto-paralelo-media-bias-atlas)
+12. [Documentación Técnica](#documentación-técnica)
 
 ---
 
@@ -1257,6 +1258,28 @@ Verity-News is deployed on a Linux VPS using Docker-based containerization.
 
 ---
 
+## 🧭 Subproyecto Paralelo: Media Bias Atlas
+
+Este repositorio incluye también `media-bias-atlas/`, un producto paralelo a Verity News desarrollado dentro del mismo ecosistema técnico, pero desacoplado funcionalmente y sin modificar el núcleo de Verity.
+
+Estado actual de `media-bias-atlas`:
+
+- MVP funcional cerrado hasta Sprint 7;
+- catálogo de países, medios y feeds RSS operativo;
+- ingesta manual de artículos y clasificación política funcionando;
+- análisis ideológico por artículo persistido en backend;
+- resumen ideológico básico por feed visible en frontend;
+- provider real Gemini ya alineado con el patrón técnico de Verity, manteniendo contrato desacoplado propio;
+- condición operativa pendiente: activar `BIAS_AI_*` en `media-bias-atlas/backend/.env` para análisis real contra proveedor externo.
+
+Documentación asociada:
+
+- [Informe Media Bias Atlas Sprint 1-7](MEDIA_BIAS_ATLAS_INFORME_SPRINTS_1_7.md)
+- [Arquitectura](docs/architecture/ARCHITECTURE.md)
+- [Memoria del TFM](docs/MemoriaTFM.md)
+
+---
+
 ## 📚 Documentación Técnica
 
 ### Documentos Principales
@@ -1286,6 +1309,11 @@ Verity-News is deployed on a Linux VPS using Docker-based containerization.
    - Flujo real de analisis (texto, prompts, gates)
    - Contratos de error (`PAYWALL_BLOCKED`, `formatError`)
    - Comandos de validacion reproducibles
+
+7. [Informe Media Bias Atlas Sprint 1-7](MEDIA_BIAS_ATLAS_INFORME_SPRINTS_1_7.md)
+   - Evolución detallada del subproyecto `media-bias-atlas`
+   - Estado funcional hasta Sprint 7
+   - Situación operativa actual del provider IA
 
 ### Diagramas Arquitecturales
 
