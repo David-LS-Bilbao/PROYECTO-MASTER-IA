@@ -15,6 +15,9 @@ import { PrismaOutletRepository } from '../repositories/PrismaOutletRepository';
 import { ListCountriesUseCase } from '../../application/useCases/ListCountriesUseCase';
 import { ListOutletsByCountryUseCase } from '../../application/useCases/ListOutletsByCountryUseCase';
 import { CreateOutletUseCase } from '../../application/useCases/CreateOutletUseCase';
+import { CalculateOutletBiasProfileUseCase } from '../../application/use-cases/bias-analysis/CalculateOutletBiasProfileUseCase';
+import { PrismaArticleRepository } from '../database/PrismaArticleRepository';
+import { prisma } from '../database/prismaClient';
 
 export function setupRoutes(app: Application) {
   const apiRouter = Router();
@@ -22,15 +25,17 @@ export function setupRoutes(app: Application) {
   // Dependencias
   const countryRepo = new PrismaCountryRepository();
   const outletRepo = new PrismaOutletRepository();
+  const articleRepo = new PrismaArticleRepository(prisma);
 
   const listCountriesUC = new ListCountriesUseCase(countryRepo);
   const listOutletsByCountryUC = new ListOutletsByCountryUseCase(outletRepo, countryRepo);
   const createOutletUC = new CreateOutletUseCase(outletRepo, countryRepo);
   const getOutletByIdUC = new GetOutletByIdUseCase(outletRepo);
+  const calculateOutletBiasProfileUC = new CalculateOutletBiasProfileUseCase(articleRepo, outletRepo);
 
   // Controladores
   const countryController = new CountryController(listCountriesUC, listOutletsByCountryUC);
-  const outletController = new OutletController(getOutletByIdUC, createOutletUC);
+  const outletController = new OutletController(getOutletByIdUC, createOutletUC, calculateOutletBiasProfileUC);
 
   // Rutas - Countries
   apiRouter.get('/countries', (req, res, next) => countryController.list(req, res, next));
@@ -39,6 +44,7 @@ export function setupRoutes(app: Application) {
   // Rutas - Outlets
   apiRouter.get('/outlets/:id', (req, res, next) => outletController.getById(req, res, next));
   apiRouter.post('/outlets', (req, res, next) => outletController.create(req, res, next));
+  apiRouter.get('/outlets/:outletId/bias-profile', (req, res, next) => outletController.getBiasProfile(req, res, next));
   apiRouter.get('/outlets/:outletId/feeds', RssFeedController.listFeeds);
   apiRouter.post('/outlets/:outletId/feeds', RssFeedController.addFeed);
 

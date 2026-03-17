@@ -2,6 +2,7 @@ import { IdeologyLabel } from '../../../domain/entities/ArticleBiasAnalysis';
 import { OutletBiasProfile, OutletBiasStatus } from '../../../domain/entities/OutletBiasProfile';
 import { IArticleRepository } from '../../../domain/repositories/IArticleRepository';
 import { IOutletRepository } from '../../../domain/repositories/IOutletRepository';
+import { OutletNotFoundError } from '../../../domain/errors/OutletNotFoundError';
 
 export interface CalculateOutletBiasProfileInput {
   outletId: string;
@@ -19,7 +20,7 @@ export class CalculateOutletBiasProfileUseCase {
   async execute(input: CalculateOutletBiasProfileInput): Promise<OutletBiasProfile> {
     const outlet = await this.outletRepository.findById(input.outletId);
     if (!outlet) {
-      throw new Error(`Medio con ID ${input.outletId} no encontrado.`);
+      throw new OutletNotFoundError(input.outletId);
     }
 
     const stats = await this.articleRepository.getOutletBiasStats(input.outletId);

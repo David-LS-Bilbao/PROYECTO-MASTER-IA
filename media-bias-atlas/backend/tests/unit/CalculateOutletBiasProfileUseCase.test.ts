@@ -4,6 +4,7 @@ import { IOutletRepository } from '../../src/domain/repositories/IOutletReposito
 import { IArticleRepository } from '../../src/domain/repositories/IArticleRepository';
 import { IdeologyLabel } from '../../src/domain/entities/ArticleBiasAnalysis';
 import { OutletBiasStatus } from '../../src/domain/entities/OutletBiasProfile';
+import { OutletNotFoundError } from '../../src/domain/errors/OutletNotFoundError';
 
 describe('CalculateOutletBiasProfileUseCase', () => {
   let outletRepo: IOutletRepository;
@@ -38,10 +39,10 @@ describe('CalculateOutletBiasProfileUseCase', () => {
     [IdeologyLabel.UNCLEAR]: 0,
   });
 
-  it('lanza un error si el medio no existe', async () => {
+  it('lanza OutletNotFoundError si el medio no existe', async () => {
     vi.mocked(outletRepo.findById).mockResolvedValue(null);
 
-    await expect(useCase.execute({ outletId: 'invalid-id' })).rejects.toThrow('Medio con ID invalid-id no encontrado.');
+    await expect(useCase.execute({ outletId: 'invalid-id' })).rejects.toThrow(OutletNotFoundError);
   });
 
   it('devuelve INSUFFICIENT_DATA si hay menos de 5 analisis', async () => {
