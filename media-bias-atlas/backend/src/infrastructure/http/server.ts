@@ -26,7 +26,7 @@ export function createServer(): express.Application {
     
     // Errores controlados por dominio/casos de uso (ej. País no existe o Duplicado Prisma)
     let statusCode = 500;
-    if (err.message?.includes('not found')) statusCode = 404;
+    if (err.message?.includes('not found') || err.message?.includes('no encontrado')) statusCode = 404;
     // P2002 es Unique Constraint Failed en Prisma
     if (err.code === 'P2002') { 
       statusCode = 409; // Conflicto

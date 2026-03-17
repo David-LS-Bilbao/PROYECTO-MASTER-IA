@@ -4,6 +4,7 @@ import { OutletController } from './controllers/OutletController';
 import { RssFeedController } from './controllers/RssFeedController';
 import { SyncController } from './controllers/SyncController';
 import { ArticleController } from './controllers/ArticleController';
+import { BiasAnalysisController } from './controllers/BiasAnalysisController';
 import { GetOutletByIdUseCase } from '../../application/useCases/GetOutletByIdUseCase';
 
 // Instanciar repositorios
@@ -45,9 +46,12 @@ export function setupRoutes(app: Application) {
   apiRouter.get('/feeds/:feedId/articles', ArticleController.listByFeed);
   apiRouter.post('/feeds/:feedId/sync', SyncController.syncFeed);
   apiRouter.post('/feeds/:feedId/classify-political', RssFeedController.classifyFeed);
+  apiRouter.post('/feeds/:feedId/analyze-bias', BiasAnalysisController.analyzeFeed);
 
   // Rutas - Articles
   apiRouter.post('/articles/:articleId/classify-political', ArticleController.classifyArticle);
+  apiRouter.post('/articles/:articleId/analyze-bias', BiasAnalysisController.analyzeArticle);
+  apiRouter.get('/articles/:articleId/bias-analysis', BiasAnalysisController.getArticleBiasAnalysis);
 
   app.use('/api', apiRouter);
 }
