@@ -38,12 +38,12 @@ describe('ClassifyPoliticalArticleUseCase - Unit Tests', () => {
       expect(result.classificationReason).toContain('Ambiguo');
     });
 
-    it('4. Resuelve empate heurístico como no político', () => {
+    it('4. Clasifica como no político cuando dominan las keywords de descarte', () => {
       const text = 'El gobierno invierte en la liga de fútbol para el próximo torneo';
       const result = useCase.analyzeText(text);
       expect(result.isPolitical).toBe(false);
       expect(result.classificationStatus).toBe(ClassificationStatus.COMPLETED);
-      expect(result.classificationReason).toContain('Empate');
+      expect(result.classificationReason).toContain('No político');
     });
   });
 
