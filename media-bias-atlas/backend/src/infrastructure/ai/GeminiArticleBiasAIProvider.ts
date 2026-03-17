@@ -41,7 +41,7 @@ export class GeminiArticleBiasAIProvider implements IArticleBiasAIProvider {
           generationConfig: {
             temperature: 0,
             responseMimeType: 'application/json',
-            maxOutputTokens: 400,
+            maxOutputTokens: 2000,
           },
         }),
         this.timeoutMs

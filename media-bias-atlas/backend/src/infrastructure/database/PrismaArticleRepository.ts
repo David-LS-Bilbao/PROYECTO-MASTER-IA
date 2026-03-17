@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { Article, ClassificationStatus } from '../../domain/entities/Article';
+import { OutletBiasStats } from '../../domain/entities/OutletBiasProfile';
 import { ArticleBiasAnalysis, BiasAnalysisStatus, IdeologyLabel } from '../../domain/entities/ArticleBiasAnalysis';
 import { IArticleRepository } from '../../domain/repositories/IArticleRepository';
 
@@ -61,6 +62,55 @@ export class PrismaArticleRepository implements IArticleRepository {
     });
 
     return this.mapToDomain(updated);
+  }
+
+  async getOutletBiasStats(outletId: string): Promise<OutletBiasStats> {
+    const totalPoliticalArticles = await this.prisma.article.count({
+      where: {
+        isPolitical: true,
+        feed: {
+          outletId
+        }
+      }
+    });
+
+    const completedAnalysesWithLabels = await this.prisma.articleBiasAnalysis.findMany({
+      where: {
+        status: 'COMPLETED',
+        article: {
+          isPolitical: true,
+          feed: {
+            outletId
+          }
+        }
+      },
+      select: {
+        ideologyLabel: true
+      }
+    });
+
+    let totalCompletedAnalyses = 0;
+    const distribution: Record<IdeologyLabel, number> = {
+      [IdeologyLabel.LEFT]: 0,
+      [IdeologyLabel.CENTER_LEFT]: 0,
+      [IdeologyLabel.CENTER]: 0,
+      [IdeologyLabel.CENTER_RIGHT]: 0,
+      [IdeologyLabel.RIGHT]: 0,
+      [IdeologyLabel.UNCLEAR]: 0
+    };
+
+    for (const analysis of completedAnalysesWithLabels) {
+      if (analysis.ideologyLabel) {
+        totalCompletedAnalyses++;
+        distribution[analysis.ideologyLabel as IdeologyLabel]++;
+      }
+    }
+
+    return {
+      totalPoliticalArticles,
+      totalCompletedAnalyses,
+      distribution
+    };
   }
 
   private mapToDomain(prismaArticle: any): Article {
