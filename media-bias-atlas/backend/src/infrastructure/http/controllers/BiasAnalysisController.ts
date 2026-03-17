@@ -2,6 +2,7 @@ import { NextFunction, Request, Response } from 'express';
 import { ArticleBiasJsonParser } from '../../../application/parsers/ArticleBiasJsonParser';
 import { AnalyzeArticleBiasUseCase } from '../../../application/use-cases/bias-analysis/AnalyzeArticleBiasUseCase';
 import { AnalyzeFeedBiasUseCase } from '../../../application/use-cases/bias-analysis/AnalyzeFeedBiasUseCase';
+import { GetFeedBiasSummaryUseCase } from '../../../application/use-cases/bias-analysis/GetFeedBiasSummaryUseCase';
 import { createArticleBiasAIProvider } from '../../ai/createArticleBiasAIProvider';
 import { PrismaArticleBiasAnalysisRepository } from '../../database/PrismaArticleBiasAnalysisRepository';
 import { PrismaArticleRepository } from '../../database/PrismaArticleRepository';
@@ -23,6 +24,7 @@ const analyzeFeedBiasUseCase = new AnalyzeFeedBiasUseCase(
   articleRepository,
   analyzeArticleBiasUseCase
 );
+const getFeedBiasSummaryUseCase = new GetFeedBiasSummaryUseCase(articleRepository);
 
 export class BiasAnalysisController {
   static async analyzeArticle(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -59,6 +61,16 @@ export class BiasAnalysisController {
       }
 
       res.json(analysis);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getFeedBiasSummary(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { feedId } = req.params;
+      const summary = await getFeedBiasSummaryUseCase.execute(feedId);
+      res.json(summary);
     } catch (error) {
       next(error);
     }

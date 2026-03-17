@@ -44,6 +44,7 @@ export function setupRoutes(app: Application) {
 
   // Rutas - Feeds (Sincronización Manual, Lectura y Clasificación)
   apiRouter.get('/feeds/:feedId/articles', ArticleController.listByFeed);
+  apiRouter.get('/feeds/:feedId/bias-summary', BiasAnalysisController.getFeedBiasSummary);
   apiRouter.post('/feeds/:feedId/sync', SyncController.syncFeed);
   apiRouter.post('/feeds/:feedId/classify-political', RssFeedController.classifyFeed);
   apiRouter.post('/feeds/:feedId/analyze-bias', BiasAnalysisController.analyzeFeed);

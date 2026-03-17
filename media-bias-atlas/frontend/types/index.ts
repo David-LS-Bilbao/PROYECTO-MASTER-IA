@@ -3,6 +3,10 @@ export interface Country {
   name: string;
 }
 
+export type ClassificationStatus = 'PENDING' | 'COMPLETED' | 'FAILED';
+export type BiasAnalysisStatus = 'PENDING' | 'COMPLETED' | 'FAILED';
+export type IdeologyLabel = 'LEFT' | 'CENTER_LEFT' | 'CENTER' | 'CENTER_RIGHT' | 'RIGHT' | 'UNCLEAR';
+
 export interface Outlet {
   id: string;
   name: string;
@@ -21,6 +25,23 @@ export interface RssFeed {
   updatedAt: string;
 }
 
+export interface ArticleBiasAnalysis {
+  id: string;
+  articleId: string;
+  status: BiasAnalysisStatus;
+  provider: string | null;
+  model: string | null;
+  ideologyLabel: IdeologyLabel | null;
+  confidence: number | null;
+  summary: string | null;
+  reasoningShort: string | null;
+  rawJson: string | null;
+  errorMessage: string | null;
+  analyzedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Article {
   id: string;
   feedId: string;
@@ -30,7 +51,22 @@ export interface Article {
   createdAt: string;
   updatedAt: string;
   isPolitical?: boolean | null;
-  classificationStatus?: 'PENDING' | 'COMPLETED' | 'FAILED';
+  classificationStatus?: ClassificationStatus;
   classificationReason?: string | null;
   classifiedAt?: string | null;
+  biasAnalysis?: ArticleBiasAnalysis | null;
+}
+
+export interface FeedBiasSummaryBucket {
+  count: number;
+  percentage: number;
+}
+
+export interface FeedBiasSummary {
+  feedId: string;
+  totalPoliticalArticles: number;
+  analyzedArticles: number;
+  pendingAnalysis: number;
+  failedAnalysis: number;
+  ideologyCounts: Record<IdeologyLabel, FeedBiasSummaryBucket>;
 }

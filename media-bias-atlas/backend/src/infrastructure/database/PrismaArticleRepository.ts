@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { Article, ClassificationStatus } from '../../domain/entities/Article';
+import { ArticleBiasAnalysis, BiasAnalysisStatus, IdeologyLabel } from '../../domain/entities/ArticleBiasAnalysis';
 import { IArticleRepository } from '../../domain/repositories/IArticleRepository';
 
 export class PrismaArticleRepository implements IArticleRepository {
@@ -21,7 +22,7 @@ export class PrismaArticleRepository implements IArticleRepository {
     return { count: result.count };
   }
 
-  async findByFeedId(feedId: string, limit: number = 50, isPolitical?: boolean): Promise<Article[]> {
+  async findByFeedId(feedId: string, limit?: number, isPolitical?: boolean): Promise<Article[]> {
     const where: any = { feedId };
     if (isPolitical !== undefined) {
       where.isPolitical = isPolitical;
@@ -29,15 +30,21 @@ export class PrismaArticleRepository implements IArticleRepository {
 
     const unmappedArticles = await this.prisma.article.findMany({
       where,
+      include: {
+        biasAnalysis: true,
+      },
       orderBy: { publishedAt: 'desc' },
-      take: limit,
+      ...(typeof limit === 'number' ? { take: limit } : {}),
     });
-    return unmappedArticles.map(this.mapToDomain);
+    return unmappedArticles.map(article => this.mapToDomain(article));
   }
 
   async findById(articleId: string): Promise<Article | null> {
     const article = await this.prisma.article.findUnique({
-      where: { id: articleId }
+      where: { id: articleId },
+      include: {
+        biasAnalysis: true,
+      }
     });
     return article ? this.mapToDomain(article) : null;
   }
@@ -59,7 +66,16 @@ export class PrismaArticleRepository implements IArticleRepository {
   private mapToDomain(prismaArticle: any): Article {
     return {
       ...prismaArticle,
-      classificationStatus: prismaArticle.classificationStatus as ClassificationStatus
+      classificationStatus: prismaArticle.classificationStatus as ClassificationStatus,
+      biasAnalysis: prismaArticle.biasAnalysis ? this.mapBiasAnalysisToDomain(prismaArticle.biasAnalysis) : null,
+    };
+  }
+
+  private mapBiasAnalysisToDomain(prismaAnalysis: any): ArticleBiasAnalysis {
+    return {
+      ...prismaAnalysis,
+      status: prismaAnalysis.status as BiasAnalysisStatus,
+      ideologyLabel: prismaAnalysis.ideologyLabel as IdeologyLabel | null,
     };
   }
 }

@@ -1,3 +1,5 @@
+import { ArticleBiasAnalysis } from './ArticleBiasAnalysis';
+
 export enum ClassificationStatus {
   PENDING = 'PENDING',
   COMPLETED = 'COMPLETED',
@@ -16,4 +18,5 @@ export interface Article {
   classificationStatus: ClassificationStatus;
   classificationReason: string | null;
   classifiedAt: Date | null;
+  biasAnalysis?: ArticleBiasAnalysis | null;
 }
