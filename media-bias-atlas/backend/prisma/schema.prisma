@@ -1,0 +1,126 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// MEDIA BIAS ATLAS MVP MODELS
+// ==========================================
+
+enum ClassificationStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum BiasAnalysisStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum IdeologyLabel {
+  LEFT
+  CENTER_LEFT
+  CENTER
+  CENTER_RIGHT
+  RIGHT
+  UNCLEAR
+}
+
+model Country {
+  id        String   @id @default(uuid())
+  code      String   @unique // Ej: 'ES', 'FR', 'US'
+  name      String // Ej: 'España', 'France'
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relaciones
+  outlets Outlet[]
+
+  @@map("countries")
+}
+
+model Outlet {
+  id          String   @id @default(uuid())
+  countryId   String   @map("country_id")
+  name        String // Ej: 'El País', 'Le Monde'
+  description String?  @db.Text
+  websiteUrl  String?  @map("website_url")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relaciones
+  country  Country   @relation(fields: [countryId], references: [id], onDelete: Restrict)
+  rssFeeds RssFeed[]
+
+  @@index([countryId])
+  @@map("outlets")
+}
+
+model RssFeed {
+  id            String    @id @default(uuid())
+  outletId      String    @map("outlet_id")
+  url           String // La URL del RSS
+  category      String? // Ej: 'politica', 'portada'
+  isActive      Boolean   @default(true) @map("is_active")
+  lastCheckedAt DateTime? @map("last_checked_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  // Relaciones
+  outlet   Outlet    @relation(fields: [outletId], references: [id], onDelete: Cascade)
+  articles Article[]
+
+  @@index([outletId])
+  @@map("rss_feeds")
+}
+
+model Article {
+  id          String   @id @default(uuid())
+  feedId      String   @map("feed_id")
+  title       String   @db.Text
+  url         String   @unique
+  publishedAt DateTime @map("published_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Clasificación Política
+  isPolitical          Boolean?             @map("is_political")
+  classificationStatus ClassificationStatus @default(PENDING) @map("classification_status")
+  classificationReason String?              @map("classification_reason") @db.Text
+  classifiedAt         DateTime?            @map("classified_at")
+
+  // Relaciones
+  feed         RssFeed              @relation(fields: [feedId], references: [id], onDelete: Cascade)
+  biasAnalysis ArticleBiasAnalysis?
+
+  @@index([feedId])
+  @@map("articles")
+}
+
+model ArticleBiasAnalysis {
+  id             String             @id @default(uuid())
+  articleId      String             @unique @map("article_id")
+  status         BiasAnalysisStatus @default(PENDING)
+  provider       String? // e.g "openai", "anthropic"
+  model          String? // e.g "gpt-4o-mini"
+  ideologyLabel  IdeologyLabel?     @map("ideology_label")
+  confidence     Float?
+  summary        String?            @db.Text
+  reasoningShort String?            @map("reasoning_short") @db.Text
+  rawJson        String?            @map("raw_json") @db.Text
+  errorMessage   String?            @map("error_message") @db.Text
+  analyzedAt     DateTime?          @map("analyzed_at")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+
+  // Relación 1:1
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@map("article_bias_analysis")
+}

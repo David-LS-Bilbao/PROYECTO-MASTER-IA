@@ -1,0 +1,15 @@
+﻿
+C:\Users\David\OneDrive\Desktop\GIT proyects\PROYECTO-MASTER-IA\media-bias-atlas\frontend\__tests__\CreateOutletForm.test.tsx
+  61:18  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\David\OneDrive\Desktop\GIT proyects\PROYECTO-MASTER-IA\media-bias-atlas\frontend\components\AddFeedForm.tsx
+  55:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\David\OneDrive\Desktop\GIT proyects\PROYECTO-MASTER-IA\media-bias-atlas\frontend\components\forms\CreateOutletForm.tsx
+  44:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\David\OneDrive\Desktop\GIT proyects\PROYECTO-MASTER-IA\media-bias-atlas\frontend\lib\api.ts
+  26:14  warning  'e' is defined but never used  @typescript-eslint/no-unused-vars
+
+Ô£û 4 problems (3 errors, 1 warning)
+

@@ -1,0 +1,113 @@
+﻿
+> frontend@0.1.0 build
+> next build
+
+node.exe : ÔÜá Warning: Next.js inferred your workspace 
+root, but it may not be correct.
+En línea: 1 Carácter: 1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program 
+Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (ÔÜá Warning: 
+    Ne...not be correct.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ We detected multiple lockfiles and selected the 
+directory of C:\Users\David\OneDrive\Desktop\GIT 
+proyects\PROYECTO-MASTER-IA\package-lock.json as the root 
+directory.
+ To silence this warning, set `turbopack.root` in your 
+Next.js config, or consider removing one of the lockfiles 
+if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/ne
+xt-config-js/turbopack#root-directory for more 
+information.
+ Detected additional lockfiles: 
+   * C:\Users\David\OneDrive\Desktop\GIT proyects\PROYECTO
+-MASTER-IA\media-bias-atlas\frontend\package-lock.json
+
+Ôû▓ Next.js 16.1.6 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+
+> Build error occurred
+Error: Turbopack build failed with 1 errors:
+./media-bias-atlas/frontend/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: C:\Users\David\OneDrive\Desktop\GIT proyec
+ts\PROYECTO-MASTER-IA\media-bias-atlas\frontend\app\global
+s.css:3:1: Unclosed block
+    at Input.error (media-bias-atlas/frontend/node_modules
+/postcss/lib/input.js:135:16) 
+[C:\Users\David\OneDrive\Desktop\GIT proyects\PROYECTO-MAS
+TER-IA\media-bias-atlas\frontend\.next\build\chunks\b0d26_
+545b3afd._.js:4651:22]
+    at Parser.unclosedBlock (media-bias-atlas/frontend/nod
+e_modules/postcss/lib/parser.js:575:22) 
+[C:\Users\David\OneDrive\Desktop\GIT proyects\PROYECTO-MAS
+TER-IA\media-bias-atlas\frontend\.next\build\chunks\b0d26_
+545b3afd._.js:5818:26]
+    at Parser.endFile (media-bias-atlas/frontend/node_modu
+les/postcss/lib/parser.js:335:35) 
+[C:\Users\David\OneDrive\Desktop\GIT proyects\PROYECTO-MAS
+TER-IA\media-bias-atlas\frontend\.next\build\chunks\b0d26_
+545b3afd._.js:5605:39]
+    at Parser.parse (media-bias-atlas/frontend/node_module
+s/postcss/lib/parser.js:476:10) 
+[C:\Users\David\OneDrive\Desktop\GIT proyects\PROYECTO-MAS
+TER-IA\media-bias-atlas\frontend\.next\build\chunks\b0d26_
+545b3afd._.js:5728:14]
+    at parse (media-bias-atlas/frontend/node_modules/postc
+ss/lib/parse.js:11:12) 
+[C:\Users\David\OneDrive\Desktop\GIT proyects\PROYECTO-MAS
+TER-IA\media-bias-atlas\frontend\.next\build\chunks\b0d26_
+545b3afd._.js:5861:16]
+    at new LazyResult (media-bias-atlas/frontend/node_modu
+les/postcss/lib/lazy-result.js:165:16) 
+[C:\Users\David\OneDrive\Desktop\GIT proyects\PROYECTO-MAS
+TER-IA\media-bias-atlas\frontend\.next\build\chunks\b0d26_
+545b3afd._.js:6113:24]
+    at Processor.process (media-bias-atlas/frontend/node_m
+odules/postcss/lib/processor.js:53:14) 
+[C:\Users\David\OneDrive\Desktop\GIT proyects\PROYECTO-MAS
+TER-IA\media-bias-atlas\frontend\.next\build\chunks\b0d26_
+545b3afd._.js:6579:20]
+    at transform (turbopack:///[turbopack-node]/transforms
+/postcss.ts:70:51) [C:\Users\David\OneDrive\Desktop\GIT pr
+oyects\PROYECTO-MASTER-IA\media-bias-atlas\frontend\.next\
+build\chunks\[root-of-the-server]__ac27ebf6._.js:146:52]
+    at run 
+(turbopack:///[turbopack-node]/ipc/evaluate.ts:92:29) 
+[C:\Users\David\OneDrive\Desktop\GIT proyects\PROYECTO-MAS
+TER-IA\media-bias-atlas\frontend\.next\build\chunks\[root-
+of-the-server]__ad5de31e._.js:443:37]
+    at run 
+(turbopack:///[turbopack-node]/ipc/evaluate.ts:115:11) 
+[C:\Users\David\OneDrive\Desktop\GIT proyects\PROYECTO-MAS
+TER-IA\media-bias-atlas\frontend\.next\build\chunks\[root-
+of-the-server]__ad5de31e._.js:464:25]
+
+Import trace:
+  Client Component Browser:
+    ./media-bias-atlas/frontend/app/globals.css [Client 
+Component Browser]
+    ./media-bias-atlas/frontend/app/layout.tsx [Server 
+Component]
+
+
+    at transform (turbopack:///[turbopack-node]/transforms
+/postcss.ts:70:51) [C:\Users\David\OneDrive\Desktop\GIT pr
+oyects\PROYECTO-MASTER-IA\media-bias-atlas\frontend\.next\
+build\chunks\[root-of-the-server]__ac27ebf6._.js:146:52])
+    at run 
+(turbopack:///[turbopack-node]/ipc/evaluate.ts:92:29) 
+[C:\Users\David\OneDrive\Desktop\GIT proyects\PROYECTO-MAS
+TER-IA\media-bias-atlas\frontend\.next\build\chunks\[root-
+of-the-server]__ad5de31e._.js:443:37])
+    at run 
+(turbopack:///[turbopack-node]/ipc/evaluate.ts:115:11) 
+[C:\Users\David\OneDrive\Desktop\GIT proyects\PROYECTO-MAS
+TER-IA\media-bias-atlas\frontend\.next\build\chunks\[root-
+of-the-server]__ad5de31e._.js:464:25])

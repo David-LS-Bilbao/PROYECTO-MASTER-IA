@@ -1,0 +1,9 @@
+﻿
+C:\Users\David\OneDrive\Desktop\GIT proyects\PROYECTO-MASTER-IA\media-bias-atlas\frontend\__tests__\CreateOutletForm.test.tsx
+  61:18  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\David\OneDrive\Desktop\GIT proyects\PROYECTO-MASTER-IA\media-bias-atlas\frontend\app\feeds\[id]\page.tsx
+  5:10  warning  'SyncButton' is defined but never used  @typescript-eslint/no-unused-vars
+
+Ô£û 2 problems (1 error, 1 warning)
+
