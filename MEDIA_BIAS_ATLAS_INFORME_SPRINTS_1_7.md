@@ -43,7 +43,9 @@ Estado actual:
 - Prisma alineado con la base de datos;
 - soporte IA desacoplado con `disabled`, `gemini` y `openai-compatible`;
 - salida controlada cuando PostgreSQL no está disponible;
-- MVP listo para demo técnica.
+- MVP listo para demo técnica;
+- estructura de seeds manuales idempotentes preparada para `ES`, `GB`, `FR`, `DE` y `US`;
+- lote de `Estados Unidos` ya cargado en base para demo local con outlets y feeds validados.
 
 Condiciones operativas:
 
@@ -64,6 +66,7 @@ Condiciones operativas:
 | 8 | Alineación operativa del provider IA | Integración Gemini real, factory desacoplado y documentación de entorno |
 | 9 | Perfil ideológico por outlet | Cálculo, endpoint y visualización del bias profile por medio |
 | 10 | Exploración avanzada del atlas | Resúmenes en listados, filtros, ordenación y comparativa entre outlets |
+| Post Sprint 10 | Consolidación operativa | Saneamiento de clasificación histórica y seeds manuales reproducibles por país |
 
 ## 4. Detalle por sprint
 
@@ -343,6 +346,84 @@ Resultado:
 
 - el MVP queda más coherente, más demostrable y con menos fricción operativa.
 
+### 5.1. Saneamiento de clasificación política histórica
+
+Tras endurecer la heurística política para reducir falsos positivos, se añadió un flujo de mantenimiento para limpiar artículos históricos ya clasificados con reglas antiguas.
+
+Entregables:
+
+- mejora de `ClassifyPoliticalArticleUseCase` con coincidencias por palabra completa;
+- separación entre señales políticas fuertes y contextuales;
+- ampliación de descartes claros para entretenimiento, series/cine, deporte y tecnología no política;
+- script `maintenance:reclassify-political` con `dry-run` y `--apply`;
+- invalidación segura del análisis ideológico cuando un artículo deja de ser político.
+
+Resultado aplicado al lote de España:
+
+- `269` artículos procesados;
+- `91` clasificaciones actualizadas;
+- `48` artículos pendientes pasaron a clasificados;
+- `5` artículos dejaron de ser políticos;
+- `5` análisis ideológicos quedaron invalidados;
+- un segundo `dry-run` devolvió `0` cambios, confirmando idempotencia.
+
+### 5.2. Seeds manuales reproducibles por país
+
+Se generalizó la seed manual creada inicialmente para España y se dejó preparada una estructura reutilizable por país para cargar medios y RSS fiables sin depender de altas manuales una a una desde la UI.
+
+Estructura añadida:
+
+- catálogo de seeds manuales por país;
+- runner genérico con validación real del feed antes de insertar;
+- scripts por país para aplicar la carga;
+- soporte `--validate-only` para validar sin escribir en base.
+
+Países preparados:
+
+- `ES` España
+- `GB` Reino Unido
+- `FR` Francia
+- `DE` Alemania
+- `US` Estados Unidos
+
+Estado de carga en esta fase:
+
+- `ES` ya estaba cargado y operativo;
+- `GB`, `FR` y `DE` quedaron preparados, validados y posteriormente cargados en la base;
+- `US` se añadió después con la misma estructura idempotente y quedó cargado en la base para demo local.
+
+Lotes validados:
+
+- Reino Unido: `9` outlets, `18` feeds validados
+- Francia: `8` outlets, `16` feeds validados
+- Alemania: `8` outlets, `15` feeds validados
+- Estados Unidos: `9` outlets, `18` feeds validados y cargados en base
+
+Comandos operativos:
+
+```bash
+cd "media-bias-atlas/backend"
+
+# Validación no destructiva
+TMPDIR=/tmp TEMP=/tmp TMP=/tmp npm run db:seed:manual -- --country=GB --validate-only
+TMPDIR=/tmp TEMP=/tmp TMP=/tmp npm run db:seed:manual -- --country=FR --validate-only
+TMPDIR=/tmp TEMP=/tmp TMP=/tmp npm run db:seed:manual -- --country=DE --validate-only
+TMPDIR=/tmp TEMP=/tmp TMP=/tmp npm run db:seed:manual -- --country=US --validate-only
+
+# Aplicación real en base
+TMPDIR=/tmp TEMP=/tmp TMP=/tmp npm run db:seed:uk
+TMPDIR=/tmp TEMP=/tmp TMP=/tmp npm run db:seed:france
+TMPDIR=/tmp TEMP=/tmp TMP=/tmp npm run db:seed:germany
+TMPDIR=/tmp TEMP=/tmp TMP=/tmp npm run db:seed:usa
+```
+
+Comprobación posterior en base:
+
+```bash
+cd "media-bias-atlas/backend"
+node -e "require('./node_modules/dotenv').config({path:'.env'}); const { Client } = require('./node_modules/pg'); (async()=>{ const client = new Client({ connectionString: process.env.DATABASE_URL }); await client.connect(); const res = await client.query(\"select c.code, o.name, count(r.id)::int as feeds from outlets o join countries c on c.id = o.country_id left join rss_feeds r on r.outlet_id = o.id where c.code in ('GB','FR','DE','US') group by c.code, o.id, o.name order by c.code, o.name\"); console.log(JSON.stringify(res.rows, null, 2)); await client.end(); })().catch(err=>{ console.error(err.message || err); process.exit(1); });"
+```
+
 ## 6. Estado acumulado tras Sprint 10
 
 ### Funcionalidad disponible hoy
@@ -370,7 +451,7 @@ Backend:
 
 - `npx prisma validate --schema prisma/schema.prisma` -> válido;
 - `npx tsc --noEmit` -> correcto;
-- `TMPDIR=/tmp TEMP=/tmp TMP=/tmp npx vitest run tests/unit` -> `31/31` tests en verde.
+- `TMPDIR=/tmp TEMP=/tmp TMP=/tmp npx vitest run tests/unit` -> `36/36` tests en verde.
 
 Frontend:
 

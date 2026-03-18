@@ -10,7 +10,14 @@
     "test": "vitest",
     "db:setup": "npx tsx scripts/setup-db.ts",
     "db:migrate": "npx prisma migrate dev",
-    "db:seed": "npx prisma db seed"
+    "db:seed": "npx prisma db seed",
+    "db:seed:manual": "npx tsx scripts/seed-manual-outlets.ts",
+    "db:seed:spain": "npx tsx scripts/seed-manual-outlets.ts --country=ES",
+    "db:seed:uk": "npx tsx scripts/seed-manual-outlets.ts --country=GB",
+    "db:seed:france": "npx tsx scripts/seed-manual-outlets.ts --country=FR",
+    "db:seed:germany": "npx tsx scripts/seed-manual-outlets.ts --country=DE",
+    "db:seed:usa": "npx tsx scripts/seed-manual-outlets.ts --country=US",
+    "maintenance:reclassify-political": "npx tsx scripts/reclassify-political-articles.ts"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"

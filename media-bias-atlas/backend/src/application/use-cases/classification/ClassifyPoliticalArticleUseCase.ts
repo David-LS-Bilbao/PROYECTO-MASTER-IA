@@ -8,18 +8,105 @@ export type ClassificationResult = {
 };
 
 export class ClassifyPoliticalArticleUseCase {
-  private readonly politicalKeywords = [
-    'gobierno', 'elecciones', 'parlamento', 'presidente', 'congreso', 
-    'senado', 'ministerio', 'partido', 'oposición', 'ley', 'reforma', 
-    'diputado', 'campaña electoral', 'política', 'alcalde', 'ayuntamiento',
-    'ministro', 'ministra', 'vota', 'urna', 'democracia', 'dictadura',
-    'psoe', 'pp', 'vox', 'sumar', 'podemos', 'sánchez', 'feijóo', 'abascal'
+  private readonly strongPoliticalKeywords = [
+    'gobierno',
+    'elecciones',
+    'parlamento',
+    'presidente',
+    'congreso',
+    'senado',
+    'ministerio',
+    'oposicion',
+    'ley',
+    'politica',
+    'alcalde',
+    'ayuntamiento',
+    'ministro',
+    'ministra',
+    'democracia',
+    'dictadura',
+    'psoe',
+    'pp',
+    'vox',
+    'sumar',
+    'podemos',
+    'sanchez',
+    'feijoo',
+    'abascal',
+    'candidato',
+    'candidata',
+    'investidura',
+    'amnistia',
+    'referendum',
+    'coalicion',
+    'vicepresidente',
+    'vicepresidenta',
+    'electoral',
+    'junta electoral',
+    'ciudadanos',
+    'trump',
+    'dirigentes',
+    'ministros'
+  ];
+
+  private readonly contextualPoliticalKeywords = [
+    'partido',
+    'reforma',
+    'diputado',
+    'diputada',
+    'vota',
+    'voto',
+    'urna',
+    'urnas',
+    'presupuestos',
+    'legislatura'
   ];
 
   private readonly discardKeywords = [
-    'fútbol', 'cine', 'música', 'receta', 'videojuego', 'concierto', 
-    'tenis', 'moda', 'deportes', 'champions', 'liga', 'película', 
-    'serie', 'actor', 'actriz', 'cantante', 'gastronomía', 'recetas', 'fichaje', 'goles', 'juego', 'baloncesto', 'salud', 'ciencia', 'arte'
+    'futbol',
+    'cine',
+    'musica',
+    'receta',
+    'videojuego',
+    'concierto',
+    'tenis',
+    'moda',
+    'deportes',
+    'champions',
+    'liga',
+    'pelicula',
+    'serie',
+    'series',
+    'actor',
+    'actriz',
+    'cantante',
+    'gastronomia',
+    'recetas',
+    'fichaje',
+    'goles',
+    'juego',
+    'baloncesto',
+    'salud',
+    'ciencia',
+    'arte',
+    'streaming',
+    'hbo',
+    'netflix',
+    'apple',
+    'whatsapp',
+    'iphone',
+    'android',
+    'tecnologia',
+    'tecnologico',
+    'tecnologica',
+    'television',
+    'tv',
+    'festival',
+    'podcast',
+    'video',
+    'videos',
+    'videojuegos',
+    'smartphone'
   ];
 
   constructor(private readonly articleRepository: IArticleRepository) {}
@@ -30,7 +117,7 @@ export class ClassifyPoliticalArticleUseCase {
       throw new Error(`Artículo con id ${articleId} no encontrado`);
     }
 
-    const textToAnalyze = `${article.title}`.toLowerCase();
+    const textToAnalyze = `${article.title}`;
     
     if (!textToAnalyze.trim()) {
       return this.articleRepository.updateClassification(articleId, {
@@ -52,43 +139,74 @@ export class ClassifyPoliticalArticleUseCase {
   }
 
   public analyzeText(text: string): ClassificationResult {
-    let politicalCount = 0;
-    let discardCount = 0;
-    
-    for (const kw of this.politicalKeywords) {
-      // Uso de regex simple para evitar falsos positivos si la palabra forma parte de otra mayor
-      // Pero flexibilizamos un poco
-      if (text.includes(kw)) politicalCount++;
+    const normalizedText = this.normalizeText(text);
+    const strongMatches = this.collectMatches(normalizedText, this.strongPoliticalKeywords);
+    const contextualMatches = this.collectMatches(normalizedText, this.contextualPoliticalKeywords);
+    const discardMatches = this.collectMatches(normalizedText, this.discardKeywords);
+
+    const strongCount = strongMatches.length;
+    const contextualCount = contextualMatches.length;
+    const discardCount = discardMatches.length;
+    const politicalScore = strongCount * 2 + contextualCount;
+    const discardScore = discardCount * 2;
+
+    if (discardCount > 0 && strongCount === 0 && contextualCount < 2) {
+      return {
+        isPolitical: false,
+        classificationStatus: ClassificationStatus.COMPLETED,
+        classificationReason: `No político (descarte claro: ${discardCount}, señales políticas débiles: ${contextualCount})`
+      };
     }
 
-    for (const kw of this.discardKeywords) {
-      if (text.includes(kw)) discardCount++;
-    }
-
-    if (politicalCount > discardCount) {
+    if (strongCount > 0 && politicalScore > discardScore) {
       return {
         isPolitical: true,
         classificationStatus: ClassificationStatus.COMPLETED,
-        classificationReason: `Político (${politicalCount} vs ${discardCount})`
-      };
-    } else if (discardCount > politicalCount) {
-      return {
-        isPolitical: false,
-        classificationStatus: ClassificationStatus.COMPLETED,
-        classificationReason: `No político (${discardCount} vs ${politicalCount})`
-      };
-    } else if (politicalCount > 0 && politicalCount === discardCount) {
-       return {
-        isPolitical: false,
-        classificationStatus: ClassificationStatus.COMPLETED,
-        classificationReason: `Empate heurístico (se asume No Político)`
-      };
-    } else {
-      return {
-        isPolitical: false,
-        classificationStatus: ClassificationStatus.COMPLETED,
-        classificationReason: `Ambiguo o irrelevante (sin keywords)`
+        classificationReason: `Político (fuertes=${strongCount}, contextuales=${contextualCount}, descarte=${discardCount})`
       };
     }
+
+    if (strongCount === 0 && contextualCount >= 2 && politicalScore > discardScore) {
+      return {
+        isPolitical: true,
+        classificationStatus: ClassificationStatus.COMPLETED,
+        classificationReason: `Político contextual (contextuales=${contextualCount}, descarte=${discardCount})`
+      };
+    }
+
+    if (discardCount > 0 || contextualCount > 0) {
+      return {
+        isPolitical: false,
+        classificationStatus: ClassificationStatus.COMPLETED,
+        classificationReason: `No político (fuertes=${strongCount}, contextuales=${contextualCount}, descarte=${discardCount})`
+      };
+    }
+
+    return {
+      isPolitical: false,
+      classificationStatus: ClassificationStatus.COMPLETED,
+      classificationReason: `Ambiguo o irrelevante (sin keywords)`
+    };
+  }
+
+  private normalizeText(text: string): string {
+    return text
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private collectMatches(text: string, keywords: string[]): string[] {
+    return keywords.filter((keyword) => {
+      const pattern = new RegExp(`\\b${this.escapeRegExp(keyword)}\\b`, 'u');
+      return pattern.test(text);
+    });
+  }
+
+  private escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 }

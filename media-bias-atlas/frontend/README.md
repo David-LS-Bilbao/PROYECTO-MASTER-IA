@@ -24,6 +24,7 @@ El frontend queda alineado con el estado funcional alcanzado hasta Sprint 10:
 - filtros y ordenación MVP del listado de outlets;
 - comparativa rápida entre dos medios;
 - manejo controlado de errores si backend o base de datos no están disponibles.
+- seeds manuales reproducibles ya aplicables para países de demo.
 
 ## Rutas principales
 
@@ -104,6 +105,59 @@ Build:
 ```bash
 npm run build
 ```
+
+## Seeds manuales de outlets
+
+El backend ya tiene preparada una carga manual e idempotente por país para poblar outlets y feeds RSS fiables.
+
+Importante:
+
+- el script genérico es `db:seed:manual`;
+- `NO` funciona en `dry-run` por defecto;
+- para validar sin insertar hay que añadir `--validate-only`.
+
+Comandos disponibles:
+
+```bash
+cd "../backend"
+
+# Validación no destructiva
+TMPDIR=/tmp TEMP=/tmp TMP=/tmp npm run db:seed:manual -- --country=GB --validate-only
+TMPDIR=/tmp TEMP=/tmp TMP=/tmp npm run db:seed:manual -- --country=FR --validate-only
+TMPDIR=/tmp TEMP=/tmp TMP=/tmp npm run db:seed:manual -- --country=DE --validate-only
+TMPDIR=/tmp TEMP=/tmp TMP=/tmp npm run db:seed:manual -- --country=US --validate-only
+
+# Aplicación real en base de datos
+TMPDIR=/tmp TEMP=/tmp TMP=/tmp npm run db:seed:uk
+TMPDIR=/tmp TEMP=/tmp TMP=/tmp npm run db:seed:france
+TMPDIR=/tmp TEMP=/tmp TMP=/tmp npm run db:seed:germany
+TMPDIR=/tmp TEMP=/tmp TMP=/tmp npm run db:seed:usa
+```
+
+Comprobación posterior en base:
+
+```bash
+cd "../backend"
+node -e "require('./node_modules/dotenv').config({path:'.env'}); const { Client } = require('./node_modules/pg'); (async()=>{ const client = new Client({ connectionString: process.env.DATABASE_URL }); await client.connect(); const res = await client.query(\"select c.code, o.name, count(r.id)::int as feeds from outlets o join countries c on c.id = o.country_id left join rss_feeds r on r.outlet_id = o.id where c.code in ('GB','FR','DE','US') group by c.code, o.id, o.name order by c.code, o.name\"); console.log(JSON.stringify(res.rows, null, 2)); await client.end(); })().catch(err=>{ console.error(err.message || err); process.exit(1); });"
+```
+
+Países preparados actualmente:
+
+- `ES` España
+- `GB` Reino Unido
+- `FR` Francia
+- `DE` Alemania
+- `US` Estados Unidos
+
+Estado de carga actual para demo:
+
+- `ES`, `GB`, `FR`, `DE` y `US` ya pueden cargarse mediante seed manual idempotente;
+- `US` ya se ha validado y cargado con `9` outlets y `18` feeds RSS;
+- la UI solo mostrará nuevos países/medios cuando la seed se aplique realmente en la base.
+
+Ruta útil de prueba:
+
+- `http://localhost:3000/countries/US`
 
 ## Relación con backend
 

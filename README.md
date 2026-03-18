@@ -1264,17 +1264,20 @@ Este repositorio incluye también `media-bias-atlas/`, un producto paralelo a Ve
 
 Estado actual de `media-bias-atlas`:
 
-- MVP funcional cerrado hasta Sprint 7;
+- MVP funcional cerrado hasta Sprint 10, con consolidación operativa posterior;
 - catálogo de países, medios y feeds RSS operativo;
 - ingesta manual de artículos y clasificación política funcionando;
 - análisis ideológico por artículo persistido en backend;
 - resumen ideológico básico por feed visible en frontend;
+- perfil ideológico por medio, filtros, ordenación y comparativa rápida entre outlets;
 - provider real Gemini ya alineado con el patrón técnico de Verity, manteniendo contrato desacoplado propio;
+- seeds manuales idempotentes ya preparadas para `ES`, `GB`, `FR`, `DE` y `US`;
+- lote de `US` ya cargado en base para demo local con `9` outlets y `18` feeds RSS validados;
 - condición operativa pendiente: activar `BIAS_AI_*` en `media-bias-atlas/backend/.env` para análisis real contra proveedor externo.
 
 Documentación asociada:
 
-- [Informe Media Bias Atlas Sprint 1-7](MEDIA_BIAS_ATLAS_INFORME_SPRINTS_1_7.md)
+- [Informe Media Bias Atlas](MEDIA_BIAS_ATLAS_INFORME_SPRINTS_1_7.md)
 - [Arquitectura](docs/architecture/ARCHITECTURE.md)
 - [Memoria del TFM](docs/MemoriaTFM.md)
 
@@ -1310,10 +1313,10 @@ Documentación asociada:
    - Contratos de error (`PAYWALL_BLOCKED`, `formatError`)
    - Comandos de validacion reproducibles
 
-7. [Informe Media Bias Atlas Sprint 1-7](MEDIA_BIAS_ATLAS_INFORME_SPRINTS_1_7.md)
+7. [Informe Media Bias Atlas](MEDIA_BIAS_ATLAS_INFORME_SPRINTS_1_7.md)
    - Evolución detallada del subproyecto `media-bias-atlas`
-   - Estado funcional hasta Sprint 7
-   - Situación operativa actual del provider IA
+   - Estado funcional acumulado hasta Sprint 10
+   - Situación operativa actual del provider IA y de las seeds manuales
 
 ### Diagramas Arquitecturales
 

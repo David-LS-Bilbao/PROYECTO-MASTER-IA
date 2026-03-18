@@ -45,6 +45,64 @@ describe('ClassifyPoliticalArticleUseCase - Unit Tests', () => {
       expect(result.classificationStatus).toBe(ClassificationStatus.COMPLETED);
       expect(result.classificationReason).toContain('No político');
     });
+
+    it('5. Evita falso positivo por siglas embebidas en palabras como Apple o WhatsApp', () => {
+      const entertainmentText = "Crítica de 'Mujeres imperfectas': si quieres ver 'Big Little Lies' y tienes Apple en vez de HBO";
+      const techText = 'WhatsApp trabaja en una nueva función para cerrar sesión sin borrar tus datos: así funciona';
+
+      const entertainmentResult = useCase.analyzeText(entertainmentText);
+      const techResult = useCase.analyzeText(techText);
+
+      expect(entertainmentResult.isPolitical).toBe(false);
+      expect(entertainmentResult.classificationReason).toContain('No político');
+      expect(techResult.isPolitical).toBe(false);
+      expect(techResult.classificationReason).toContain('No político');
+    });
+
+    it('6. No marca como político una noticia local o de infraestructuras solo por palabras ambiguas', () => {
+      const text =
+        'Tres Cantos reformará la Avenida de España para crear un bulevar, tendrán el tercer carril a la M-607 y un nuevo colegio';
+      const result = useCase.analyzeText(text);
+
+      expect(result.isPolitical).toBe(false);
+      expect(result.classificationStatus).toBe(ClassificationStatus.COMPLETED);
+      expect(result.classificationReason).toContain('Ambiguo');
+    });
+
+    it('7. Mantiene como político un titular con señal institucional fuerte', () => {
+      const text =
+        'Delcy Rodríguez destituye a Padrino López tras más de una década como ministro de Defensa de Venezuela';
+      const result = useCase.analyzeText(text);
+
+      expect(result.isPolitical).toBe(true);
+      expect(result.classificationStatus).toBe(ClassificationStatus.COMPLETED);
+      expect(result.classificationReason).toContain('Político');
+    });
+
+    it('8. Mantiene como político un titular sobre líderes, cargos o procesos electorales', () => {
+      const trumpText =
+        'Trump nombra al vicepresidente Pence a cargo de la crisis del coronavirus';
+      const ciudadanosText =
+        'Ciudadanos pagaba un sueldo a un vocal de la Junta Electoral Central que resolvió recursos del partido';
+
+      const trumpResult = useCase.analyzeText(trumpText);
+      const ciudadanosResult = useCase.analyzeText(ciudadanosText);
+
+      expect(trumpResult.isPolitical).toBe(true);
+      expect(trumpResult.classificationReason).toContain('Político');
+      expect(ciudadanosResult.isPolitical).toBe(true);
+      expect(ciudadanosResult.classificationReason).toContain('Político');
+    });
+
+    it('9. Mantiene como político un titular geopolítico con ministros o dirigentes', () => {
+      const text =
+        '50 antiguos ministros y dirigentes europeos se pronuncian contra el plan de Trump para Palestina';
+      const result = useCase.analyzeText(text);
+
+      expect(result.isPolitical).toBe(true);
+      expect(result.classificationStatus).toBe(ClassificationStatus.COMPLETED);
+      expect(result.classificationReason).toContain('Político');
+    });
   });
 
   describe('execute (Integration mock)', () => {
