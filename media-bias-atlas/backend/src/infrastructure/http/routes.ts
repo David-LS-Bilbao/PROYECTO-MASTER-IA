@@ -28,7 +28,7 @@ export function setupRoutes(app: Application) {
   const articleRepo = new PrismaArticleRepository(prisma);
 
   const listCountriesUC = new ListCountriesUseCase(countryRepo);
-  const listOutletsByCountryUC = new ListOutletsByCountryUseCase(outletRepo, countryRepo);
+  const listOutletsByCountryUC = new ListOutletsByCountryUseCase(outletRepo, countryRepo, articleRepo);
   const createOutletUC = new CreateOutletUseCase(outletRepo, countryRepo);
   const getOutletByIdUC = new GetOutletByIdUseCase(outletRepo);
   const calculateOutletBiasProfileUC = new CalculateOutletBiasProfileUseCase(articleRepo, outletRepo);

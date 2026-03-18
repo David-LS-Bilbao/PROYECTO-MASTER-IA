@@ -2,11 +2,38 @@ import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import { Country } from '@/types';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Alert } from '@/components/ui/Alert';
 
 export const dynamic = 'force-dynamic';
 
 export default async function CountriesPage() {
-  const countries = await apiFetch<Country[]>('/countries');
+  let countries: Country[] = [];
+  let errorMessage: string | null = null;
+
+  try {
+    countries = await apiFetch<Country[]>('/countries');
+  } catch (error) {
+    errorMessage = error instanceof Error
+      ? error.message
+      : 'No se pudo cargar el catálogo de países.';
+  }
+
+  if (errorMessage) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-gray-900">Países Disponibles</h1>
+          <p className="text-gray-500 mt-1">Selecciona un país para explorar sus medios registrados.</p>
+        </div>
+
+        <Alert
+          type="warning"
+          title="Catálogo temporalmente no disponible"
+          message={errorMessage}
+        />
+      </div>
+    );
+  }
 
   if (!countries || countries.length === 0) {
     return <EmptyState title="Sin países" description="Actualmente no hay países registrados en la base de datos." />;

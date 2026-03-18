@@ -3,6 +3,7 @@ import { GetOutletByIdUseCase } from '../../../application/useCases/GetOutletByI
 import { CreateOutletUseCase } from '../../../application/useCases/CreateOutletUseCase';
 import { CalculateOutletBiasProfileUseCase } from '../../../application/use-cases/bias-analysis/CalculateOutletBiasProfileUseCase';
 import { OutletNotFoundError } from '../../../domain/errors/OutletNotFoundError';
+import { MIN_OUTLET_BIAS_SAMPLE_REQUIRED } from '../../../domain/entities/OutletBiasProfile';
 
 export class OutletController {
   constructor(
@@ -42,7 +43,7 @@ export class OutletController {
         status: profile.status,
         totalPoliticalArticles: profile.totalPoliticalArticles,
         totalCompletedAnalyses: profile.totalCompletedAnalyses,
-        minimumSampleRequired: 5,
+        minimumSampleRequired: MIN_OUTLET_BIAS_SAMPLE_REQUIRED,
         dominantLabel: profile.dominantLabel,
         distribution: profile.distribution,
       };

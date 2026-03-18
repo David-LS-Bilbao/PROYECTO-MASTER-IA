@@ -1,3 +1,5 @@
+import { OutletBiasSummary } from './OutletBiasProfile';
+
 export interface Outlet {
   id: string;
   countryId: string;
@@ -6,4 +8,5 @@ export interface Outlet {
   websiteUrl: string | null;
   createdAt: Date;
   updatedAt: Date;
+  biasSummary?: OutletBiasSummary | null;
 }

@@ -1,51 +1,69 @@
-# Informe Detallado de los 7 Sprints de Media Bias Atlas
+# Informe Detallado de la Evolución de Media Bias Atlas hasta Sprint 10
 
-Fecha: 2026-03-17
+Fecha: 2026-03-18
 
-## 1. Alcance de este informe
+Nota:
 
-Este documento resume la evolución de `media-bias-atlas` hasta el cierre de Sprint 7 y deja reflejados también los ajustes posteriores ya realizados sobre la integración IA.
+- este archivo conserva un nombre histórico (`...1_7.md`), pero su contenido ya refleja el estado real del producto hasta Sprint 10 y el bloque final de consolidación del MVP.
 
-Importante:
+## 1. Alcance del informe
 
-- el informe se centra exclusivamente en `media-bias-atlas`;
-- no incluye cambios aplicados en `Verity News`;
-- los sprints 5, 6 y 7 quedan respaldados por migraciones, tests, rutas, componentes y artefactos funcionales del repositorio;
-- los sprints 1 a 4 se reconstruyen de forma razonada a partir del estado real del código y de la estructura acumulada del MVP.
+Este documento resume la evolución de `media-bias-atlas` desde su arranque hasta el cierre funcional del tramo actual del MVP.
+
+Incluye:
+
+- sprints 1 a 10;
+- el ajuste posterior de alineación IA con Gemini;
+- el cierre técnico ligero de consolidación final;
+- el estado operativo actual del frontend, backend y base de datos.
+
+No incluye:
+
+- cambios de `Verity News`;
+- sprints o entregas del producto principal ajenos a `media-bias-atlas`.
 
 ## 2. Resumen ejecutivo
 
-Tras siete sprints, `media-bias-atlas` ha quedado convertido en un MVP funcional con estas capacidades:
+`media-bias-atlas` ha evolucionado desde un catálogo básico de países y medios hasta un MVP navegable y demostrable que ya permite:
 
-- catálogo de países;
-- alta y consulta de medios por país;
-- alta de feeds RSS por medio;
-- sincronización manual y persistencia de artículos;
-- clasificación política básica por artículo y por feed;
-- análisis ideológico por artículo con persistencia robusta;
-- visualización frontend del estado ideológico por artículo;
-- resumen ideológico agregado básico por feed;
-- provider IA desacoplado y ya alineado con el patrón Gemini del ecosistema técnico de Verity.
+- registrar países, medios y feeds RSS;
+- sincronizar artículos desde RSS;
+- clasificar artículos políticos;
+- analizar sesgo ideológico por artículo con persistencia robusta;
+- resumir ideología por feed;
+- calcular perfil ideológico por medio;
+- visualizar resultados desde frontend;
+- filtrar y ordenar medios;
+- comparar dos outlets desde la navegación principal del atlas.
 
 Estado actual:
 
-- backend y frontend operativos hasta Sprint 7;
-- Prisma y base de datos alineados;
-- análisis ideológico visible desde la UI;
-- soporte real para `gemini`, `openai-compatible` y `disabled`;
-- condición operativa pendiente: activar `BIAS_AI_*` en `media-bias-atlas/backend/.env` para ejecutar análisis reales contra proveedor externo.
+- backend operativo y validado;
+- frontend operativo y validado;
+- Prisma alineado con la base de datos;
+- soporte IA desacoplado con `disabled`, `gemini` y `openai-compatible`;
+- salida controlada cuando PostgreSQL no está disponible;
+- MVP listo para demo técnica.
+
+Condiciones operativas:
+
+- PostgreSQL debe estar accesible para `media-bias-atlas/backend`;
+- para análisis ideológico real hay que configurar `BIAS_AI_*` en `media-bias-atlas/backend/.env`.
 
 ## 3. Línea temporal resumida
 
 | Sprint | Foco principal | Resultado |
 |---|---|---|
-| 1 | Bootstrap técnico y modelo base | Proyecto levantado con backend, frontend y esquema inicial de países/medios/feeds |
-| 2 | Catálogo de países y medios | APIs y UI para listar países, listar medios y crear medios |
-| 3 | Gestión de feeds RSS | Alta de feeds, detalle de medio y acciones de feed en frontend |
-| 4 | Ingesta y tracking de artículos | Persistencia de artículos, sincronización manual y visor de noticias |
-| 5 | Clasificación política | Modelo, casos de uso, endpoints y UI para clasificar artículos políticos |
-| 6 | Bias analysis por artículo | Persistencia de análisis ideológico, provider IA desacoplado y endpoints backend |
-| 7 | Visualización y resumen ideológico | UI del feed con estados de sesgo, resumen agregado y acción de análisis |
+| 1 | Bootstrap técnico y modelo base | Backend, frontend, Prisma y estructura inicial de países/medios/feeds |
+| 2 | Catálogo de países y alta de medios | APIs y UI para listar países, listar medios y crear outlets |
+| 3 | Gestión de feeds RSS | Alta/listado de feeds y detalle de medio |
+| 4 | Ingesta y tracking de artículos | Sincronización manual, persistencia de artículos y visor de noticias |
+| 5 | Clasificación política | Heurística, persistencia y UI para identificar artículos políticos |
+| 6 | Bias analysis por artículo | Parser estricto, persistencia, casos de uso y endpoints backend |
+| 7 | Visualización y resumen ideológico por feed | UI del feed, resumen ideológico y acción de análisis |
+| 8 | Alineación operativa del provider IA | Integración Gemini real, factory desacoplado y documentación de entorno |
+| 9 | Perfil ideológico por outlet | Cálculo, endpoint y visualización del bias profile por medio |
+| 10 | Exploración avanzada del atlas | Resúmenes en listados, filtros, ordenación y comparativa entre outlets |
 
 ## 4. Detalle por sprint
 
@@ -55,252 +73,356 @@ Objetivo:
 
 - levantar una base técnica separada para `media-bias-atlas`, con backend y frontend propios.
 
-Entregables realizados:
+Entregables principales:
 
 - backend Node.js + TypeScript + Express;
 - Prisma y migración inicial `20260316190358_init`;
 - tablas `countries`, `outlets` y `rss_feeds`;
-- semilla inicial con 5 países;
-- base de frontend Next.js con layout y página raíz.
+- seed inicial con países;
+- frontend Next.js con layout y página raíz.
 
 Resultado:
 
-- quedó montada la base técnica del producto y el modelo relacional mínimo para empezar el catálogo.
+- se establece la base técnica del producto y el modelo relacional mínimo.
 
 ### Sprint 2. Catálogo de países y alta de medios
 
 Objetivo:
 
-- permitir navegar el catálogo base y dar de alta medios asociados a un país.
+- permitir navegar el catálogo base y registrar medios por país.
 
-Entregables realizados:
+Entregables principales:
 
 - casos de uso para listar países, listar medios por país, obtener medio y crear medio;
-- repositorios Prisma para países y medios;
-- rutas `GET /api/countries`, `GET /api/countries/:code/outlets`, `GET /api/outlets/:id` y `POST /api/outlets`;
-- páginas de países, medios por país y alta manual de medio;
-- formulario `CreateOutletForm` con validación;
-- tests base de caso de uso y formulario.
+- repositorios Prisma de países y medios;
+- rutas `GET /api/countries`, `GET /api/countries/:code/outlets`, `GET /api/outlets/:id`, `POST /api/outlets`;
+- pantallas para países, medios por país y creación de outlets.
 
 Resultado:
 
-- el sistema ya permitía construir y navegar el catálogo inicial de medios.
+- el sistema ya permite construir el catálogo inicial del atlas.
 
 ### Sprint 3. Gestión de feeds RSS por medio
 
 Objetivo:
 
-- vincular medios con uno o varios feeds RSS para preparar la ingesta.
+- asociar uno o varios feeds RSS a cada medio.
 
-Entregables realizados:
+Entregables principales:
 
-- casos de uso para añadir y listar feeds por medio;
+- casos de uso para añadir y listar feeds;
 - repositorio Prisma de feeds;
 - rutas `GET /api/outlets/:outletId/feeds` y `POST /api/outlets/:outletId/feeds`;
-- detalle de medio, formulario de alta rápida de feeds y acciones por feed en frontend.
+- detalle de medio y formulario de alta de feeds.
 
 Resultado:
 
-- quedó resuelta la gestión manual de feeds, base necesaria para ingerir artículos.
+- queda lista la gestión manual de feeds, base de la ingesta.
 
 ### Sprint 4. Ingesta de artículos y tracking de sincronización
 
 Objetivo:
 
-- pasar de feeds configurados a artículos persistidos y visibles.
+- convertir feeds configurados en artículos persistidos y visibles.
 
-Entregables realizados:
+Entregables principales:
 
 - migración `20260316205444_add_article_and_feed_tracking`;
-- tabla `articles`, `last_checked_at` y unicidad por `url`;
+- tabla `articles`, tracking de `last_checked_at` y unicidad por `url`;
 - `SyncFeedArticlesUseCase` y `ListArticlesByFeedUseCase`;
-- parseo RSS con deduplicación por URL;
+- parseo RSS con deduplicación;
 - rutas `POST /api/feeds/:feedId/sync` y `GET /api/feeds/:feedId/articles`;
-- visor de artículos del feed y sincronización manual desde UI.
+- visor de artículos y sincronización manual desde UI.
 
 Resultado:
 
-- el producto dejó de ser un catálogo de feeds y pasó a almacenar noticias reales.
+- `media-bias-atlas` pasa de gestionar feeds a almacenar noticias reales.
 
 ### Sprint 5. Clasificación política de artículos
 
 Objetivo:
 
-- separar qué artículos son políticos antes de analizar sesgo ideológico.
+- identificar qué artículos son políticos antes del análisis ideológico.
 
-Entregables realizados:
+Entregables principales:
 
 - migración `20260317084910_sprint_5_political_classification`;
-- campos `is_political`, `classification_status`, `classification_reason` y `classified_at` en `articles`;
+- campos `is_political`, `classification_status`, `classification_reason` y `classified_at`;
 - heurística por keywords;
 - `ClassifyPoliticalArticleUseCase` y `ClassifyPoliticalFeedUseCase`;
-- rutas `POST /api/articles/:articleId/classify-political` y `POST /api/feeds/:feedId/classify-political`;
-- etiquetas y filtro visual en la vista del feed;
-- ajuste posterior del test heurístico para alinearlo con el comportamiento real.
+- rutas:
+  - `POST /api/articles/:articleId/classify-political`
+  - `POST /api/feeds/:feedId/classify-political`
+- visualización y filtros mínimos en la vista del feed.
 
 Resultado:
 
-- quedó resuelto el filtro previo imprescindible para Sprint 6.
+- queda resuelto el filtro de entrada imprescindible para el análisis ideológico.
 
 ### Sprint 6. Análisis ideológico por artículo con IA
 
 Objetivo:
 
-- implementar análisis ideológico por artículo en backend, con JSON estricto, persistencia robusta y proveedor IA desacoplado.
+- implementar análisis ideológico por artículo en backend con JSON estricto y persistencia robusta.
 
-Entregables realizados:
+Entregables principales:
 
 - migración `20260317115942_sprint_6_article_bias_analysis`;
 - entidad `ArticleBiasAnalysis`;
 - enums `BiasAnalysisStatus` e `IdeologyLabel`;
 - parser fuerte `ArticleBiasJsonParser`;
-- casos de uso `AnalyzeArticleBiasUseCase` y `AnalyzeFeedBiasUseCase`;
 - repositorio Prisma para `article_bias_analysis`;
+- `AnalyzeArticleBiasUseCase` y `AnalyzeFeedBiasUseCase`;
 - providers `disabled` y `openai-compatible`;
 - factory `createArticleBiasAIProvider`;
-- rutas:
+- endpoints:
   - `POST /api/articles/:articleId/analyze-bias`
   - `GET /api/articles/:articleId/bias-analysis`
   - `POST /api/feeds/:feedId/analyze-bias`
-- tests unitarios del parser y de los casos de uso.
 
-Reglas de negocio cerradas en este sprint:
+Reglas cerradas:
 
 - solo analiza artículos con `isPolitical === true`;
-- si no es político, no invoca IA;
-- si ya existe `COMPLETED`, no rehace;
-- si falla parseo o validación, persiste `FAILED`.
+- no invoca IA para artículos no políticos;
+- no rehace análisis si ya existe `COMPLETED`;
+- persiste `FAILED` si falla parseo o validación.
 
 Resultado:
 
-- Sprint 6 quedó cerrado en backend con comportamiento controlado y persistencia robusta.
+- Sprint 6 cierra el backend del análisis ideológico por artículo.
 
-### Sprint 7. Visualización de sesgo ideológico y resumen agregado básico
+### Sprint 7. Visualización de sesgo ideológico y resumen básico por feed
 
 Objetivo:
 
-- exponer en frontend el análisis ideológico persistido y añadir un resumen agregado simple por feed.
+- exponer en frontend el análisis ideológico persistido y resumirlo por feed.
 
-Entregables realizados:
+Entregables principales:
 
 Backend:
 
-- caso de uso `GetFeedBiasSummaryUseCase`;
+- `GetFeedBiasSummaryUseCase`;
 - endpoint `GET /api/feeds/:feedId/bias-summary`;
 - listado de artículos enriquecido con `biasAnalysis`.
 
 Frontend:
 
-- vista del feed ampliada con estado ideológico por artículo;
-- resumen ideológico por feed;
-- botón `Analizar sesgo` desde UI;
-- filtros mínimos por estado político, estado de análisis y etiqueta ideológica;
-- manejo de estados vacíos y errores.
-
-Testing y validación:
-
-- test unitario de `GetFeedBiasSummaryUseCase`;
-- test frontend de filtros de feed;
-- `build` de frontend en verde;
-- validación funcional real de la vista del feed y de los endpoints nuevos.
+- visualización de estado ideológico por artículo;
+- resumen ideológico del feed;
+- botón `Analizar sesgo`;
+- filtros por estado político, estado de análisis y etiqueta ideológica;
+- estados vacíos y errores controlados.
 
 Resultado:
 
-- Sprint 7 dejó visible la primera capa de valor del producto sobre Sprint 6: análisis ideológico consultable, resumible y usable desde la UI.
+- primera capa visible de valor construida sobre Sprint 6.
 
-## 5. Estado acumulado tras los 7 sprints
+### Sprint 8. Alineación operativa del provider IA con Gemini
+
+Objetivo:
+
+- alinear el provider real de `media-bias-atlas` con el patrón IA del ecosistema Verity, manteniendo desacoplamiento.
+
+Entregables principales:
+
+- auditoría del patrón IA usado en Verity;
+- soporte real para Gemini mediante SDK oficial;
+- `GeminiArticleBiasAIProvider`;
+- actualización del factory para soportar:
+  - `disabled`
+  - `gemini`
+  - `openai-compatible`
+- modelo por defecto alineado con Gemini;
+- documentación de `BIAS_AI_*` en `.env.example`;
+- tests unitarios del provider y del factory.
+
+Resultado:
+
+- el backend queda listo para usar Gemini como provider real sin acoplar productos.
+
+### Sprint 9. Perfil ideológico por outlet
+
+Objetivo:
+
+- pasar del análisis por artículo/feed a un perfil ideológico agregado a nivel de medio.
+
+#### Bloque 9.1
+
+Entregables:
+
+- entidad `OutletBiasProfile`;
+- estadísticas agregadas por outlet en repositorio;
+- `CalculateOutletBiasProfileUseCase`;
+- tests unitarios del cálculo.
+
+#### Bloque 9.2
+
+Entregables:
+
+- `OutletNotFoundError`;
+- endpoint `GET /api/outlets/:outletId/bias-profile`;
+- DTO limpio de respuesta;
+- tests unitarios del controller;
+- test de integración HTTP.
+
+#### Bloque 9.3
+
+Entregables:
+
+- visualización del perfil ideológico en la vista detalle del medio;
+- estados mínimos:
+  - loading
+  - error backend
+  - `INSUFFICIENT_DATA`
+  - perfil válido
+
+Resultado:
+
+- el atlas ya puede calcular, exponer y mostrar el perfil ideológico básico de un medio.
+
+### Sprint 10. Exploración avanzada del atlas desde la navegación principal
+
+Objetivo:
+
+- hacer el atlas más útil desde la navegación principal, sin dashboards complejos.
+
+#### Bloque 10.1
+
+Entregables:
+
+- enriquecimiento de `GET /api/countries/:code/outlets` con `biasSummary`;
+- resumen básico por outlet en el listado principal;
+- UI de tarjetas con estado, etiqueta dominante y volumen de análisis.
+
+#### Bloque 10.2
+
+Entregables:
+
+- filtros MVP en el listado de outlets:
+  - disponibilidad de perfil
+  - estado del perfil
+  - etiqueta dominante
+- ordenación por:
+  - nombre
+  - análisis completados
+  - perfil disponible primero
+
+#### Bloque 10.3
+
+Entregables:
+
+- comparativa rápida entre dos outlets;
+- selección de dos medios desde la página de país;
+- consumo del perfil completo por outlet;
+- visualización comparada de:
+  - nombre
+  - estado
+  - etiqueta dominante
+  - artículos políticos
+  - análisis completados
+  - distribución ideológica
+
+Resultado:
+
+- el atlas deja de ser un listado simple y pasa a ser una herramienta de exploración comparativa del sesgo ideológico.
+
+## 5. Consolidación final del MVP
+
+Tras Sprint 10 se realizó un bloque ligero de consolidación técnica y de UX, sin abrir nuevas features grandes.
+
+Cambios aplicados:
+
+- unificación de labels del perfil ideológico;
+- mejora de textos y navegación en vistas de outlets;
+- helper seguro para render de `websiteUrl` sin romper la UI si la URL está mal formada;
+- control más amable de errores si backend o base de datos no están disponibles;
+- respuesta `503` legible desde backend cuando PostgreSQL no está accesible;
+- home del frontend protegida para no mostrar el error crudo de Prisma.
+
+Resultado:
+
+- el MVP queda más coherente, más demostrable y con menos fricción operativa.
+
+## 6. Estado acumulado tras Sprint 10
 
 ### Funcionalidad disponible hoy
 
 - países sembrados y consultables;
-- medios registrables y navegables por país;
-- feeds RSS asociables a cada medio;
+- alta y consulta de medios por país;
+- alta y consulta de feeds RSS por medio;
 - sincronización manual de feeds;
-- persistencia de artículos deduplicados;
+- persistencia deduplicada de artículos;
 - clasificación política por artículo y por feed;
 - análisis ideológico por artículo;
 - consulta del análisis ideológico persistido;
-- resumen ideológico básico por feed;
-- visualización frontend del estado de sesgo por artículo;
-- acción de análisis desde la UI del feed.
+- resumen ideológico por feed;
+- perfil ideológico por outlet;
+- visualización del estado ideológico por artículo;
+- visualización del perfil ideológico del medio;
+- listado de outlets enriquecido con resumen básico;
+- filtros y ordenación del listado de outlets;
+- comparativa rápida entre dos medios;
+- manejo controlado de indisponibilidad de base de datos.
 
 ### Validación técnica comprobada
 
 Backend:
 
-- `npx prisma migrate status --schema prisma/schema.prisma` -> esquema al día;
 - `npx prisma validate --schema prisma/schema.prisma` -> válido;
 - `npx tsc --noEmit` -> correcto;
-- `TMPDIR=/tmp TEMP=/tmp TMP=/tmp npx vitest run tests/unit` -> suite unitaria del backend en verde.
+- `TMPDIR=/tmp TEMP=/tmp TMP=/tmp npx vitest run tests/unit` -> `31/31` tests en verde.
 
 Frontend:
 
 - `npx tsc --noEmit` -> correcto;
-- `TMPDIR=/tmp TEMP=/tmp TMP=/tmp npx vitest run` -> tests del frontend en verde;
+- `TMPDIR=/tmp TEMP=/tmp TMP=/tmp npx vitest run` -> `24/24` tests en verde;
 - `npm run build` -> correcto.
 
 Base de datos:
 
-- Sprint 5 aplicado;
-- Sprint 6 aplicado;
-- `article_bias_analysis` existente en DB.
+- migraciones de Sprint 5 y Sprint 6 aplicadas;
+- `article_bias_analysis` presente;
+- conexión validada con la `DATABASE_URL` activa.
 
 Operatividad:
 
-- con provider `disabled`, el sistema responde de forma controlada y persiste `FAILED`;
-- con `BIAS_AI_*` configuradas, el código queda preparado para análisis real contra proveedor externo.
+- si PostgreSQL cae, el backend devuelve `503` con mensaje legible;
+- la home del frontend muestra un aviso claro en vez de romper con el mensaje crudo de Prisma;
+- si `BIAS_AI_PROVIDER=disabled`, la app sigue operativa, pero no hará análisis ideológico real;
+- si `BIAS_AI_*` está configurado, el backend puede ejecutar análisis reales contra Gemini u otro provider compatible.
 
-## 6. Actualización posterior: alineación IA con Verity News
+## 7. Deuda técnica real restante
 
-Tras el cierre de Sprint 7 se hizo un ajuste puntual, ya implementado, para alinear `media-bias-atlas/backend` con el patrón IA real del ecosistema Verity News sin acoplar ambos productos.
+No son nuevas funcionalidades. Son límites o mejoras pendientes del MVP actual:
 
-Cambios realizados:
-
-- auditoría del patrón IA real de Verity;
-- confirmación de uso de Gemini mediante SDK oficial `@google/generative-ai`;
-- incorporación de `GeminiArticleBiasAIProvider` en `media-bias-atlas`;
-- soporte en factory para:
-  - `BIAS_AI_PROVIDER=gemini`
-  - `BIAS_AI_PROVIDER=openai-compatible`
-  - `BIAS_AI_PROVIDER=disabled`
-- modelo por defecto alineado con Verity: `gemini-2.5-flash`;
-- prompt compartido entre providers;
-- tests unitarios nuevos del provider Gemini y del factory.
-
-Resultado:
-
-- `media-bias-atlas` ya no depende solo de `openai-compatible`;
-- el provider real recomendado queda alineado con Gemini;
-- el diseño sigue desacoplado a través de `IArticleBiasAIProvider`.
-
-## 7. Deuda técnica real tras Sprint 7
-
-No son features nuevas. Son puntos pendientes o limitados:
-
-1. No existe todavía agregación de sesgo a nivel de medio (`outlet-bias-profile`), aunque sí análisis por artículo y resumen por feed.
-2. El análisis ideológico sigue usando principalmente titular y metadatos; no hay cuerpo completo ni scraping del artículo en este MVP.
-3. No hay todavía pruebas HTTP automatizadas específicas para todos los endpoints de Sprint 6 y Sprint 7, aunque sí validación manual real y tests unitarios.
-4. La activación operativa real sigue dependiendo de configurar `BIAS_AI_*` en entorno.
-5. Persisten pequeñas inconsistencias menores de naming/UX heredadas entre clasificación política y análisis ideológico.
+1. El análisis ideológico sigue trabajando principalmente con `title`, `url` y `publishedAt`; no hay cuerpo completo del artículo.
+2. La comparativa entre outlets es MVP y no incorpora series temporales ni visualizaciones más ricas.
+3. El proyecto depende de que PostgreSQL esté levantado externamente; no hay orquestación propia dentro de `media-bias-atlas/`.
+4. Los scripts auxiliares de diagnóstico/integración del backend siguen siendo utilidades manuales y no parte formal del flujo de desarrollo.
+5. El archivo de informe mantiene un nombre histórico (`1_7`) aunque el contenido ya cubre hasta Sprint 10.
 
 ## 8. Conclusión
 
-Los siete primeros sprints de `media-bias-atlas` han construido un MVP coherente y acumulativo:
+`media-bias-atlas` ha quedado convertido en un MVP coherente, acumulativo y demostrable:
 
-- Sprint 1 levantó la base técnica y el modelo inicial.
-- Sprint 2 resolvió el catálogo de países y medios.
-- Sprint 3 habilitó la gestión manual de feeds.
-- Sprint 4 convirtió feeds en artículos almacenados y visibles.
-- Sprint 5 añadió clasificación política.
-- Sprint 6 añadió análisis ideológico por artículo con persistencia robusta y proveedor IA desacoplado.
-- Sprint 7 añadió la capa visible: resumen ideológico por feed, UI de sesgo y acción de análisis desde frontend.
+- Sprint 1 construyó la base técnica.
+- Sprint 2 habilitó el catálogo de países y medios.
+- Sprint 3 conectó medios con feeds RSS.
+- Sprint 4 convirtió feeds en artículos persistidos.
+- Sprint 5 separó artículos políticos del resto.
+- Sprint 6 añadió análisis ideológico robusto por artículo.
+- Sprint 7 lo hizo visible y resumible por feed.
+- Sprint 8 alineó el provider IA real con Gemini.
+- Sprint 9 introdujo el perfil ideológico por medio.
+- Sprint 10 mejoró la exploración del atlas con resúmenes, filtros, ordenación y comparativa.
 
 Resultado global:
 
-- el producto ya puede registrar países, medios y feeds;
-- ya puede ingerir artículos y clasificarlos;
-- ya puede persistir análisis ideológico por artículo;
-- ya puede mostrar el estado de sesgo en frontend y resumirlo por feed;
-- el backend y el frontend están técnicamente cerrados hasta Sprint 7;
-- el provider IA ya está alineado con Gemini del ecosistema Verity sin acoplar productos;
-- la única condición operativa restante para análisis real es activar las variables `BIAS_AI_*` en el entorno.
+- el producto ya puede registrar, ingerir, clasificar, analizar, resumir y comparar;
+- el backend y el frontend están técnicamente cerrados para este tramo;
+- el MVP está listo para demo y para consolidación en git;
+- las condiciones operativas restantes son claras y acotadas:
+  - PostgreSQL disponible
+  - `BIAS_AI_*` configuradas para análisis reales
+
+En su estado actual, `media-bias-atlas` ya representa una primera versión funcional del atlas ideológico construido como producto paralelo y desacoplado dentro del ecosistema técnico del repositorio.

@@ -6,12 +6,21 @@ export interface Country {
 export type ClassificationStatus = 'PENDING' | 'COMPLETED' | 'FAILED';
 export type BiasAnalysisStatus = 'PENDING' | 'COMPLETED' | 'FAILED';
 export type IdeologyLabel = 'LEFT' | 'CENTER_LEFT' | 'CENTER' | 'CENTER_RIGHT' | 'RIGHT' | 'UNCLEAR';
+export type OutletBiasStatus = 'INSUFFICIENT_DATA' | 'ANALYZED';
+
+export interface OutletBiasSummary {
+  status: OutletBiasStatus;
+  dominantLabel: IdeologyLabel | null;
+  totalPoliticalArticles: number;
+  totalCompletedAnalyses: number;
+}
 
 export interface Outlet {
   id: string;
   name: string;
   websiteUrl: string | null;
   countryId: string;
+  biasSummary?: OutletBiasSummary | null;
 }
 
 export interface RssFeed {
@@ -69,4 +78,14 @@ export interface FeedBiasSummary {
   pendingAnalysis: number;
   failedAnalysis: number;
   ideologyCounts: Record<IdeologyLabel, FeedBiasSummaryBucket>;
+}
+
+export interface OutletBiasProfile {
+  outletId: string;
+  status: OutletBiasStatus;
+  totalPoliticalArticles: number;
+  totalCompletedAnalyses: number;
+  minimumSampleRequired: number;
+  dominantLabel: IdeologyLabel | null;
+  distribution: Record<IdeologyLabel, number>;
 }

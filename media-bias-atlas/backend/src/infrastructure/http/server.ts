@@ -26,16 +26,27 @@ export function createServer(): express.Application {
     
     // Errores controlados por dominio/casos de uso (ej. País no existe o Duplicado Prisma)
     let statusCode = 500;
+    let publicMessage = err.message;
+
     if (err.message?.includes('not found') || err.message?.includes('no encontrado')) statusCode = 404;
     // P2002 es Unique Constraint Failed en Prisma
     if (err.code === 'P2002') { 
       statusCode = 409; // Conflicto
-      err.message = 'El registro ya existe (violación de clave única).';
+      publicMessage = 'El registro ya existe (violación de clave única).';
+    }
+
+    const databaseUnavailable = err.code === 'P1001'
+      || err.name === 'PrismaClientInitializationError'
+      || err.message?.includes("Can't reach database server");
+
+    if (databaseUnavailable) {
+      statusCode = 503;
+      publicMessage = 'La base de datos de Media Bias Atlas no está disponible. Verifica PostgreSQL en localhost:5433 y vuelve a intentarlo.';
     }
 
     res.status(statusCode).json({
-      error: statusCode === 500 ? 'Internal Server Error' : 'Domain Error',
-      message: err.message,
+      error: statusCode === 500 ? 'Internal Server Error' : statusCode === 503 ? 'Service Unavailable' : 'Domain Error',
+      message: publicMessage,
     });
   });
 

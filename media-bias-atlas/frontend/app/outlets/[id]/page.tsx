@@ -5,6 +5,8 @@ import { Outlet, RssFeed } from '@/types';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AddFeedForm } from '@/components/AddFeedForm';
 import { FeedRowActions } from '@/components/FeedRowActions';
+import { OutletBiasProfileCard } from '@/components/OutletBiasProfileCard';
+import { getOutletBiasProfile, getOutletBiasProfileErrorMessage } from '@/lib/outletBiasProfile';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,23 +19,41 @@ interface PageProps {
 export default async function OutletDetailPage({ params }: PageProps) {
   const { id } = await params;
 
-  // Lógica paralela para no dilatar el cargado TTI 
-  const [outlet, feeds] = await Promise.all([
+  const [outletResult, feedsResult, biasProfileResult] = await Promise.allSettled([
     apiFetch<Outlet>(`/outlets/${id}`),
-    // Usamos catch para que si Outlet da 404, caiga en el map genérico sin romper todo silenciadamente.
-    apiFetch<RssFeed[]>(`/outlets/${id}/feeds`).catch(() => []),
+    apiFetch<RssFeed[]>(`/outlets/${id}/feeds`),
+    getOutletBiasProfile(id),
   ]);
 
-  if (!outlet) {
-    return <EmptyState title="Medio no encontrado" description="El ID proporcionado no pertenece a ningún Medio registrado." />;
+  if (outletResult.status === 'rejected') {
+    const outletErrorMessage = getErrorMessage(outletResult.reason, 'No se pudo cargar el medio.');
+
+    if (outletErrorMessage.toLowerCase().includes('no encontrado')) {
+      return (
+        <EmptyState
+          title="Medio no encontrado"
+          description="El ID proporcionado no pertenece a ningún Medio registrado."
+        />
+      );
+    }
+
+    throw outletResult.reason;
   }
+
+  const outlet = outletResult.value;
+  const feeds = feedsResult.status === 'fulfilled' ? feedsResult.value : [];
+  const biasProfile = biasProfileResult.status === 'fulfilled' ? biasProfileResult.value : null;
+  const biasProfileError =
+    biasProfileResult.status === 'rejected'
+      ? getOutletBiasProfileErrorMessage(biasProfileResult.reason)
+      : null;
 
   return (
     <div className="space-y-6">
       
       <div className="flex items-center space-x-2 text-sm text-gray-500 mb-2">
         <Link href={`/countries/${outlet.countryId}`} className="hover:text-blue-600">
-          Volver a {outlet.countryId}
+          Volver a medios de {outlet.countryId}
         </Link>
         <span>/</span>
         <span className="font-medium text-gray-900">{outlet.name}</span>
@@ -55,6 +75,8 @@ export default async function OutletDetailPage({ params }: PageProps) {
         </div>
       </div>
 
+      <OutletBiasProfileCard profile={biasProfile} errorMessage={biasProfileError} />
+
       {/* Formulario de Alta Rápida de Feeds */}
       <AddFeedForm outletId={outlet.id} />
 
@@ -64,7 +86,7 @@ export default async function OutletDetailPage({ params }: PageProps) {
         {!feeds || feeds.length === 0 ? (
           <EmptyState 
             title="Sin fuentes activas" 
-            description="Añade la URL del archivo XML para comenzar a arrastrar noticias a nuestra base de datos." 
+            description="Añade la URL del feed RSS para empezar a ingerir noticias en el atlas." 
           />
         ) : (
           <div className="bg-white shadow-sm border border-gray-200 rounded-md overflow-hidden">
@@ -76,10 +98,10 @@ export default async function OutletDetailPage({ params }: PageProps) {
                       {feed.url}
                     </p>
                     <div className="flex items-center mt-1 text-xs text-gray-500 gap-3">
-                      <span>Status: {feed.isActive ? <span className="text-green-600 font-semibold">Inyectando</span> : 'Deshabilitado'}</span>
+                      <span>Estado: {feed.isActive ? <span className="text-green-600 font-semibold">Activo</span> : 'Deshabilitado'}</span>
                       <span>•</span>
                       <span>
-                        Último refetch:{' '}
+                        Última sincronización:{' '}
                         {feed.lastCheckedAt 
                           ? new Date(feed.lastCheckedAt).toLocaleString('es-ES') 
                           : 'Nunca'}
@@ -96,4 +118,8 @@ export default async function OutletDetailPage({ params }: PageProps) {
 
     </div>
   );
+}
+
+function getErrorMessage(error: unknown, fallbackMessage: string): string {
+  return error instanceof Error ? error.message : fallbackMessage;
 }
