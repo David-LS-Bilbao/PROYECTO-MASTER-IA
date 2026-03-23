@@ -69,8 +69,10 @@ export async function fetchWithAuth(
 
     try {
       // 1. Cerrar sesión de Firebase
-      await signOut(auth);
-      console.log('✅ Sesión cerrada correctamente');
+      if (auth) {
+        await signOut(auth);
+        console.log('✅ Sesión cerrada correctamente');
+      }
     } catch (error) {
       console.error('❌ Error al cerrar sesión:', error);
     }

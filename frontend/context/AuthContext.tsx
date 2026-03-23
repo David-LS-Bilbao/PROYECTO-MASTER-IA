@@ -89,6 +89,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     let unsubscribe: (() => void) | undefined;
 
+    if (!auth) {
+      console.warn('⚠️ AuthProvider: Firebase no está configurado en este entorno.');
+      setLoading(false);
+      return;
+    }
+
     // =========================================================================
     // PASO 1: Esperar a que setPersistence complete antes de registrar listener
     // Sprint 29 Fix: Evita race condition donde onAuthStateChanged se registra
@@ -96,6 +102,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // no detecte la sesión almacenada en IndexedDB.
     // =========================================================================
     authReady.then(() => {
+      if (!auth) {
+        setLoading(false);
+        return;
+      }
+
       console.log('✅ Persistencia configurada. Registrando listener de auth...');
 
       // =====================================================================
@@ -135,6 +146,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
    * Cierra la sesión del usuario
    */
   const logout = async (): Promise<void> => {
+    if (!auth) {
+      console.warn('⚠️ Firebase no configurado. No hay sesión que cerrar.');
+      return;
+    }
+
     try {
       console.log('🚪 Cerrando sesión...');
       await signOut(auth);
@@ -152,6 +168,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
    * @returns Token JWT o null si no hay usuario autenticado
    */
   const getToken = async (forceRefresh: boolean = false): Promise<string | null> => {
+    if (!auth) {
+      console.warn('⚠️ Firebase no configurado. No se puede obtener token.');
+      return null;
+    }
+
     const currentUser = auth.currentUser;
     
     if (!currentUser) {

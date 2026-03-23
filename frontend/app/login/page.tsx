@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { auth } from '@/lib/firebase';
+import { auth, getFirebaseConfigErrorMessage } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import {
   signInWithEmailAndPassword,
@@ -19,6 +19,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const firebaseConfigError = getFirebaseConfigErrorMessage();
 
   // Sprint 29 Fix: Si el usuario ya tiene sesión persistente, redirigir a /
   // replace() evita que el usuario pueda volver atrás con el botón "back"
@@ -54,6 +55,10 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      if (!auth) {
+        throw new Error(firebaseConfigError || 'Firebase no está configurado en este entorno.');
+      }
+
       if (isLogin) {
         // Iniciar sesión
         await signInWithEmailAndPassword(auth, email, password);
@@ -90,6 +95,10 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      if (!auth) {
+        throw new Error(firebaseConfigError || 'Firebase no está configurado en este entorno.');
+      }
+
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
       
@@ -191,12 +200,18 @@ export default function LoginPage() {
               )}
             </div>
 
-            {/* Error Message */}
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-                {error}
-              </div>
-            )}
+          {/* Error Message */}
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+              {error}
+            </div>
+          )}
+
+          {firebaseConfigError && !error && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg text-sm">
+              {firebaseConfigError}
+            </div>
+          )}
 
             {/* Submit Button */}
             <button

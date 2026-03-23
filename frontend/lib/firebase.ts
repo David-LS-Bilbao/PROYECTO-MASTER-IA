@@ -34,7 +34,7 @@ const firebaseConfig = {
 /**
  * Valida que todas las variables de configuración estén presentes
  */
-function validateConfig(): void {
+function getMissingConfigFields(): string[] {
   const requiredFields = [
     'apiKey',
     'authDomain',
@@ -48,15 +48,36 @@ function validateConfig(): void {
     (field) => !firebaseConfig[field as keyof typeof firebaseConfig]
   );
 
-  if (missingFields.length > 0) {
-    console.error(
-      '❌ Firebase Config Error: Faltan las siguientes variables de entorno:',
-      missingFields.map((field) => `NEXT_PUBLIC_FIREBASE_${field.toUpperCase()}`).join(', ')
-    );
-    throw new Error(
-      'Configuración de Firebase incompleta. Verifica las variables de entorno.'
-    );
+  return missingFields;
+}
+
+function validateConfig(): void {
+  const missingFields = getMissingConfigFields();
+  if (missingFields.length === 0) {
+    return;
   }
+
+  console.error(
+    '❌ Firebase Config Error: Faltan las siguientes variables de entorno:',
+    missingFields.map((field) => `NEXT_PUBLIC_FIREBASE_${field.toUpperCase()}`).join(', ')
+  );
+  throw new Error(
+    'Configuración de Firebase incompleta. Verifica las variables de entorno.'
+  );
+}
+
+export const isFirebaseConfigured = getMissingConfigFields().length === 0;
+
+export function getFirebaseConfigErrorMessage(): string {
+  const missingFields = getMissingConfigFields();
+
+  if (missingFields.length === 0) {
+    return '';
+  }
+
+  return `Falta la configuración pública de Firebase: ${missingFields
+    .map((field) => `NEXT_PUBLIC_FIREBASE_${field.toUpperCase()}`)
+    .join(', ')}`;
 }
 
 /**
@@ -64,13 +85,18 @@ function validateConfig(): void {
  * 
  * @returns Instancia de Firebase App
  */
-function initializeFirebase(): FirebaseApp {
+function initializeFirebase(): FirebaseApp | null {
   // =========================================================================
   // SINGLETON PATTERN: Solo inicializar si no hay apps existentes
   // =========================================================================
   if (getApps().length > 0) {
     console.log('🔥 Firebase Client ya inicializado. Reutilizando instancia existente.');
     return getApps()[0]!;
+  }
+
+  if (!isFirebaseConfigured) {
+    console.warn('⚠️ Firebase Client no configurado. La autenticación quedará deshabilitada en este entorno.');
+    return null;
   }
 
   console.log('🔥 Inicializando Firebase Client SDK...');
@@ -119,7 +145,7 @@ export const firebaseApp = initializeFirebase();
  * await signOut(auth);
  * ```
  */
-export const auth = getAuth(firebaseApp);
+export const auth: Auth | null = firebaseApp ? getAuth(firebaseApp) : null;
 
 // =========================================================================
 // PERSISTENCIA: Configurar sesiones persistentes (Keep Me Logged In)
@@ -127,13 +153,15 @@ export const auth = getAuth(firebaseApp);
 // registrar onAuthStateChanged. Evita race condition donde el listener
 // se registra antes de que la persistencia esté lista.
 // =========================================================================
-export const authReady: Promise<void> = setPersistence(auth, browserLocalPersistence)
-  .then(() => {
-    console.log('✅ Firebase Auth: Persistencia LOCAL activada (sesiones permanentes)');
-  })
-  .catch((error) => {
-    console.error('❌ Error configurando persistencia de Firebase:', error);
-  });
+export const authReady: Promise<void> = auth
+  ? setPersistence(auth, browserLocalPersistence)
+      .then(() => {
+        console.log('✅ Firebase Auth: Persistencia LOCAL activada (sesiones permanentes)');
+      })
+      .catch((error) => {
+        console.error('❌ Error configurando persistencia de Firebase:', error);
+      })
+  : Promise.resolve();
 
 /**
  * Helper: Obtener token JWT del usuario actual
@@ -152,6 +180,10 @@ export const authReady: Promise<void> = setPersistence(auth, browserLocalPersist
  * ```
  */
 export async function getCurrentUserToken(): Promise<string | null> {
+  if (!auth) {
+    return null;
+  }
+
   const user = auth.currentUser;
   if (!user) {
     return null;
@@ -172,5 +204,5 @@ export async function getCurrentUserToken(): Promise<string | null> {
  * @returns true si hay un usuario activo, false en caso contrario
  */
 export function isAuthenticated(): boolean {
-  return auth.currentUser !== null;
+  return auth?.currentUser !== null;
 }
