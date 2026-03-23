@@ -49,9 +49,24 @@ export class ChatController {
 
       // Validate request body with Zod (Shift Left Security)
       const validatedInput = chatArticleSchema.parse(req.body);
+      const requestId = this.resolveRequestId(req);
+      const correlationId = this.resolveCorrelationId(req, requestId);
 
       // Execute use case
-      const result = await this.chatArticleUseCase.execute(validatedInput);
+      const result = await this.chatArticleUseCase.execute({
+        ...validatedInput,
+        observabilityContext: {
+          requestId,
+          correlationId,
+          endpoint: `${req.method} ${req.originalUrl}`,
+          userId: req.user?.uid,
+          entityType: 'article',
+          entityId: validatedInput.articleId,
+          metadata: {
+            messagesCount: validatedInput.messages.length,
+          },
+        },
+      });
 
       // Track user stats (if authenticated)
       if (req.user?.uid) {
@@ -98,9 +113,24 @@ export class ChatController {
 
       // Validate request body with Zod (Shift Left Security)
       const validatedInput = chatGeneralSchema.parse(req.body);
+      const requestId = this.resolveRequestId(req);
+      const correlationId = this.resolveCorrelationId(req, requestId);
 
       // Execute use case
-      const result = await this.chatGeneralUseCase.execute(validatedInput);
+      const result = await this.chatGeneralUseCase.execute({
+        ...validatedInput,
+        observabilityContext: {
+          requestId,
+          correlationId,
+          endpoint: `${req.method} ${req.originalUrl}`,
+          userId: req.user?.uid,
+          entityType: 'chat_general',
+          entityId: req.user?.uid,
+          metadata: {
+            messagesCount: validatedInput.messages.length,
+          },
+        },
+      });
 
       // Track user stats (if authenticated)
       if (req.user?.uid) {
@@ -239,5 +269,27 @@ export class ChatController {
       error: 'Internal Server Error',
       message: 'An unexpected error occurred',
     });
+  }
+
+  private resolveRequestId(req: Request): string {
+    if (typeof req.id === 'string' && req.id.trim().length > 0) {
+      return req.id.trim();
+    }
+
+    const headerRequestId = req.header('x-request-id');
+    if (headerRequestId && headerRequestId.trim().length > 0) {
+      return headerRequestId.trim();
+    }
+
+    return `req_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  private resolveCorrelationId(req: Request, fallbackRequestId: string): string {
+    const headerCorrelationId = req.header('x-correlation-id');
+    if (headerCorrelationId && headerCorrelationId.trim().length > 0) {
+      return headerCorrelationId.trim();
+    }
+
+    return fallbackRequestId;
   }
 }

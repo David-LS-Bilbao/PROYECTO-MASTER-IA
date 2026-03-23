@@ -31,10 +31,23 @@ export class SearchController {
 
       const { q, limit } = parsed.data;
       const effectiveLimit = limit ?? 10;
+      const requestId = this.resolveRequestId(req);
+      const correlationId = this.resolveCorrelationId(req, requestId);
 
       const result = await this.searchNewsUseCase.execute({
         query: q,
         limit: effectiveLimit,
+        observabilityContext: {
+          requestId,
+          correlationId,
+          endpoint: `${req.method} ${req.originalUrl}`,
+          userId: req.user?.uid,
+          entityType: 'search_query',
+          metadata: {
+            limit: effectiveLimit,
+            queryLength: q.length,
+          },
+        },
       });
 
       // Track user stats (if authenticated)
@@ -128,5 +141,27 @@ export class SearchController {
       error: 'Internal Server Error',
       message: 'An unexpected error occurred during search',
     });
+  }
+
+  private resolveRequestId(req: Request): string {
+    if (typeof req.id === 'string' && req.id.trim().length > 0) {
+      return req.id.trim();
+    }
+
+    const headerRequestId = req.header('x-request-id');
+    if (headerRequestId && headerRequestId.trim().length > 0) {
+      return headerRequestId.trim();
+    }
+
+    return `req_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  private resolveCorrelationId(req: Request, fallbackRequestId: string): string {
+    const headerCorrelationId = req.header('x-correlation-id');
+    if (headerCorrelationId && headerCorrelationId.trim().length > 0) {
+      return headerCorrelationId.trim();
+    }
+
+    return fallbackRequestId;
   }
 }

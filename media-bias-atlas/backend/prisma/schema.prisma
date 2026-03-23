@@ -2,6 +2,11 @@ generator client {
   provider = "prisma-client-js"
 }
 
+generator observabilityClient {
+  provider = "prisma-client-js"
+  output   = "../src/generated/observability-prisma"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -21,6 +26,14 @@ enum BiasAnalysisStatus {
   PENDING
   COMPLETED
   FAILED
+}
+
+enum AiRunStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  TIMEOUT
+  CANCELLED
 }
 
 enum IdeologyLabel {
@@ -123,4 +136,82 @@ model ArticleBiasAnalysis {
   article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
 
   @@map("article_bias_analysis")
+}
+
+model AiPromptVersion {
+  id           String   @id @default(uuid())
+  module       String
+  promptKey    String   @map("prompt_key")
+  version      String
+  templateHash String   @map("template_hash")
+  sourceFile   String   @map("source_file")
+  isActive     Boolean  @default(true) @map("is_active")
+  metadataJson Json?    @map("metadata_json")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  runs AiOperationRun[]
+
+  @@unique([module, promptKey, version])
+  @@unique([templateHash])
+  @@index([module, promptKey, isActive], map: "idx_ai_prompt_versions_module_key_active")
+  @@map("ai_prompt_versions")
+}
+
+model AiModelPricing {
+  id                    String    @id @default(uuid())
+  provider              String
+  model                 String
+  currency              String    @default("EUR")
+  inputCostMicrosPer1M  BigInt    @map("input_cost_micros_per_1m")
+  outputCostMicrosPer1M BigInt    @map("output_cost_micros_per_1m")
+  isActive              Boolean   @default(true) @map("is_active")
+  validFrom             DateTime  @default(now()) @map("valid_from")
+  validTo               DateTime? @map("valid_to")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  @@index([provider, model, isActive], map: "idx_ai_model_pricing_provider_model_active")
+  @@index([validFrom], map: "idx_ai_model_pricing_valid_from")
+  @@map("ai_model_pricing")
+}
+
+model AiOperationRun {
+  id                     String      @id @default(uuid())
+  module                 String
+  operationKey           String      @map("operation_key")
+  provider               String?
+  model                  String?
+  status                 AiRunStatus @default(PENDING)
+  promptVersionId        String?     @map("prompt_version_id")
+  requestId              String      @map("request_id")
+  correlationId          String      @map("correlation_id")
+  endpoint               String?
+  userId                 String?     @map("user_id")
+  entityType             String?     @map("entity_type")
+  entityId               String?     @map("entity_id")
+  promptTokens           Int?        @map("prompt_tokens")
+  completionTokens       Int?        @map("completion_tokens")
+  totalTokens            Int?        @map("total_tokens")
+  estimatedCostMicrosEur BigInt?     @map("estimated_cost_micros_eur")
+  latencyMs              Int?        @map("latency_ms")
+  errorCode              String?     @map("error_code")
+  errorMessage           String?     @db.Text @map("error_message")
+  metadataJson           Json?       @map("metadata_json")
+  debugPayloadJson       Json?       @map("debug_payload_json")
+  debugPayloadExpiresAt  DateTime?   @map("debug_payload_expires_at")
+  completedAt            DateTime?   @map("completed_at")
+  createdAt              DateTime    @default(now()) @map("created_at")
+  updatedAt              DateTime    @updatedAt @map("updated_at")
+
+  promptVersion AiPromptVersion? @relation(fields: [promptVersionId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt], map: "idx_ai_operation_runs_created_at")
+  @@index([module, operationKey, createdAt], map: "idx_ai_operation_runs_module_operation_created")
+  @@index([provider, model, createdAt], map: "idx_ai_operation_runs_provider_model_created")
+  @@index([status, createdAt], map: "idx_ai_operation_runs_status_created")
+  @@index([requestId], map: "idx_ai_operation_runs_request_id")
+  @@index([entityType, entityId, createdAt], map: "idx_ai_operation_runs_entity_created")
+  @@index([correlationId], map: "idx_ai_operation_runs_correlation_id")
+  @@map("ai_operation_runs")
 }

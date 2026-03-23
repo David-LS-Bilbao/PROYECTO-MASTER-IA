@@ -57,9 +57,24 @@ export class AnalyzeController {
       return;
     }
 
+    const requestId = this.resolveRequestId(req);
+    const correlationId = this.resolveCorrelationId(req, requestId);
+
     // Sprint 14: Pass user to use case for quota enforcement
     const input = {
       ...validatedInput,
+      observabilityContext: {
+        requestId,
+        correlationId,
+        endpoint: `${req.method} ${req.originalUrl}`,
+        userId: req.user?.uid,
+        entityType: 'article',
+        entityId: validatedInput.articleId,
+        metadata: {
+          requestedAnalysisMode: validatedInput.analysisMode ?? null,
+          requestedDepthMode: validatedInput.mode ?? 'standard',
+        },
+      },
       user: req.user
         ? {
             id: req.user.uid,
@@ -148,5 +163,27 @@ export class AnalyzeController {
       data: stats,
       message: `${stats.percentAnalyzed}% of articles analyzed`,
     });
+  }
+
+  private resolveRequestId(req: Request): string {
+    if (typeof req.id === 'string' && req.id.trim().length > 0) {
+      return req.id.trim();
+    }
+
+    const headerRequestId = req.header('x-request-id');
+    if (headerRequestId && headerRequestId.trim().length > 0) {
+      return headerRequestId.trim();
+    }
+
+    return `req_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  private resolveCorrelationId(req: Request, fallbackRequestId: string): string {
+    const headerCorrelationId = req.header('x-correlation-id');
+    if (headerCorrelationId && headerCorrelationId.trim().length > 0) {
+      return headerCorrelationId.trim();
+    }
+
+    return fallbackRequestId;
   }
 }

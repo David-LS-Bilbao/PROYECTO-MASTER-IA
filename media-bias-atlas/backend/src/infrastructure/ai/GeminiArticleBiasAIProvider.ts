@@ -1,6 +1,21 @@
-import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
-import { ArticleBiasAIInput, ArticleBiasAIResponse, IArticleBiasAIProvider } from '../../application/contracts/IArticleBiasAIProvider';
-import { buildArticleBiasPrompt } from './articleBiasPrompt';
+import { GenerateContentResult, GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
+import {
+  ArticleBiasAIInput,
+  ArticleBiasAIResponse,
+  ArticleBiasProviderPromptDescriptors,
+  IArticleBiasAIProvider,
+} from '../../application/contracts/IArticleBiasAIProvider';
+import {
+  ARTICLE_BIAS_INPUT_CONTEXT_PROMPT_KEY,
+  ARTICLE_BIAS_INPUT_CONTEXT_TEMPLATE,
+  ARTICLE_BIAS_INSTRUCTIONS_PROMPT_KEY,
+  ARTICLE_BIAS_INSTRUCTIONS_TEMPLATE,
+  ARTICLE_BIAS_PROMPT_KEY,
+  ARTICLE_BIAS_PROMPT_SOURCE_FILE,
+  ARTICLE_BIAS_PROMPT_TEMPLATE,
+  ARTICLE_BIAS_PROMPT_VERSION,
+  buildArticleBiasPrompt,
+} from './articleBiasPrompt';
 
 interface GeminiProviderConfig {
   apiKey: string;
@@ -32,6 +47,31 @@ export class GeminiArticleBiasAIProvider implements IArticleBiasAIProvider {
     this.model = genAI.getGenerativeModel({ model: config.model });
   }
 
+  getPromptDescriptors(): ArticleBiasProviderPromptDescriptors {
+    return {
+      primaryPrompt: {
+        promptKey: ARTICLE_BIAS_PROMPT_KEY,
+        version: ARTICLE_BIAS_PROMPT_VERSION,
+        template: ARTICLE_BIAS_PROMPT_TEMPLATE,
+        sourceFile: ARTICLE_BIAS_PROMPT_SOURCE_FILE,
+      },
+      relatedPrompts: [
+        {
+          promptKey: ARTICLE_BIAS_INSTRUCTIONS_PROMPT_KEY,
+          version: ARTICLE_BIAS_PROMPT_VERSION,
+          template: ARTICLE_BIAS_INSTRUCTIONS_TEMPLATE,
+          sourceFile: ARTICLE_BIAS_PROMPT_SOURCE_FILE,
+        },
+        {
+          promptKey: ARTICLE_BIAS_INPUT_CONTEXT_PROMPT_KEY,
+          version: ARTICLE_BIAS_PROMPT_VERSION,
+          template: ARTICLE_BIAS_INPUT_CONTEXT_TEMPLATE,
+          sourceFile: ARTICLE_BIAS_PROMPT_SOURCE_FILE,
+        },
+      ],
+    };
+  }
+
   async analyzeArticle(input: ArticleBiasAIInput): Promise<ArticleBiasAIResponse> {
     return this.executeWithRetry(async () => {
       const prompt = buildArticleBiasPrompt(input);
@@ -53,10 +93,18 @@ export class GeminiArticleBiasAIProvider implements IArticleBiasAIProvider {
         throw new Error('Gemini no devolvio contenido util');
       }
 
+      const usage = result.response.usageMetadata;
+
       return {
         provider: this.providerName,
         model: this.modelName,
         rawText,
+        tokenUsage: {
+          promptTokens: usage?.promptTokenCount ?? null,
+          completionTokens: usage?.candidatesTokenCount ?? null,
+          totalTokens: usage?.totalTokenCount ?? null,
+        },
+        metadata: this.buildSuccessMetadata(result),
       };
     });
   }
@@ -101,6 +149,19 @@ export class GeminiArticleBiasAIProvider implements IArticleBiasAIProvider {
         clearTimeout(timeoutHandle);
       }
     }
+  }
+
+  private buildSuccessMetadata(result: GenerateContentResult): Record<string, unknown> {
+    const usage = result.response.usageMetadata;
+
+    return {
+      providerType: 'gemini',
+      responseMimeType: 'application/json',
+      usageAvailable: Boolean(usage),
+      candidateCount: result.response.candidates?.length ?? 0,
+      finishReasons:
+        result.response.candidates?.map((candidate) => candidate.finishReason ?? 'UNKNOWN') ?? [],
+    };
   }
 
   private isRetryableError(error: unknown): boolean {

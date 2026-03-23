@@ -1,5 +1,6 @@
 import { BiasAnalysisStatus } from '../../../domain/entities/ArticleBiasAnalysis';
 import { IArticleRepository } from '../../../domain/repositories/IArticleRepository';
+import { MbaAiObservabilityContext, normalizeMbaAiObservabilityContext } from '../../../infrastructure/observability/observability-context';
 import { AnalyzeArticleBiasUseCase } from './AnalyzeArticleBiasUseCase';
 
 export interface AnalyzeFeedBiasResult {
@@ -18,12 +19,22 @@ export class AnalyzeFeedBiasUseCase {
     private readonly analyzeArticleBiasUseCase: AnalyzeArticleBiasUseCase
   ) {}
 
-  async execute(feedId: string): Promise<AnalyzeFeedBiasResult> {
+  async execute(
+    feedId: string,
+    observabilityContext?: MbaAiObservabilityContext
+  ): Promise<AnalyzeFeedBiasResult> {
     if (!feedId) {
       throw new Error('El ID del feed es obligatorio');
     }
 
     const articles = await this.articleRepository.findByFeedId(feedId, 500);
+    const normalizedContext = normalizeMbaAiObservabilityContext(observabilityContext, {
+      entityType: 'feed',
+      entityId: feedId,
+      metadata: {
+        feedId,
+      },
+    });
     const metrics: AnalyzeFeedBiasResult = {
       feedId,
       totalArticles: articles.length,
@@ -43,7 +54,19 @@ export class AnalyzeFeedBiasUseCase {
       metrics.eligiblePolitical++;
 
       try {
-        const result = await this.analyzeArticleBiasUseCase.execute(article.id);
+        const result = await this.analyzeArticleBiasUseCase.execute(article.id, {
+          requestId: normalizedContext.requestId,
+          correlationId: normalizedContext.correlationId,
+          endpoint: normalizedContext.endpoint,
+          userId: normalizedContext.userId,
+          entityType: 'article',
+          entityId: article.id,
+          metadata: {
+            ...(normalizedContext.metadata ?? {}),
+            feedId,
+            trigger: 'feed_bias_analysis',
+          },
+        });
 
         if (result.reusedExisting && result.analysis.status === BiasAnalysisStatus.COMPLETED) {
           metrics.alreadyCompleted++;

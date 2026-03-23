@@ -6,7 +6,10 @@
 
 import { NewsArticle } from '../../domain/entities/news-article.entity';
 import { INewsArticleRepository } from '../../domain/repositories/news-article.repository';
-import { IGeminiClient } from '../../domain/services/gemini-client.interface';
+import {
+  AIObservabilityContext,
+  IGeminiClient,
+} from '../../domain/services/gemini-client.interface';
 import { IVectorClient } from '../../domain/services/vector-client.interface';
 import { ValidationError } from '../../domain/errors/domain.error';
 import { GeminiErrorMapper } from '../../infrastructure/external/gemini-error-mapper';
@@ -14,6 +17,7 @@ import { GeminiErrorMapper } from '../../infrastructure/external/gemini-error-ma
 export interface SearchNewsInput {
   query: string;
   limit?: number;
+  observabilityContext?: AIObservabilityContext;
 }
 
 export interface SearchNewsOutput {
@@ -30,7 +34,7 @@ export class SearchNewsUseCase {
   ) {}
 
   async execute(input: SearchNewsInput): Promise<SearchNewsOutput> {
-    const { query, limit = 10 } = input;
+    const { query, limit = 10, observabilityContext } = input;
 
     // Validate input
     if (!query || query.trim().length < 2) {
@@ -48,7 +52,16 @@ export class SearchNewsUseCase {
     
     let queryEmbedding: number[];
     try {
-      queryEmbedding = await this.geminiClient.generateEmbedding(query);
+      queryEmbedding = await this.geminiClient.generateEmbedding(query, {
+        ...observabilityContext,
+        operationKey: 'embedding_generation',
+        metadata: {
+          ...observabilityContext?.metadata,
+          embeddingPurpose: 'search_query',
+          queryLength: query.length,
+          limit,
+        },
+      });
     } catch (error) {
       // Map Gemini errors for observability (AI_RULES.md compliance)
       const mappedError = GeminiErrorMapper.toExternalAPIError(error);

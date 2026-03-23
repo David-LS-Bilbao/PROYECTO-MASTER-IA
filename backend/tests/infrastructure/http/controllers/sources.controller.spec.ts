@@ -16,6 +16,15 @@ function createRes() {
   return { res, jsonMock, statusMock };
 }
 
+function createReq(body: Record<string, unknown>): Request {
+  return {
+    body,
+    method: 'POST',
+    originalUrl: '/api/sources/discover',
+    header: vi.fn().mockReturnValue(undefined),
+  } as unknown as Request;
+}
+
 describe('SourcesController', () => {
   let controller: SourcesController;
   let geminiClient: { discoverRssUrl: ReturnType<typeof vi.fn> };
@@ -32,7 +41,7 @@ describe('SourcesController', () => {
 
   it('400 si input invalido', async () => {
     const { res, statusMock } = createRes();
-    const req = { body: { query: '' } } as Request;
+    const req = createReq({ query: '' });
 
     await controller.discover(req, res as Response);
 
@@ -41,7 +50,7 @@ describe('SourcesController', () => {
 
   it('404 si no encuentra RSS', async () => {
     const { res, statusMock } = createRes();
-    const req = { body: { query: 'medio' } } as Request;
+    const req = createReq({ query: 'medio' });
 
     geminiClient.discoverRssUrl.mockResolvedValueOnce(null);
 
@@ -52,7 +61,7 @@ describe('SourcesController', () => {
 
   it('200 si encuentra RSS', async () => {
     const { res, statusMock, jsonMock } = createRes();
-    const req = { body: { query: 'medio' } } as Request;
+    const req = createReq({ query: 'medio' });
 
     geminiClient.discoverRssUrl.mockResolvedValueOnce('https://example.com/rss');
 
@@ -69,7 +78,7 @@ describe('SourcesController', () => {
 
   it('500 si ocurre error', async () => {
     const { res, statusMock } = createRes();
-    const req = { body: { query: 'medio' } } as Request;
+    const req = createReq({ query: 'medio' });
 
     geminiClient.discoverRssUrl.mockRejectedValueOnce(new Error('Gemini error'));
 

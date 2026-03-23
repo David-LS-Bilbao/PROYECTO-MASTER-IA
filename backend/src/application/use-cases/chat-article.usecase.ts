@@ -17,7 +17,11 @@
  */
 
 import { INewsArticleRepository } from '../../domain/repositories/news-article.repository';
-import { IGeminiClient, ChatMessage } from '../../domain/services/gemini-client.interface';
+import {
+  AIObservabilityContext,
+  IGeminiClient,
+  ChatMessage,
+} from '../../domain/services/gemini-client.interface';
 import { IVectorClient, QueryResult } from '../../domain/services/vector-client.interface';
 import { EntityNotFoundError, ValidationError, LowRelevanceError } from '../../domain/errors/domain.error';
 import { GeminiErrorMapper } from '../../infrastructure/external/gemini-error-mapper';
@@ -64,6 +68,7 @@ const SIMILARITY_THRESHOLD = 0.25;
 export interface ChatArticleInput {
   articleId: string;
   messages: ChatMessage[];
+  observabilityContext?: AIObservabilityContext;
 }
 
 export interface ChatArticleOutput {
@@ -83,7 +88,7 @@ export class ChatArticleUseCase {
    * Process a chat message about an article using RAG
    */
   async execute(input: ChatArticleInput): Promise<ChatArticleOutput> {
-    const { articleId, messages } = input;
+    const { articleId, messages, observabilityContext } = input;
 
     // Validate input
     if (!articleId || articleId.trim() === '') {
@@ -114,7 +119,11 @@ export class ChatArticleUseCase {
     // 2. RETRIEVAL: Generate embedding and query ChromaDB
     let retrievedContext: string;
     try {
-      retrievedContext = await this.retrieveContext(userQuestion, articleId);
+      retrievedContext = await this.retrieveContext(
+        userQuestion,
+        articleId,
+        observabilityContext
+      );
       console.log(`   🔍 Contexto recuperado: ${retrievedContext.length} caracteres`);
     } catch (error) {
       // Fallback to article content if ChromaDB fails
@@ -130,7 +139,21 @@ export class ChatArticleUseCase {
     try {
       response = await this.geminiClient.generateChatResponse(
         augmentedContext,
-        userQuestion
+        userQuestion,
+        {
+          ...observabilityContext,
+          operationKey: observabilityContext?.operationKey ?? 'rag_chat',
+          endpoint: observabilityContext?.endpoint,
+          userId: observabilityContext?.userId,
+          entityType: observabilityContext?.entityType ?? 'article',
+          entityId: observabilityContext?.entityId ?? article.id,
+          metadata: {
+            ...observabilityContext?.metadata,
+            questionLength: userQuestion.length,
+            ragContextLength: augmentedContext.length,
+            messagesCount: messages.length,
+          },
+        }
       );
       console.log(`   ✅ Respuesta RAG generada (${response.length} caracteres)`);
     } catch (error) {
@@ -156,13 +179,25 @@ export class ChatArticleUseCase {
    * - Límite de caracteres por documento: MAX_DOCUMENT_CHARS (2000)
    * - Formato compacto sin headers verbosos
    */
-  private async retrieveContext(question: string, articleId: string): Promise<string> {
+  private async retrieveContext(
+    question: string,
+    articleId: string,
+    observabilityContext?: AIObservabilityContext
+  ): Promise<string> {
     // Generate embedding for the user's question
     console.log(`   🧠 Generando embedding de la pregunta...`);
     
     let questionEmbedding: number[];
     try {
-      questionEmbedding = await this.geminiClient.generateEmbedding(question);
+      questionEmbedding = await this.geminiClient.generateEmbedding(question, {
+        ...observabilityContext,
+        operationKey: 'embedding_generation',
+        metadata: {
+          ...observabilityContext?.metadata,
+          embeddingPurpose: 'rag_query',
+          questionLength: question.length,
+        },
+      });
     } catch (error) {
       // Map Gemini errors for observability (AI_RULES.md compliance)
       const mappedError = GeminiErrorMapper.toExternalAPIError(error);

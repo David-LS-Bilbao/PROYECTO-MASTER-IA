@@ -15,6 +15,7 @@ import { createEntitlementsRoutes } from './routes/entitlements.routes';
 import { createTopicRoutes } from './routes/topic.routes';
 import { createHealthRoutes } from './routes/health.routes';
 import { createSubscriptionRoutes } from './routes/subscription.routes';
+import { createAdminAiUsageRoutes } from './routes/admin-ai-usage.routes';
 import { errorHandler } from './middleware/error.handler';
 import { requestLogger } from './middleware/request.logger';
 import { createAutoIngestMiddleware } from './middleware/auto-ingest.middleware';
@@ -48,7 +49,15 @@ export function createServer(): Application {
     },
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'sentry-trace', 'baggage', 'x-cron-secret'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'sentry-trace',
+      'baggage',
+      'x-cron-secret',
+      'x-admin-secret',
+      'x-correlation-id',
+    ],
     exposedHeaders: ['sentry-trace'],
   }));
 
@@ -99,6 +108,7 @@ export function createServer(): Application {
   app.use('/api/entitlements', createEntitlementsRoutes(container.entitlementsController));
   app.use('/api/topics', createTopicRoutes(container.topicController));
   app.use('/api/subscription', createSubscriptionRoutes(container.subscriptionController));
+  app.use('/api/admin/ai-usage', createAdminAiUsageRoutes(container.adminAiUsageController));
 
   // 404 handler - Lanza error en lugar de enviar respuesta directa
   app.use((req: Request, _res: Response, next: NextFunction) => {

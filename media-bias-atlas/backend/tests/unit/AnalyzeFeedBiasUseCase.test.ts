@@ -59,9 +59,19 @@ describe('AnalyzeFeedBiasUseCase', () => {
         invokedAI: false,
       } as any);
 
-    const result = await useCase.execute('feed-1');
+    const result = await useCase.execute('feed-1', {
+      requestId: 'req-1',
+      correlationId: 'corr-1',
+      endpoint: 'POST /api/feeds/feed-1/analyze-bias',
+    });
 
     expect(mockAnalyzeArticleBiasUseCase.execute).toHaveBeenCalledTimes(2);
+    expect(mockAnalyzeArticleBiasUseCase.execute).toHaveBeenNthCalledWith(1, 'a-1', expect.objectContaining({
+      requestId: 'req-1',
+      correlationId: 'corr-1',
+      entityType: 'article',
+      entityId: 'a-1',
+    }));
     expect(result).toEqual({
       feedId: 'feed-1',
       totalArticles: 4,

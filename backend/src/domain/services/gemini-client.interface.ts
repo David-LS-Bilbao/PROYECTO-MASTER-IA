@@ -7,6 +7,21 @@ import { ArticleAnalysis } from '../entities/news-article.entity';
 
 export type AnalysisMode = 'low_cost' | 'moderate' | 'standard' | 'deep';
 
+export interface AIObservabilityContext {
+  requestId?: string;
+  correlationId?: string;
+  endpoint?: string;
+  userId?: string;
+  entityType?: string;
+  entityId?: string;
+  metadata?: Record<string, unknown>;
+  operationKey?: string;
+  promptKey?: string;
+  promptVersion?: string;
+  promptTemplate?: string;
+  promptSourceFile?: string;
+}
+
 export interface AnalyzeContentInput {
   title: string;
   content: string;
@@ -16,6 +31,7 @@ export interface AnalyzeContentInput {
   inputQuality?: 'full' | 'snippet_rss' | 'paywall_o_vacio' | 'unknown';
   textSource?: string;
   contentChars?: number;
+  observability?: AIObservabilityContext;
 }
 
 export interface ChatMessage {
@@ -26,6 +42,7 @@ export interface ChatMessage {
 export interface ChatWithContextInput {
   systemContext: string;
   messages: ChatMessage[];
+  observability?: AIObservabilityContext;
 }
 
 export interface ChatResponse {
@@ -53,7 +70,11 @@ export interface IGeminiClient {
    * @returns The AI-generated response
    * @throws ExternalAPIError if API call fails
    */
-  generateChatResponse(context: string, question: string): Promise<string>;
+  generateChatResponse(
+    context: string,
+    question: string,
+    observability?: AIObservabilityContext
+  ): Promise<string>;
 
   /**
    * Generate a general chat response with full conversation history and Google Search
@@ -63,7 +84,11 @@ export interface IGeminiClient {
    * @returns The AI-generated response
    * @throws ExternalAPIError if API call fails
    */
-  generateGeneralResponse(systemPrompt: string, messages: ChatMessage[]): Promise<string>;
+  generateGeneralResponse(
+    systemPrompt: string,
+    messages: ChatMessage[],
+    observability?: AIObservabilityContext
+  ): Promise<string>;
 
   /**
    * Generate embedding vector for text using text-embedding-004
@@ -71,7 +96,7 @@ export interface IGeminiClient {
    * @returns Array of numbers representing the embedding vector
    * @throws ExternalAPIError if API call fails
    */
-  generateEmbedding(text: string): Promise<number[]>;
+  generateEmbedding(text: string, observability?: AIObservabilityContext): Promise<number[]>;
 
   /**
    * Check if the service is available
@@ -84,5 +109,5 @@ export interface IGeminiClient {
    * @param mediaName Name of the media outlet
    * @returns RSS URL if found, null otherwise
    */
-  discoverRssUrl(mediaName: string): Promise<string | null>;
+  discoverRssUrl(mediaName: string, observability?: AIObservabilityContext): Promise<string | null>;
 }

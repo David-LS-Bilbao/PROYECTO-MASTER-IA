@@ -2,14 +2,18 @@
  * Discover Local Sources Use Case (Application Layer)
  *
  * FEATURE: RSS AUTO-DISCOVERY LOCAL (Sprint 32)
- * Descubre periódicos locales/regionales con Gemini AI + Caché
+ * Descubre periodicos locales/regionales con Gemini AI + Cache
  */
 
-import { IGeminiClient } from '../../domain/services/gemini-client.interface';
+import {
+  AIObservabilityContext,
+  IGeminiClient,
+} from '../../domain/services/gemini-client.interface';
 
 export interface DiscoverLocalSourcesParams {
   location: string;
   limit: number;
+  observabilityContext?: AIObservabilityContext;
 }
 
 export interface DiscoveredSource {
@@ -32,7 +36,12 @@ const discoveryCache = new Map<
   { sources: DiscoveredSource[]; cachedAt: number }
 >();
 
-const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 días
+const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 dias
+const LOCAL_DISCOVERY_OPERATION_KEY = 'local_source_discovery';
+const LOCAL_DISCOVERY_PROMPT_KEY = 'LOCAL_SOURCES_DISCOVERY_PROMPT';
+const LOCAL_DISCOVERY_PROMPT_VERSION = '1.0.0';
+const LOCAL_DISCOVERY_PROMPT_SOURCE_FILE =
+  'backend/src/application/use-cases/discover-local-sources.usecase.ts';
 
 export class DiscoverLocalSourcesUseCase {
   constructor(private readonly geminiClient: IGeminiClient) {}
@@ -40,13 +49,13 @@ export class DiscoverLocalSourcesUseCase {
   async execute(
     params: DiscoverLocalSourcesParams
   ): Promise<DiscoverLocalSourcesResult> {
-    const { location, limit } = params;
+    const { location, limit, observabilityContext } = params;
     const cacheKey = location.toLowerCase().trim();
 
     // 1. Check cache first
     const cached = discoveryCache.get(cacheKey);
     if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
-      console.log(`✅ Cache HIT para ubicación: ${location}`);
+      console.log(`✅ Cache HIT para ubicacion: ${location}`);
       return {
         sources: cached.sources,
         fromCache: true,
@@ -54,19 +63,39 @@ export class DiscoverLocalSourcesUseCase {
       };
     }
 
-    console.log(`🔄 Cache MISS para ubicación: ${location}, llamando a Gemini...`);
+    console.log(`🔄 Cache MISS para ubicacion: ${location}, llamando a Gemini...`);
 
     // 2. Call Gemini with optimized prompt
     const systemPrompt = this.buildDiscoveryPrompt(location, limit);
     const messages = [
       {
         role: 'user' as const,
-        content: `Descubre periódicos locales de ${location}`,
+        content: `Descubre periodicos locales de ${location}`,
       },
     ];
     const response = await this.geminiClient.generateGeneralResponse(
       systemPrompt,
-      messages
+      messages,
+      {
+        ...observabilityContext,
+        operationKey:
+          observabilityContext?.operationKey ?? LOCAL_DISCOVERY_OPERATION_KEY,
+        promptKey: observabilityContext?.promptKey ?? LOCAL_DISCOVERY_PROMPT_KEY,
+        promptVersion:
+          observabilityContext?.promptVersion ?? LOCAL_DISCOVERY_PROMPT_VERSION,
+        promptTemplate:
+          observabilityContext?.promptTemplate ??
+          this.buildDiscoveryPromptTemplate(),
+        promptSourceFile:
+          observabilityContext?.promptSourceFile ??
+          LOCAL_DISCOVERY_PROMPT_SOURCE_FILE,
+        metadata: {
+          ...observabilityContext?.metadata,
+          locationLength: location.length,
+          limit,
+          cacheHit: false,
+        },
+      }
     );
 
     // 3. Parse response
@@ -88,19 +117,25 @@ export class DiscoverLocalSourcesUseCase {
   }
 
   private buildDiscoveryPrompt(location: string, limit: number): string {
-    return `Actúa como un experto en medios de comunicación españoles.
+    return this.buildDiscoveryPromptTemplate()
+      .replaceAll('{location}', location)
+      .replace('{limit}', String(limit));
+  }
 
-Tarea: Listar medios de comunicación que cubren noticias de "${location}" (España), incluyendo sus feeds RSS.
+  private buildDiscoveryPromptTemplate(): string {
+    return `Actua como un experto en medios de comunicacion espanoles.
+
+Tarea: Listar medios de comunicacion que cubren noticias de "{location}" (Espana), incluyendo sus feeds RSS.
 
 Prioridad de fuentes (en orden):
-1. Periódicos estrictamente locales/municipales de ${location}
-2. Periódicos provinciales/regionales que cubren ${location}
-3. Ediciones regionales de medios nacionales con cobertura de ${location}
+1. Periodicos estrictamente locales/municipales de {location}
+2. Periodicos provinciales/regionales que cubren {location}
+3. Ediciones regionales de medios nacionales con cobertura de {location}
 
 Requisitos:
-- Máximo ${limit} fuentes
-- Ordenar de más local a más regional
-- Si ${location} es una ciudad pequeña, incluir los periódicos de la provincia/comunidad autónoma que la cubren
+- Maximo {limit} fuentes
+- Ordenar de mas local a mas regional
+- Si {location} es una ciudad pequena, incluir los periodicos de la provincia/comunidad autonoma que la cubren
 - Las URLs de RSS deben ser rutas habituales (ej: /feed, /rss, /rss.xml, /rss/portada)
 
 Formato JSON (OBLIGATORIO):
@@ -110,17 +145,17 @@ Formato JSON (OBLIGATORIO):
       "name": "Nombre exacto del medio",
       "url": "https://sitio-web-oficial.com",
       "rssUrl": "https://sitio-web-oficial.com/rss/feed.xml",
-      "region": "${location}",
+      "region": "{location}",
       "verified": true
     }
   ]
 }
 
 IMPORTANTE:
-- No inventes URLs de RSS si no las conoces; usa las rutas más probables (/feed, /rss, /rss.xml)
+- No inventes URLs de RSS si no las conoces; usa las rutas mas probables (/feed, /rss, /rss.xml)
 - Incluye medios aunque no sean estrictamente municipales si cubren la zona
 - Si no encuentras fuentes para la ciudad, devuelve fuentes de la provincia/comunidad que la cubren
-- Marca verified:true solo si conoces el feed, verified:false si es una estimación razonable`;
+- Marca verified:true solo si conoces el feed, verified:false si es una estimacion razonable`;
   }
 
   private parseGeminiResponse(

@@ -35,6 +35,16 @@ describe('GeminiArticleBiasAIProvider', () => {
     generateContentMock.mockResolvedValue({
       response: {
         text: () => '{"ideologyLabel":"CENTER","confidence":0.61,"summary":"Resumen","reasoningShort":"Motivo"}',
+        usageMetadata: {
+          promptTokenCount: 120,
+          candidatesTokenCount: 40,
+          totalTokenCount: 160,
+        },
+        candidates: [
+          {
+            finishReason: 'STOP',
+          },
+        ],
       },
     });
 
@@ -59,6 +69,35 @@ describe('GeminiArticleBiasAIProvider', () => {
       provider: 'gemini',
       model: 'gemini-2.5-flash',
       rawText: '{"ideologyLabel":"CENTER","confidence":0.61,"summary":"Resumen","reasoningShort":"Motivo"}',
+      tokenUsage: {
+        promptTokens: 120,
+        completionTokens: 40,
+        totalTokens: 160,
+      },
+      metadata: {
+        providerType: 'gemini',
+        responseMimeType: 'application/json',
+        usageAvailable: true,
+        candidateCount: 1,
+        finishReasons: ['STOP'],
+      },
     });
+  });
+
+  it('expone los prompt descriptors reales usados por Gemini', () => {
+    const provider = new GeminiArticleBiasAIProvider({
+      apiKey: 'gemini-test-key',
+      model: 'gemini-2.5-flash',
+      providerName: 'gemini',
+      timeoutMs: 500,
+    });
+
+    const prompts = provider.getPromptDescriptors();
+
+    expect(prompts.primaryPrompt?.promptKey).toBe('article_bias_prompt');
+    expect(prompts.relatedPrompts?.map((prompt) => prompt.promptKey)).toEqual([
+      'article_bias_instructions',
+      'article_bias_input_context',
+    ]);
   });
 });

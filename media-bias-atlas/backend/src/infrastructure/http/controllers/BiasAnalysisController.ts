@@ -7,6 +7,7 @@ import { createArticleBiasAIProvider } from '../../ai/createArticleBiasAIProvide
 import { PrismaArticleBiasAnalysisRepository } from '../../database/PrismaArticleBiasAnalysisRepository';
 import { PrismaArticleRepository } from '../../database/PrismaArticleRepository';
 import { prisma } from '../../database/prismaClient';
+import { aiObservabilityService, promptRegistryService, tokenAndCostService } from '../../observability';
 
 const articleRepository = new PrismaArticleRepository(prisma);
 const articleBiasAnalysisRepository = new PrismaArticleBiasAnalysisRepository(prisma);
@@ -17,7 +18,10 @@ const analyzeArticleBiasUseCase = new AnalyzeArticleBiasUseCase(
   articleRepository,
   articleBiasAnalysisRepository,
   articleBiasAIProvider,
-  articleBiasJsonParser
+  articleBiasJsonParser,
+  aiObservabilityService,
+  promptRegistryService,
+  tokenAndCostService
 );
 
 const analyzeFeedBiasUseCase = new AnalyzeFeedBiasUseCase(
@@ -30,7 +34,17 @@ export class BiasAnalysisController {
   static async analyzeArticle(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { articleId } = req.params;
-      const result = await analyzeArticleBiasUseCase.execute(articleId);
+      const requestId = this.resolveRequestId(req);
+      const result = await analyzeArticleBiasUseCase.execute(articleId, {
+        requestId,
+        correlationId: this.resolveCorrelationId(req, requestId),
+        endpoint: `${req.method} ${req.originalUrl}`,
+        entityType: 'article',
+        entityId: articleId,
+        metadata: {
+          trigger: 'article_bias_endpoint',
+        },
+      });
       res.json(result);
     } catch (error) {
       next(error);
@@ -40,7 +54,17 @@ export class BiasAnalysisController {
   static async analyzeFeed(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { feedId } = req.params;
-      const result = await analyzeFeedBiasUseCase.execute(feedId);
+      const requestId = this.resolveRequestId(req);
+      const result = await analyzeFeedBiasUseCase.execute(feedId, {
+        requestId,
+        correlationId: this.resolveCorrelationId(req, requestId),
+        endpoint: `${req.method} ${req.originalUrl}`,
+        entityType: 'feed',
+        entityId: feedId,
+        metadata: {
+          trigger: 'feed_bias_endpoint',
+        },
+      });
       res.json(result);
     } catch (error) {
       next(error);
@@ -74,5 +98,23 @@ export class BiasAnalysisController {
     } catch (error) {
       next(error);
     }
+  }
+
+  private static resolveRequestId(req: Request): string {
+    const headerRequestId = req.header('x-request-id');
+    if (headerRequestId && headerRequestId.trim().length > 0) {
+      return headerRequestId.trim();
+    }
+
+    return `req_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  private static resolveCorrelationId(req: Request, fallbackRequestId?: string): string {
+    const headerCorrelationId = req.header('x-correlation-id');
+    if (headerCorrelationId && headerCorrelationId.trim().length > 0) {
+      return headerCorrelationId.trim();
+    }
+
+    return fallbackRequestId ?? this.resolveRequestId(req);
   }
 }

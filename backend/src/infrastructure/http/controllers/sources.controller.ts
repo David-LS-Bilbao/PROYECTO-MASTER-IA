@@ -43,9 +43,20 @@ export class SourcesController {
       }
 
       const { query } = validationResult.data;
+      const requestId = this.resolveRequestId(req);
+      const correlationId = this.resolveCorrelationId(req, requestId);
 
       // Llamar a Gemini para descubrir el RSS
-      const rssUrl = await this.geminiClient.discoverRssUrl(query);
+      const rssUrl = await this.geminiClient.discoverRssUrl(query, {
+        requestId,
+        correlationId,
+        endpoint: `${req.method} ${req.originalUrl}`,
+        userId: req.user?.uid,
+        entityType: 'source_discovery',
+        metadata: {
+          queryLength: query.length,
+        },
+      });
 
       if (!rssUrl) {
         res.status(404).json({
@@ -90,10 +101,26 @@ export class SourcesController {
       }
 
       const { location, limit } = validation.data;
+      const requestId = this.resolveRequestId(req);
+      const correlationId = this.resolveCorrelationId(req, requestId);
 
       // Execute use case
       const useCase = new DiscoverLocalSourcesUseCase(this.geminiClient);
-      const result = await useCase.execute({ location, limit });
+      const result = await useCase.execute({
+        location,
+        limit,
+        observabilityContext: {
+          requestId,
+          correlationId,
+          endpoint: `${req.method} ${req.originalUrl}`,
+          userId: req.user?.uid,
+          entityType: 'source_discovery_local',
+          metadata: {
+            locationLength: location.length,
+            limit,
+          },
+        },
+      });
 
       res.json({
         success: true,
@@ -146,5 +173,27 @@ export class SourcesController {
         error: 'Error al limpiar caché',
       });
     }
+  }
+
+  private resolveRequestId(req: Request): string {
+    if (typeof req.id === 'string' && req.id.trim().length > 0) {
+      return req.id.trim();
+    }
+
+    const headerRequestId = req.header('x-request-id');
+    if (headerRequestId && headerRequestId.trim().length > 0) {
+      return headerRequestId.trim();
+    }
+
+    return `req_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  private resolveCorrelationId(req: Request, fallbackRequestId: string): string {
+    const headerCorrelationId = req.header('x-correlation-id');
+    if (headerCorrelationId && headerCorrelationId.trim().length > 0) {
+      return headerCorrelationId.trim();
+    }
+
+    return fallbackRequestId;
   }
 }

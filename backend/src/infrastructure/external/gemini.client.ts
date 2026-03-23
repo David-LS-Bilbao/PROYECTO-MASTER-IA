@@ -10,12 +10,14 @@
  */
 
 import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
+import { AiRunStatus } from '@prisma/client';
 import {
   IGeminiClient,
   AnalysisMode,
   AnalyzeContentInput,
   ChatWithContextInput,
   ChatResponse,
+  AIObservabilityContext,
 } from '../../domain/services/gemini-client.interface';
 import { ArticleAnalysis, TokenUsage } from '../../domain/entities/news-article.entity';
 import {
@@ -39,12 +41,28 @@ import {
   ANALYSIS_PROMPT_DEEP,
   ANALYSIS_PROMPT_LOW_COST,
   ANALYSIS_PROMPT_MODERATE,
+  buildLocationSourcesPrompt,
   MAX_ARTICLE_CONTENT_LENGTH,
-  buildRagChatPrompt,
   buildGroundingChatPrompt,
+  buildRagChatPrompt,
+  GROUNDING_CHAT_PROMPT_TEMPLATE,
+  GROUNDING_CHAT_PROMPT_VERSION,
+  LOCATION_SOURCES_PROMPT_TEMPLATE,
+  LOCATION_SOURCES_PROMPT_VERSION,
   MAX_CHAT_HISTORY_MESSAGES,
   buildRssDiscoveryPrompt,
+  RAG_CHAT_PROMPT_TEMPLATE,
+  RAG_CHAT_PROMPT_VERSION,
+  RSS_DISCOVERY_PROMPT_TEMPLATE,
+  RSS_DISCOVERY_PROMPT_VERSION,
 } from './prompts';
+import { AIObservabilityService } from '../observability/ai-observability.service';
+import { PromptRegistryService } from '../observability/prompt-registry.service';
+import { TokenAndCostService } from '../observability/token-and-cost.service';
+import {
+  GENERAL_CHAT_PROMPT_VERSION,
+  GENERAL_CHAT_SYSTEM_PROMPT,
+} from './prompts/general-chat.prompt';
 
 // ============================================================================
 // LOGGER - SEGURIDAD (Sprint 14 - Bloqueante #1)
@@ -139,26 +157,100 @@ const HIGH_RISK_CLAIM_PATTERNS: RegExp[] = [
   /\b(murio|mueren|fallecio|fallecieron)\b/i,
 ];
 
+const VERITY_MODULE = 'verity';
+const ARTICLE_ANALYSIS_OPERATION_KEY = 'article_analysis';
+const RAG_CHAT_OPERATION_KEY = 'rag_chat';
+const GENERAL_CHAT_GROUNDING_OPERATION_KEY = 'general_chat_grounding';
+const GROUNDING_CHAT_OPERATION_KEY = 'grounding_chat';
+const EMBEDDING_OPERATION_KEY = 'embedding_generation';
+const JSON_REPAIR_OPERATION_KEY = 'json_repair';
+const RSS_DISCOVERY_OPERATION_KEY = 'rss_discovery';
+const LOCAL_SOURCE_DISCOVERY_OPERATION_KEY = 'local_source_discovery';
+const GEMINI_PROVIDER = 'google';
+const GEMINI_ANALYSIS_MODEL = 'gemini-2.5-flash';
+const GEMINI_EMBEDDING_MODEL = 'text-embedding-004';
+const ANALYSIS_PROMPT_SOURCE_FILE =
+  'backend/src/infrastructure/external/prompts/analysis.prompt.ts';
+const ANALYSIS_PROMPT_VERSION = '1.0.0';
+const RAG_CHAT_PROMPT_SOURCE_FILE =
+  'backend/src/infrastructure/external/prompts/rag-chat.prompt.ts';
+const GROUNDING_CHAT_PROMPT_SOURCE_FILE =
+  'backend/src/infrastructure/external/prompts/grounding-chat.prompt.ts';
+const GENERAL_CHAT_PROMPT_SOURCE_FILE =
+  'backend/src/infrastructure/external/prompts/general-chat.prompt.ts';
+const RSS_DISCOVERY_PROMPT_SOURCE_FILE =
+  'backend/src/infrastructure/external/prompts/rss-discovery.prompt.ts';
+const JSON_REPAIR_PROMPT_SOURCE_FILE =
+  'backend/src/infrastructure/external/gemini.client.ts';
+const JSON_REPAIR_PROMPT_KEY = 'JSON_REPAIR_PROMPT';
+const JSON_REPAIR_PROMPT_VERSION = '1.0.0';
+
+interface PromptRegistrationConfig {
+  promptKey: string;
+  version: string;
+  template: string;
+  sourceFile: string;
+}
+
+interface NormalizedAiObservabilityContext extends AIObservabilityContext {
+  requestId: string;
+  correlationId: string;
+}
+
+interface AiOperationRunContext {
+  context: NormalizedAiObservabilityContext;
+  operationKey: string;
+  provider: string;
+  model: string;
+  promptVersionId: string | null;
+  promptKey?: string;
+  promptVersion?: string;
+  runId: string | null;
+  startedAt: number;
+}
+
+interface OperationTokenUsage {
+  promptTokens: number | null;
+  completionTokens: number | null;
+  totalTokens: number | null;
+}
+
+interface GeminiClientDependencies {
+  aiObservabilityService?: AIObservabilityService;
+  promptRegistryService?: PromptRegistryService;
+  tokenAndCostService?: TokenAndCostService;
+}
+
 export class GeminiClient implements IGeminiClient {
   private readonly model: GenerativeModel;
   private readonly chatModel: GenerativeModel;
   private readonly genAI: GoogleGenerativeAI;
   private readonly taximeter: TokenTaximeter;
+  private readonly aiObservabilityService?: AIObservabilityService;
+  private readonly promptRegistryService?: PromptRegistryService;
+  private readonly tokenAndCostService?: TokenAndCostService;
 
-  constructor(apiKey: string, taximeter: TokenTaximeter) {
+  constructor(
+    apiKey: string,
+    taximeter: TokenTaximeter,
+    dependencies: GeminiClientDependencies = {}
+  ) {
     if (!apiKey || apiKey.trim() === '') {
       throw new ConfigurationError('GEMINI_API_KEY is required');
     }
 
     this.genAI = new GoogleGenerativeAI(apiKey);
     this.taximeter = taximeter;
+    this.aiObservabilityService = dependencies.aiObservabilityService;
+    this.promptRegistryService = dependencies.promptRegistryService;
+    this.tokenAndCostService = dependencies.tokenAndCostService;
 
     // Modelo base para anÃ¡lisis (sin herramientas externas)
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    this.model = this.genAI.getGenerativeModel({ model: GEMINI_ANALYSIS_MODEL });
 
     // Modelo para chat con Google Search habilitado (Grounding)
     this.chatModel = this.genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
+      model: GEMINI_ANALYSIS_MODEL,
           // @ts-expect-error - googleSearch tool typing not yet available in current SDK
           tools: [{ googleSearch: {} }],
     });
@@ -270,156 +362,297 @@ export class GeminiClient implements IGeminiClient {
       contentChars,
       textSource,
     });
+    const observabilityContext = this.normalizeObservabilityContext(input.observability);
+    const operationStartedAt = Date.now();
+    let runId: string | null = null;
+    let promptVersionId: string | null = null;
+    let promptTokens: number | null = null;
+    let completionTokens: number | null = null;
+    let totalTokens: number | null = null;
 
-    // RESILIENCIA: executeWithRetry maneja reintentos automÃ¡ticos
-    return this.executeWithRetry(async () => {
-      logger.info(
-        {
-          originalContentLength: sanitizedContent.length,
-          selectedContentLength: selectedContent.length,
-          promptProfile: effectiveMode,
-          analysis_mode: effectiveMode,
-          prompt_name: promptDescriptor.name,
-          inputQuality,
-          contentChars,
-          textSource,
-        },
-        'Starting article analysis'
-      );
+    promptVersionId = await this.registerPromptVersion({
+      promptDescriptorName: promptDescriptor.name,
+      promptTemplate: promptDescriptor.template,
+      analysisMode: effectiveMode,
+    });
 
-      // ðŸ” Sprint 15 - Paso 3: Custom Span for Performance Monitoring
-      // Envuelve la llamada a Gemini en un span para distributed tracing
-      const result = await Sentry.startSpan(
-        {
-          name: 'gemini.analyze_article',
-          op: 'ai.generation',
-          attributes: {
-            'ai.model': 'gemini-2.5-flash',
-            'ai.operation': 'article_analysis',
-            'input.content_length': selectedContent.length,
-          },
-        },
-        async () =>
-          await this.model.generateContent({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: {
-              maxOutputTokens: this.getMaxOutputTokensForMode(effectiveMode),
-            },
-          })
-      );
-
-      const response = result.response;
-      const text = response.text();
-
-      // TOKEN TAXIMETER: Capturar uso de tokens
-      const usageMetadata = response.usageMetadata;
-      let tokenUsage: TokenUsage | undefined;
-
-      if (usageMetadata) {
-        const promptTokens = usageMetadata.promptTokenCount || 0;
-        const completionTokens = usageMetadata.candidatesTokenCount || 0;
-        const totalTokens = promptTokens + completionTokens; // Always calculate manually to avoid cached tokens inflation
-        const costEstimated = this.taximeter.calculateCost(promptTokens, completionTokens);
-
-        tokenUsage = {
-          promptTokens,
-          completionTokens,
-          totalTokens,
-          costEstimated,
-        };
-
-        // ðŸ” Sprint 15 - Paso 3: AÃ±adir mÃ©tricas de tokens al span activo
-        const activeSpan = Sentry.getActiveSpan();
-        if (activeSpan) {
-          activeSpan.setAttribute('ai.tokens.prompt', promptTokens);
-          activeSpan.setAttribute('ai.tokens.completion', completionTokens);
-          activeSpan.setAttribute('ai.tokens.total', totalTokens);
-          activeSpan.setAttribute('ai.cost_eur', costEstimated);
-        }
-
-        // Log with taximeter (IMPORTANTE: no loguea tÃ­tulos, solo metadatos)
-        this.taximeter.logAnalysis('[REDACTED]', promptTokens, completionTokens, totalTokens, costEstimated);
-
-        logger.debug(
-          { promptTokens, completionTokens, totalTokens, costEUR: costEstimated },
-          'Article analysis completed with token usage'
-        );
-      } else {
-        logger.debug('Article analysis completed without token metadata');
-      }
-
-      let parsedAnalysis: ArticleAnalysis;
+    if (this.aiObservabilityService) {
       try {
-        parsedAnalysis = this.parseAnalysisResponse(
-          text,
-          tokenUsage,
-          sanitizedContent,
-          effectiveMode
-        );
-      } catch (parseError) {
+        runId = await this.aiObservabilityService.startRun({
+          module: VERITY_MODULE,
+          operationKey: ARTICLE_ANALYSIS_OPERATION_KEY,
+          provider: GEMINI_PROVIDER,
+          model: GEMINI_ANALYSIS_MODEL,
+          status: AiRunStatus.PENDING,
+          promptVersionId,
+          requestId: observabilityContext.requestId,
+          correlationId: observabilityContext.correlationId,
+          endpoint: observabilityContext.endpoint,
+          userId: observabilityContext.userId,
+          entityType: observabilityContext.entityType,
+          entityId: observabilityContext.entityId,
+          metadataJson: {
+            ...observabilityContext.metadata,
+            promptKey: promptDescriptor.name,
+            promptVersion: ANALYSIS_PROMPT_VERSION,
+            analysisMode: effectiveMode,
+            inputQuality,
+            contentChars,
+            textSource,
+          },
+        });
+      } catch (observabilityError) {
         logger.warn(
           {
             error:
-              parseError instanceof Error ? parseError.message : String(parseError),
+              observabilityError instanceof Error
+                ? observabilityError.message
+                : String(observabilityError),
           },
-          'Initial analysis parsing failed. Attempting one JSON repair.'
-        );
-        const repairedRaw = await this.tryJsonRepair(text);
-        if (repairedRaw) {
-          try {
-            parsedAnalysis = this.parseAnalysisResponse(
-              repairedRaw,
-              tokenUsage,
-              sanitizedContent,
-              effectiveMode
-            );
-            return parsedAnalysis;
-          } catch (repairError) {
-            logger.warn(
-              {
-                error:
-                  repairError instanceof Error ? repairError.message : String(repairError),
-              },
-              'JSON repair parse failed. Returning fallback analysis.'
-            );
-          }
-        }
-
-        return this.parseAnalysisResponse(
-          JSON.stringify({ summary: ANALYSIS_PARSE_FALLBACK_SUMMARY }),
-          tokenUsage,
-          sanitizedContent,
-          effectiveMode
+          'Could not persist initial AI operation run'
         );
       }
+    }
 
-      if (parsedAnalysis.formatError) {
-        const repairedRaw = await this.tryJsonRepair(text);
-        if (repairedRaw) {
-          try {
-            const repairedAnalysis = this.parseAnalysisResponse(
-              repairedRaw,
-              tokenUsage,
-              sanitizedContent,
-              effectiveMode
-            );
-            if (!repairedAnalysis.formatError) {
-              return repairedAnalysis;
+    try {
+      const analysis = await this.executeWithRetry(async () => {
+        logger.info(
+          {
+            originalContentLength: sanitizedContent.length,
+            selectedContentLength: selectedContent.length,
+            promptProfile: effectiveMode,
+            analysis_mode: effectiveMode,
+            prompt_name: promptDescriptor.name,
+            inputQuality,
+            contentChars,
+            textSource,
+          },
+          'Starting article analysis'
+        );
+
+        // ðŸ” Sprint 15 - Paso 3: Custom Span for Performance Monitoring
+        // Envuelve la llamada a Gemini en un span para distributed tracing
+        const result = await Sentry.startSpan(
+          {
+            name: 'gemini.analyze_article',
+            op: 'ai.generation',
+            attributes: {
+              'ai.model': GEMINI_ANALYSIS_MODEL,
+              'ai.operation': 'article_analysis',
+              'input.content_length': selectedContent.length,
+            },
+          },
+          async () =>
+            await this.model.generateContent({
+              contents: [{ role: 'user', parts: [{ text: prompt }] }],
+              generationConfig: {
+                maxOutputTokens: this.getMaxOutputTokensForMode(effectiveMode),
+              },
+            })
+        );
+
+        const response = result.response;
+        const text = response.text();
+
+        // TOKEN TAXIMETER: Capturar uso de tokens
+        const usageMetadata = response.usageMetadata;
+        let tokenUsage: TokenUsage | undefined;
+
+        if (usageMetadata) {
+          promptTokens = usageMetadata.promptTokenCount || 0;
+          completionTokens = usageMetadata.candidatesTokenCount || 0;
+          totalTokens = promptTokens + completionTokens; // Always calculate manually to avoid cached tokens inflation
+          const costEstimated = this.taximeter.calculateCost(promptTokens, completionTokens);
+
+          tokenUsage = {
+            promptTokens,
+            completionTokens,
+            totalTokens,
+            costEstimated,
+          };
+
+          // ðŸ” Sprint 15 - Paso 3: AÃ±adir mÃ©tricas de tokens al span activo
+          const activeSpan = Sentry.getActiveSpan();
+          if (activeSpan) {
+            activeSpan.setAttribute('ai.tokens.prompt', promptTokens);
+            activeSpan.setAttribute('ai.tokens.completion', completionTokens);
+            activeSpan.setAttribute('ai.tokens.total', totalTokens);
+            activeSpan.setAttribute('ai.cost_eur', costEstimated);
+          }
+
+          // Log with taximeter (IMPORTANTE: no loguea tÃ­tulos, solo metadatos)
+          this.taximeter.logAnalysis(
+            '[REDACTED]',
+            promptTokens,
+            completionTokens,
+            totalTokens,
+            costEstimated
+          );
+
+          logger.debug(
+            { promptTokens, completionTokens, totalTokens, costEUR: costEstimated },
+            'Article analysis completed with token usage'
+          );
+        } else {
+          logger.debug('Article analysis completed without token metadata');
+        }
+
+        let parsedAnalysis: ArticleAnalysis;
+        try {
+          parsedAnalysis = this.parseAnalysisResponse(
+            text,
+            tokenUsage,
+            sanitizedContent,
+            effectiveMode
+          );
+        } catch (parseError) {
+          logger.warn(
+            {
+              error:
+                parseError instanceof Error ? parseError.message : String(parseError),
+            },
+            'Initial analysis parsing failed. Attempting one JSON repair.'
+          );
+          const repairedRaw = await this.tryJsonRepair(text, {
+            ...observabilityContext,
+            operationKey: JSON_REPAIR_OPERATION_KEY,
+            metadata: {
+              ...observabilityContext.metadata,
+              parentOperationKey: ARTICLE_ANALYSIS_OPERATION_KEY,
+            },
+          });
+          if (repairedRaw) {
+            try {
+              parsedAnalysis = this.parseAnalysisResponse(
+                repairedRaw,
+                tokenUsage,
+                sanitizedContent,
+                effectiveMode
+              );
+              return parsedAnalysis;
+            } catch (repairError) {
+              logger.warn(
+                {
+                  error:
+                    repairError instanceof Error
+                      ? repairError.message
+                      : String(repairError),
+                },
+                'JSON repair parse failed. Returning fallback analysis.'
+              );
             }
-          } catch (repairError) {
-            logger.warn(
-              {
-                error:
-                  repairError instanceof Error ? repairError.message : String(repairError),
-              },
-              'JSON repair attempt failed after fallback parse.'
-            );
+          }
+
+          return this.parseAnalysisResponse(
+            JSON.stringify({ summary: ANALYSIS_PARSE_FALLBACK_SUMMARY }),
+            tokenUsage,
+            sanitizedContent,
+            effectiveMode
+          );
+        }
+
+        if (parsedAnalysis.formatError) {
+          const repairedRaw = await this.tryJsonRepair(text, {
+            ...observabilityContext,
+            operationKey: JSON_REPAIR_OPERATION_KEY,
+            metadata: {
+              ...observabilityContext.metadata,
+              parentOperationKey: ARTICLE_ANALYSIS_OPERATION_KEY,
+            },
+          });
+          if (repairedRaw) {
+            try {
+              const repairedAnalysis = this.parseAnalysisResponse(
+                repairedRaw,
+                tokenUsage,
+                sanitizedContent,
+                effectiveMode
+              );
+              if (!repairedAnalysis.formatError) {
+                return repairedAnalysis;
+              }
+            } catch (repairError) {
+              logger.warn(
+                {
+                  error:
+                    repairError instanceof Error
+                      ? repairError.message
+                      : String(repairError),
+                },
+                'JSON repair attempt failed after fallback parse.'
+              );
+            }
           }
         }
+
+        return parsedAnalysis;
+      }, 3, 1000);
+
+      if (runId && this.aiObservabilityService) {
+        const estimatedCostMicrosEur = await this.estimateRunCostMicrosEur({
+          provider: GEMINI_PROVIDER,
+          model: GEMINI_ANALYSIS_MODEL,
+          promptTokens,
+          completionTokens,
+        });
+        await this.aiObservabilityService.completeRun({
+          runId,
+          status: AiRunStatus.COMPLETED,
+          promptTokens,
+          completionTokens,
+          totalTokens,
+          estimatedCostMicrosEur,
+          latencyMs: Date.now() - operationStartedAt,
+          metadataJson: {
+            ...observabilityContext.metadata,
+            promptKey: promptDescriptor.name,
+            promptVersion: ANALYSIS_PROMPT_VERSION,
+            analysisMode: effectiveMode,
+            inputQuality,
+            contentChars,
+            textSource,
+          },
+        });
       }
 
-      return parsedAnalysis;
-    }, 3, 1000); // 3 reintentos, 1s delay inicial
+      return analysis;
+    } catch (error) {
+      const mappedError =
+        error instanceof ExternalAPIError
+          ? error
+          : GeminiErrorMapper.toExternalAPIError(error);
+
+      if (runId && this.aiObservabilityService) {
+        const estimatedCostMicrosEur = await this.estimateRunCostMicrosEur({
+          provider: GEMINI_PROVIDER,
+          model: GEMINI_ANALYSIS_MODEL,
+          promptTokens,
+          completionTokens,
+        });
+        await this.aiObservabilityService.failRun({
+          runId,
+          status: this.mapErrorToAiRunStatus(mappedError),
+          errorCode: String(mappedError.statusCode ?? 'UNKNOWN'),
+          errorMessage: mappedError.message,
+          promptTokens,
+          completionTokens,
+          totalTokens,
+          estimatedCostMicrosEur,
+          latencyMs: Date.now() - operationStartedAt,
+          metadataJson: {
+            ...observabilityContext.metadata,
+            promptKey: promptDescriptor.name,
+            promptVersion: ANALYSIS_PROMPT_VERSION,
+            analysisMode: effectiveMode,
+            inputQuality,
+            contentChars,
+            textSource,
+          },
+        });
+      }
+
+      throw mappedError;
+    }
   }
 
   async isAvailable(): Promise<boolean> {
@@ -436,53 +669,117 @@ export class GeminiClient implements IGeminiClient {
    * Generate embedding vector for text using text-embedding-004
    * Includes retry logic for transient failures
    */
-  async generateEmbedding(text: string): Promise<number[]> {
+  async generateEmbedding(
+    text: string,
+    observability?: AIObservabilityContext
+  ): Promise<number[]> {
     if (!text || text.trim().length === 0) {
-      throw new ExternalAPIError('Gemini', 'Text is required for embedding generation', 400);
+      throw new ExternalAPIError(
+        'Gemini',
+        'Text is required for embedding generation',
+        400
+      );
     }
 
-    // COST OPTIMIZATION: Truncar texto para evitar tokens innecesarios
     const truncatedText = text.substring(0, MAX_EMBEDDING_TEXT_LENGTH);
+    const operation = await this.beginAiOperationRun({
+      operationKey: EMBEDDING_OPERATION_KEY,
+      model: GEMINI_EMBEDDING_MODEL,
+      observability,
+      metadata: {
+        textLength: truncatedText.length,
+        tokenUsageAvailable: false,
+      },
+    });
 
-    // RESILIENCIA: executeWithRetry maneja reintentos automÃ¡ticos
-    return this.executeWithRetry(async () => {
-      logger.info(
-        { textLength: truncatedText.length },
-        'Starting embedding generation'
-      );
+    let tokenUsage: OperationTokenUsage = {
+      promptTokens: null,
+      completionTokens: null,
+      totalTokens: null,
+    };
 
-      // ðŸ” Sprint 15 - Paso 3: Custom Span for Embedding Generation
-      const embedding = await Sentry.startSpan(
-        {
-          name: 'gemini.generate_embedding',
-          op: 'ai.embedding',
-          attributes: {
-            'ai.model': 'text-embedding-004',
-            'ai.operation': 'embedding_generation',
-            'input.text_length': truncatedText.length,
+    try {
+      const embedding = await this.executeWithRetry(async () => {
+        logger.info(
+          { textLength: truncatedText.length },
+          'Starting embedding generation'
+        );
+
+        return await Sentry.startSpan(
+          {
+            name: 'gemini.generate_embedding',
+            op: 'ai.embedding',
+            attributes: {
+              'ai.model': GEMINI_EMBEDDING_MODEL,
+              'ai.operation': EMBEDDING_OPERATION_KEY,
+              'input.text_length': truncatedText.length,
+            },
           },
-        },
-        async () => {
-          const embeddingModel = this.genAI.getGenerativeModel({ model: 'text-embedding-004' });
-          const result = await embeddingModel.embedContent(truncatedText);
-          const values = result.embedding.values;
+          async () => {
+            const embeddingModel = this.genAI.getGenerativeModel({
+              model: GEMINI_EMBEDDING_MODEL,
+            });
+            const result = await embeddingModel.embedContent(truncatedText);
+            const values = result.embedding.values;
+            const usageMetadata = (
+              result as {
+                usageMetadata?: {
+                  promptTokenCount?: number;
+                  candidatesTokenCount?: number;
+                  totalTokenCount?: number;
+                };
+              }
+            ).usageMetadata;
+            tokenUsage = this.resolveTokenUsage(usageMetadata);
 
-          // Add embedding dimensions to span
-          const activeSpan = Sentry.getActiveSpan();
-          if (activeSpan) {
-            activeSpan.setAttribute('ai.embedding.dimensions', values.length);
+            const activeSpan = Sentry.getActiveSpan();
+            if (activeSpan) {
+              activeSpan.setAttribute('ai.embedding.dimensions', values.length);
+              activeSpan.setAttribute(
+                'ai.embedding.usage_metadata_available',
+                Boolean(usageMetadata)
+              );
+            }
+
+            return values;
           }
-
-          return values;
-        }
-      );
+        );
+      }, 3, 1000);
 
       logger.debug(
         { embeddingDimensions: embedding.length },
         'Embedding generated successfully'
       );
+
+      await this.completeAiOperationRun({
+        operation,
+        tokens: tokenUsage,
+        metadata: {
+          textLength: truncatedText.length,
+          embeddingDimensions: embedding.length,
+          tokenUsageAvailable: tokenUsage.totalTokens !== null,
+        },
+      });
+
       return embedding;
-    }, 3, 1000); // 3 reintentos, 1s delay inicial
+    } catch (error) {
+      const mappedError =
+        error instanceof ExternalAPIError
+          ? error
+          : GeminiErrorMapper.toExternalAPIError(error);
+
+      await this.failAiOperationRun({
+        operation,
+        error: mappedError,
+        tokens: tokenUsage,
+        metadata: {
+          textLength: truncatedText.length,
+          tokenUsageAvailable: tokenUsage.totalTokens !== null,
+        },
+      });
+
+      throw mappedError;
+    }
   }
 
   /**
@@ -495,7 +792,7 @@ export class GeminiClient implements IGeminiClient {
    * - Ahorro estimado: ~70% en conversaciones de 20+ mensajes
    */
   async chatWithContext(input: ChatWithContextInput): Promise<ChatResponse> {
-    const { systemContext, messages } = input;
+    const { systemContext, messages, observability } = input;
 
     if (!messages || messages.length === 0) {
       throw new ExternalAPIError('Gemini', 'At least one message is required', 400);
@@ -516,13 +813,34 @@ export class GeminiClient implements IGeminiClient {
     conversationParts.unshift(`[CONTEXTO]\n${systemContext}`, '\n[HISTORIAL]');
     conversationParts.push('\nResponde a la Ãºltima pregunta.');
     const prompt = conversationParts.join('\n');
+    const operation = await this.beginAiOperationRun({
+      operationKey: GROUNDING_CHAT_OPERATION_KEY,
+      model: GEMINI_ANALYSIS_MODEL,
+      observability,
+      prompt: {
+        promptKey: 'GROUNDING_CHAT_PROMPT',
+        version: GROUNDING_CHAT_PROMPT_VERSION,
+        template: GROUNDING_CHAT_PROMPT_TEMPLATE,
+        sourceFile: GROUNDING_CHAT_PROMPT_SOURCE_FILE,
+      },
+      metadata: {
+        messageCount: messages.length,
+        recentMessageCount: recentMessages.length,
+        systemContextLength: systemContext.length,
+      },
+    });
+    let tokenUsage: OperationTokenUsage = {
+      promptTokens: null,
+      completionTokens: null,
+      totalTokens: null,
+    };
 
-    // RESILIENCIA: executeWithRetry maneja reintentos automÃ¡ticos
-    return this.executeWithRetry(async () => {
-      logger.info(
-        { messageCount: recentMessages.length },
-        'Starting grounding chat with Google Search'
-      );
+    try {
+      const responsePayload = await this.executeWithRetry(async () => {
+        logger.info(
+          { messageCount: recentMessages.length },
+          'Starting grounding chat with Google Search'
+        );
 
       // ðŸ” Sprint 15 - Paso 3: Custom Span for Grounding Chat
       const result = await Sentry.startSpan(
@@ -539,49 +857,89 @@ export class GeminiClient implements IGeminiClient {
         async () => await this.chatModel.generateContent(prompt)
       );
 
-      const response = result.response;
-      const text = response.text();
+        const response = result.response;
+        const text = response.text();
 
-      // Log if grounding was used
-      const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
-      if (groundingMetadata?.searchEntryPoint) {
-        logger.debug('Google Search grounding was utilized');
+        // Log if grounding was used
+        const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
+        if (groundingMetadata?.searchEntryPoint) {
+          logger.debug('Google Search grounding was utilized');
 
-        // ðŸ” Add grounding metadata to span
-        const activeSpan = Sentry.getActiveSpan();
-        if (activeSpan) {
-          activeSpan.setAttribute('ai.grounding.used', true);
-        }
-      }
-
-      // TOKEN TAXIMETER: Capturar uso de tokens para chat grounding
-      const usageMetadata = response.usageMetadata;
-      if (usageMetadata) {
-        const promptTokens = usageMetadata.promptTokenCount || 0;
-        const completionTokens = usageMetadata.candidatesTokenCount || 0;
-        const totalTokens = usageMetadata.totalTokenCount || (promptTokens + completionTokens);
-        const costEstimated = this.taximeter.calculateCost(promptTokens, completionTokens);
-
-        // ðŸ” Sprint 15 - Paso 3: AÃ±adir mÃ©tricas de tokens al span activo
-        const activeSpan = Sentry.getActiveSpan();
-        if (activeSpan) {
-          activeSpan.setAttribute('ai.tokens.prompt', promptTokens);
-          activeSpan.setAttribute('ai.tokens.completion', completionTokens);
-          activeSpan.setAttribute('ai.tokens.total', totalTokens);
-          activeSpan.setAttribute('ai.cost_eur', costEstimated);
+          // ðŸ” Add grounding metadata to span
+          const activeSpan = Sentry.getActiveSpan();
+          if (activeSpan) {
+            activeSpan.setAttribute('ai.grounding.used', true);
+          }
         }
 
-        // SECURITY: No loguear la pregunta del usuario, solo metadatos
-        this.taximeter.logGroundingChat('[REDACTED]', promptTokens, completionTokens, totalTokens, costEstimated);
+        // TOKEN TAXIMETER: Capturar uso de tokens para chat grounding
+        const usageMetadata = response.usageMetadata;
+        tokenUsage = this.resolveTokenUsage(usageMetadata);
+        if (usageMetadata) {
+          const promptTokens = tokenUsage.promptTokens ?? 0;
+          const completionTokens = tokenUsage.completionTokens ?? 0;
+          const totalTokens = tokenUsage.totalTokens ?? promptTokens + completionTokens;
+          const costEstimated = this.taximeter.calculateCost(promptTokens, completionTokens);
 
-        logger.debug(
-          { promptTokens, completionTokens, totalTokens, costEUR: costEstimated },
-          'Grounding chat completed with token usage'
-        );
-      }
+          // ðŸ” Sprint 15 - Paso 3: AÃ±adir mÃ©tricas de tokens al span activo
+          const activeSpan = Sentry.getActiveSpan();
+          if (activeSpan) {
+            activeSpan.setAttribute('ai.tokens.prompt', promptTokens);
+            activeSpan.setAttribute('ai.tokens.completion', completionTokens);
+            activeSpan.setAttribute('ai.tokens.total', totalTokens);
+            activeSpan.setAttribute('ai.cost_eur', costEstimated);
+          }
 
-      return { message: text.trim() };
-    }, 3, 1000); // 3 reintentos, 1s delay inicial
+          // SECURITY: No loguear la pregunta del usuario, solo metadatos
+          this.taximeter.logGroundingChat(
+            '[REDACTED]',
+            promptTokens,
+            completionTokens,
+            totalTokens,
+            costEstimated
+          );
+
+          logger.debug(
+            { promptTokens, completionTokens, totalTokens, costEUR: costEstimated },
+            'Grounding chat completed with token usage'
+          );
+        }
+
+        return { message: text.trim() };
+      }, 3, 1000); // 3 reintentos, 1s delay inicial
+
+      await this.completeAiOperationRun({
+        operation,
+        tokens: tokenUsage,
+        metadata: {
+          messageCount: messages.length,
+          recentMessageCount: recentMessages.length,
+          systemContextLength: systemContext.length,
+          tokenUsageAvailable: tokenUsage.totalTokens !== null,
+        },
+      });
+
+      return responsePayload;
+    } catch (error) {
+      const mappedError =
+        error instanceof ExternalAPIError
+          ? error
+          : GeminiErrorMapper.toExternalAPIError(error);
+
+      await this.failAiOperationRun({
+        operation,
+        error: mappedError,
+        tokens: tokenUsage,
+        metadata: {
+          messageCount: messages.length,
+          recentMessageCount: recentMessages.length,
+          systemContextLength: systemContext.length,
+          tokenUsageAvailable: tokenUsage.totalTokens !== null,
+        },
+      });
+
+      throw mappedError;
+    }
   }
 
   /**
@@ -596,7 +954,11 @@ export class GeminiClient implements IGeminiClient {
    * - AÃ±adido lÃ­mite de output (max 150 palabras)
    * - Ahorro estimado: ~70% en tokens de instrucciones
    */
-  async generateChatResponse(context: string, question: string): Promise<string> {
+  async generateChatResponse(
+    context: string,
+    question: string,
+    observability?: AIObservabilityContext
+  ): Promise<string> {
     if (!context || context.trim().length === 0) {
       throw new ExternalAPIError('Gemini', 'Context is required for RAG response', 400);
     }
@@ -607,10 +969,30 @@ export class GeminiClient implements IGeminiClient {
 
     // COST OPTIMIZATION: Prompt extraÃ­do a mÃ³dulo centralizado
     const ragPrompt = buildRagChatPrompt(question, context);
+    const operation = await this.beginAiOperationRun({
+      operationKey: RAG_CHAT_OPERATION_KEY,
+      model: GEMINI_ANALYSIS_MODEL,
+      observability,
+      prompt: {
+        promptKey: 'RAG_CHAT_PROMPT',
+        version: RAG_CHAT_PROMPT_VERSION,
+        template: RAG_CHAT_PROMPT_TEMPLATE,
+        sourceFile: RAG_CHAT_PROMPT_SOURCE_FILE,
+      },
+      metadata: {
+        questionLength: question.length,
+        contextLength: context.length,
+      },
+    });
+    let tokenUsage: OperationTokenUsage = {
+      promptTokens: null,
+      completionTokens: null,
+      totalTokens: null,
+    };
 
-    // RESILIENCIA: executeWithRetry maneja reintentos automÃ¡ticos
-    return this.executeWithRetry(async () => {
-      logger.info('Starting RAG chat response generation');
+    try {
+      const generatedResponse = await this.executeWithRetry(async () => {
+        logger.info('Starting RAG chat response generation');
 
       // ðŸ” Sprint 15 - Paso 3: Custom Span for RAG Chat
       const result = await Sentry.startSpan(
@@ -627,37 +1009,75 @@ export class GeminiClient implements IGeminiClient {
         async () => await this.model.generateContent(ragPrompt)
       );
 
-      const response = result.response;
-      const text = response.text().trim();
+        const response = result.response;
+        const text = response.text().trim();
 
-      // TOKEN TAXIMETER: Capturar uso de tokens para RAG chat
-      const usageMetadata = response.usageMetadata;
-      if (usageMetadata) {
-        const promptTokens = usageMetadata.promptTokenCount || 0;
-        const completionTokens = usageMetadata.candidatesTokenCount || 0;
-        const totalTokens = usageMetadata.totalTokenCount || (promptTokens + completionTokens);
-        const costEstimated = this.taximeter.calculateCost(promptTokens, completionTokens);
+        // TOKEN TAXIMETER: Capturar uso de tokens para RAG chat
+        const usageMetadata = response.usageMetadata;
+        tokenUsage = this.resolveTokenUsage(usageMetadata);
+        if (usageMetadata) {
+          const promptTokens = tokenUsage.promptTokens ?? 0;
+          const completionTokens = tokenUsage.completionTokens ?? 0;
+          const totalTokens = tokenUsage.totalTokens ?? promptTokens + completionTokens;
+          const costEstimated = this.taximeter.calculateCost(promptTokens, completionTokens);
 
-        // ðŸ” Sprint 15 - Paso 3: AÃ±adir mÃ©tricas de tokens al span activo
-        const activeSpan = Sentry.getActiveSpan();
-        if (activeSpan) {
-          activeSpan.setAttribute('ai.tokens.prompt', promptTokens);
-          activeSpan.setAttribute('ai.tokens.completion', completionTokens);
-          activeSpan.setAttribute('ai.tokens.total', totalTokens);
-          activeSpan.setAttribute('ai.cost_eur', costEstimated);
+          // ðŸ” Sprint 15 - Paso 3: AÃ±adir mÃ©tricas de tokens al span activo
+          const activeSpan = Sentry.getActiveSpan();
+          if (activeSpan) {
+            activeSpan.setAttribute('ai.tokens.prompt', promptTokens);
+            activeSpan.setAttribute('ai.tokens.completion', completionTokens);
+            activeSpan.setAttribute('ai.tokens.total', totalTokens);
+            activeSpan.setAttribute('ai.cost_eur', costEstimated);
+          }
+
+          // SECURITY: No loguear la pregunta del usuario, solo metadatos
+          this.taximeter.logRagChat(
+            '[REDACTED]',
+            promptTokens,
+            completionTokens,
+            totalTokens,
+            costEstimated
+          );
+
+          logger.debug(
+            { promptTokens, completionTokens, totalTokens, costEUR: costEstimated },
+            'RAG chat completed with token usage'
+          );
         }
 
-        // SECURITY: No loguear la pregunta del usuario, solo metadatos
-        this.taximeter.logRagChat('[REDACTED]', promptTokens, completionTokens, totalTokens, costEstimated);
+        return text;
+      }, 3, 1000); // 3 reintentos, 1s delay inicial
 
-        logger.debug(
-          { promptTokens, completionTokens, totalTokens, costEUR: costEstimated },
-          'RAG chat completed with token usage'
-        );
-      }
+      await this.completeAiOperationRun({
+        operation,
+        tokens: tokenUsage,
+        metadata: {
+          questionLength: question.length,
+          contextLength: context.length,
+          tokenUsageAvailable: tokenUsage.totalTokens !== null,
+        },
+      });
 
-      return text;
-    }, 3, 1000); // 3 reintentos, 1s delay inicial
+      return generatedResponse;
+    } catch (error) {
+      const mappedError =
+        error instanceof ExternalAPIError
+          ? error
+          : GeminiErrorMapper.toExternalAPIError(error);
+
+      await this.failAiOperationRun({
+        operation,
+        error: mappedError,
+        tokens: tokenUsage,
+        metadata: {
+          questionLength: question.length,
+          contextLength: context.length,
+          tokenUsageAvailable: tokenUsage.totalTokens !== null,
+        },
+      });
+
+      throw mappedError;
+    }
   }
 
   /**
@@ -668,7 +1088,8 @@ export class GeminiClient implements IGeminiClient {
    */
   async generateGeneralResponse(
     systemPrompt: string,
-    messages: Array<{ role: string; content: string }>
+    messages: Array<{ role: string; content: string }>,
+    observability?: AIObservabilityContext
   ): Promise<string> {
     if (!systemPrompt || systemPrompt.trim().length === 0) {
       throw new ExternalAPIError('Gemini', 'System prompt is required', 400);
@@ -699,61 +1120,128 @@ export class GeminiClient implements IGeminiClient {
     }
     promptParts.push('\nResponde a la Ãºltima pregunta del usuario.');
     const prompt = promptParts.join('\n');
+    const operation = await this.beginAiOperationRun({
+      operationKey: GENERAL_CHAT_GROUNDING_OPERATION_KEY,
+      model: GEMINI_ANALYSIS_MODEL,
+      observability,
+      prompt: {
+        promptKey:
+          this.normalizeObservabilityText(observability?.promptKey, 120) ??
+          'GENERAL_CHAT_SYSTEM_PROMPT',
+        version:
+          this.normalizeObservabilityText(observability?.promptVersion, 40) ??
+          GENERAL_CHAT_PROMPT_VERSION,
+        template:
+          this.normalizeObservabilityText(observability?.promptTemplate, 20000) ??
+          GENERAL_CHAT_SYSTEM_PROMPT,
+        sourceFile:
+          this.normalizeObservabilityText(observability?.promptSourceFile, 260) ??
+          GENERAL_CHAT_PROMPT_SOURCE_FILE,
+      },
+      metadata: {
+        messagesCount: messages.length,
+        recentMessagesCount: recentMessages.length,
+      },
+    });
 
-    return this.executeWithRetry(async () => {
-      logger.info(
-        { messageCount: recentMessages.length },
-        'Starting general chat with Google Search Grounding'
-      );
+    let tokenUsage: OperationTokenUsage = {
+      promptTokens: null,
+      completionTokens: null,
+      totalTokens: null,
+    };
 
-      // Uses chatModel (Google Search enabled) for real-time data
-      const result = await Sentry.startSpan(
-        {
-          name: 'gemini.general_chat',
-          op: 'ai.chat',
-          attributes: {
-            'ai.model': 'gemini-2.5-flash',
-            'ai.operation': 'general_chat',
-            'ai.grounding.enabled': true,
-            'chat.message_count': recentMessages.length,
+    try {
+      const generatedResponse = await this.executeWithRetry(async () => {
+        logger.info(
+          { messageCount: recentMessages.length },
+          'Starting general chat with Google Search Grounding'
+        );
+
+        const result = await Sentry.startSpan(
+          {
+            name: 'gemini.general_chat',
+            op: 'ai.chat',
+            attributes: {
+              'ai.model': GEMINI_ANALYSIS_MODEL,
+              'ai.operation': GENERAL_CHAT_GROUNDING_OPERATION_KEY,
+              'ai.grounding.enabled': true,
+              'chat.message_count': recentMessages.length,
+            },
           },
-        },
-        async () => await this.chatModel.generateContent(prompt)
-      );
+          async () => await this.chatModel.generateContent(prompt)
+        );
 
-      const response = result.response;
-      const text = response.text().trim();
+        const response = result.response;
+        const text = response.text().trim();
 
-      // TOKEN TAXIMETER
-      const usageMetadata = response.usageMetadata;
-      if (usageMetadata) {
-        const promptTokens = usageMetadata.promptTokenCount || 0;
-        const completionTokens = usageMetadata.candidatesTokenCount || 0;
-        const totalTokens = usageMetadata.totalTokenCount || (promptTokens + completionTokens);
-        const costEstimated = this.taximeter.calculateCost(promptTokens, completionTokens);
+        const usageMetadata = response.usageMetadata;
+        tokenUsage = this.resolveTokenUsage(usageMetadata);
+        if (usageMetadata) {
+          const promptTokens = tokenUsage.promptTokens ?? 0;
+          const completionTokens = tokenUsage.completionTokens ?? 0;
+          const totalTokens = tokenUsage.totalTokens ?? promptTokens + completionTokens;
+          const costEstimated = this.taximeter.calculateCost(promptTokens, completionTokens);
 
-        const activeSpan = Sentry.getActiveSpan();
-        if (activeSpan) {
-          activeSpan.setAttribute('ai.tokens.prompt', promptTokens);
-          activeSpan.setAttribute('ai.tokens.completion', completionTokens);
-          activeSpan.setAttribute('ai.tokens.total', totalTokens);
-          activeSpan.setAttribute('ai.cost_eur', costEstimated);
+          const activeSpan = Sentry.getActiveSpan();
+          if (activeSpan) {
+            activeSpan.setAttribute('ai.tokens.prompt', promptTokens);
+            activeSpan.setAttribute('ai.tokens.completion', completionTokens);
+            activeSpan.setAttribute('ai.tokens.total', totalTokens);
+            activeSpan.setAttribute('ai.cost_eur', costEstimated);
+          }
+
+          // General chat usa grounding (Google Search), no bucket RAG.
+          this.taximeter.logGroundingChat(
+            '[GENERAL]',
+            promptTokens,
+            completionTokens,
+            totalTokens,
+            costEstimated
+          );
+
+          logger.debug(
+            { promptTokens, completionTokens, totalTokens, costEUR: costEstimated },
+            'General chat completed with token usage'
+          );
         }
 
-        this.taximeter.logRagChat('[GENERAL]', promptTokens, completionTokens, totalTokens, costEstimated);
+        if (!text) {
+          throw new ExternalAPIError('Gemini', 'Empty response from general chat', 500);
+        }
 
-        logger.debug(
-          { promptTokens, completionTokens, totalTokens, costEUR: costEstimated },
-          'General chat completed with token usage'
-        );
-      }
+        return text;
+      }, 3, 1000);
 
-      if (!text) {
-        throw new ExternalAPIError('Gemini', 'Empty response from general chat', 500);
-      }
+      await this.completeAiOperationRun({
+        operation,
+        tokens: tokenUsage,
+        metadata: {
+          messagesCount: messages.length,
+          recentMessagesCount: recentMessages.length,
+          tokenUsageAvailable: tokenUsage.totalTokens !== null,
+        },
+      });
 
-            return text;
-    }, 3, 1000);
+      return generatedResponse;
+    } catch (error) {
+      const mappedError =
+        error instanceof ExternalAPIError
+          ? error
+          : GeminiErrorMapper.toExternalAPIError(error);
+
+      await this.failAiOperationRun({
+        operation,
+        error: mappedError,
+        tokens: tokenUsage,
+        metadata: {
+          messagesCount: messages.length,
+          recentMessagesCount: recentMessages.length,
+          tokenUsageAvailable: tokenUsage.totalTokens !== null,
+        },
+      });
+
+      throw mappedError;
+    }
   }
 
   /**
@@ -1002,7 +1490,10 @@ export class GeminiClient implements IGeminiClient {
     }
   }
 
-  private async tryJsonRepair(rawModelResponse: string): Promise<string | null> {
+  private async tryJsonRepair(
+    rawModelResponse: string,
+    observability?: AIObservabilityContext
+  ): Promise<string | null> {
     const trimmed = rawModelResponse?.trim();
     if (!trimmed) {
       return null;
@@ -1013,18 +1504,63 @@ export class GeminiClient implements IGeminiClient {
         ? trimmed.slice(0, MAX_JSON_REPAIR_INPUT_CHARS)
         : trimmed;
     const repairPrompt = `${JSON_REPAIR_PROMPT}\n\nRAW_RESPONSE:\n${safeInput}`;
+    const operation = await this.beginAiOperationRun({
+      operationKey: JSON_REPAIR_OPERATION_KEY,
+      model: GEMINI_ANALYSIS_MODEL,
+      observability,
+      prompt: {
+        promptKey: JSON_REPAIR_PROMPT_KEY,
+        version: JSON_REPAIR_PROMPT_VERSION,
+        template: JSON_REPAIR_PROMPT,
+        sourceFile: JSON_REPAIR_PROMPT_SOURCE_FILE,
+      },
+      metadata: {
+        inputLength: safeInput.length,
+        wasInputTruncated: trimmed.length > MAX_JSON_REPAIR_INPUT_CHARS,
+      },
+    });
+    let tokenUsage: OperationTokenUsage = {
+      promptTokens: null,
+      completionTokens: null,
+      totalTokens: null,
+    };
 
     try {
-      const repairResult = await this.model.generateContent({
-        contents: [{ role: 'user', parts: [{ text: repairPrompt }] }],
-        generationConfig: {
-          maxOutputTokens: 1200,
-        },
-      });
-      const repairedText = repairResult.response.text().trim();
+      const repairedText = await this.executeWithRetry(async () => {
+        const repairResult = await this.model.generateContent({
+          contents: [{ role: 'user', parts: [{ text: repairPrompt }] }],
+          generationConfig: {
+            maxOutputTokens: 1200,
+          },
+        });
+
+        tokenUsage = this.resolveTokenUsage(repairResult.response.usageMetadata);
+        return repairResult.response.text().trim();
+      }, 2, 500);
+
       if (!repairedText) {
+        await this.completeAiOperationRun({
+          operation,
+          tokens: tokenUsage,
+          metadata: {
+            inputLength: safeInput.length,
+            repaired: false,
+            tokenUsageAvailable: tokenUsage.totalTokens !== null,
+          },
+        });
         return null;
       }
+
+      await this.completeAiOperationRun({
+        operation,
+        tokens: tokenUsage,
+        metadata: {
+          inputLength: safeInput.length,
+          repaired: true,
+          outputLength: repairedText.length,
+          tokenUsageAvailable: tokenUsage.totalTokens !== null,
+        },
+      });
 
       logger.info(
         { repairResponseLength: repairedText.length },
@@ -1032,9 +1568,24 @@ export class GeminiClient implements IGeminiClient {
       );
       return repairedText;
     } catch (error) {
+      const mappedError =
+        error instanceof ExternalAPIError
+          ? error
+          : GeminiErrorMapper.toExternalAPIError(error);
+
+      await this.failAiOperationRun({
+        operation,
+        error: mappedError,
+        tokens: tokenUsage,
+        metadata: {
+          inputLength: safeInput.length,
+          tokenUsageAvailable: tokenUsage.totalTokens !== null,
+        },
+      });
+
       logger.warn(
         {
-          error: error instanceof Error ? error.message : String(error),
+          error: mappedError.message,
         },
         'JSON repair request failed'
       );
@@ -1693,6 +2244,386 @@ export class GeminiClient implements IGeminiClient {
     return !hasAttribution;
   }
 
+  private async beginAiOperationRun(params: {
+    operationKey: string;
+    model: string;
+    observability?: AIObservabilityContext;
+    prompt?: PromptRegistrationConfig;
+    metadata?: Record<string, unknown>;
+  }): Promise<AiOperationRunContext> {
+    const normalizedContext = this.normalizeObservabilityContext(params.observability);
+    const operationKey =
+      this.normalizeObservabilityText(params.observability?.operationKey, 80) ??
+      params.operationKey;
+
+    const promptConfig = this.resolvePromptConfig(params.prompt, params.observability);
+    const promptVersionId = await this.registerPromptVersionForOperation({
+      operationKey,
+      model: params.model,
+      prompt: promptConfig,
+      metadata: params.metadata,
+    });
+
+    let runId: string | null = null;
+
+    if (this.aiObservabilityService) {
+      try {
+        runId = await this.aiObservabilityService.startRun({
+          module: VERITY_MODULE,
+          operationKey,
+          provider: GEMINI_PROVIDER,
+          model: params.model,
+          status: AiRunStatus.PENDING,
+          promptVersionId,
+          requestId: normalizedContext.requestId,
+          correlationId: normalizedContext.correlationId,
+          endpoint: normalizedContext.endpoint,
+          userId: normalizedContext.userId,
+          entityType: normalizedContext.entityType,
+          entityId: normalizedContext.entityId,
+          metadataJson: {
+            ...normalizedContext.metadata,
+            ...params.metadata,
+            ...(promptConfig
+              ? {
+                  promptKey: promptConfig.promptKey,
+                  promptVersion: promptConfig.version,
+                }
+              : {}),
+          },
+        });
+      } catch (error) {
+        logger.warn(
+          {
+            operationKey,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Could not persist initial AI operation run'
+        );
+      }
+    }
+
+    return {
+      context: normalizedContext,
+      operationKey,
+      provider: GEMINI_PROVIDER,
+      model: params.model,
+      promptVersionId,
+      promptKey: promptConfig?.promptKey,
+      promptVersion: promptConfig?.version,
+      runId,
+      startedAt: Date.now(),
+    };
+  }
+
+  private async completeAiOperationRun(params: {
+    operation: AiOperationRunContext;
+    tokens: OperationTokenUsage;
+    metadata?: Record<string, unknown>;
+  }): Promise<void> {
+    if (!params.operation.runId || !this.aiObservabilityService) {
+      return;
+    }
+
+    const estimatedCostMicrosEur = await this.estimateRunCostMicrosEur({
+      provider: params.operation.provider,
+      model: params.operation.model,
+      promptTokens: params.tokens.promptTokens,
+      completionTokens: params.tokens.completionTokens,
+    });
+
+    await this.aiObservabilityService.completeRun({
+      runId: params.operation.runId,
+      status: AiRunStatus.COMPLETED,
+      promptTokens: params.tokens.promptTokens,
+      completionTokens: params.tokens.completionTokens,
+      totalTokens: params.tokens.totalTokens,
+      estimatedCostMicrosEur,
+      latencyMs: Date.now() - params.operation.startedAt,
+      metadataJson: {
+        ...params.operation.context.metadata,
+        ...params.metadata,
+        ...(params.operation.promptKey
+          ? {
+              promptKey: params.operation.promptKey,
+              promptVersion: params.operation.promptVersion,
+            }
+          : {}),
+      },
+    });
+  }
+
+  private async failAiOperationRun(params: {
+    operation: AiOperationRunContext;
+    error: ExternalAPIError;
+    tokens: OperationTokenUsage;
+    metadata?: Record<string, unknown>;
+  }): Promise<void> {
+    if (!params.operation.runId || !this.aiObservabilityService) {
+      return;
+    }
+
+    const estimatedCostMicrosEur = await this.estimateRunCostMicrosEur({
+      provider: params.operation.provider,
+      model: params.operation.model,
+      promptTokens: params.tokens.promptTokens,
+      completionTokens: params.tokens.completionTokens,
+    });
+
+    await this.aiObservabilityService.failRun({
+      runId: params.operation.runId,
+      status: this.mapErrorToAiRunStatus(params.error),
+      errorCode: String(params.error.statusCode ?? 'UNKNOWN'),
+      errorMessage: params.error.message,
+      promptTokens: params.tokens.promptTokens,
+      completionTokens: params.tokens.completionTokens,
+      totalTokens: params.tokens.totalTokens,
+      estimatedCostMicrosEur,
+      latencyMs: Date.now() - params.operation.startedAt,
+      metadataJson: {
+        ...params.operation.context.metadata,
+        ...params.metadata,
+        ...(params.operation.promptKey
+          ? {
+              promptKey: params.operation.promptKey,
+              promptVersion: params.operation.promptVersion,
+            }
+          : {}),
+      },
+    });
+  }
+
+  private resolvePromptConfig(
+    defaultPrompt: PromptRegistrationConfig | undefined,
+    observability: AIObservabilityContext | undefined
+  ): PromptRegistrationConfig | undefined {
+    const promptKey =
+      this.normalizeObservabilityText(observability?.promptKey, 120) ??
+      defaultPrompt?.promptKey;
+    const version =
+      this.normalizeObservabilityText(observability?.promptVersion, 40) ??
+      defaultPrompt?.version;
+    const template =
+      this.normalizeObservabilityText(observability?.promptTemplate, 20000) ??
+      defaultPrompt?.template;
+    const sourceFile =
+      this.normalizeObservabilityText(observability?.promptSourceFile, 260) ??
+      defaultPrompt?.sourceFile;
+
+    if (!promptKey || !version || !template || !sourceFile) {
+      return undefined;
+    }
+
+    return {
+      promptKey,
+      version,
+      template,
+      sourceFile,
+    };
+  }
+
+  private async registerPromptVersionForOperation(params: {
+    operationKey: string;
+    model: string;
+    prompt?: PromptRegistrationConfig;
+    metadata?: Record<string, unknown>;
+  }): Promise<string | null> {
+    if (!this.promptRegistryService || !params.prompt) {
+      return null;
+    }
+
+    try {
+      const registeredPromptVersion =
+        await this.promptRegistryService.registerPromptVersion({
+          module: VERITY_MODULE,
+          promptKey: params.prompt.promptKey,
+          version: params.prompt.version,
+          template: params.prompt.template,
+          sourceFile: params.prompt.sourceFile,
+          metadata: {
+            operationKey: params.operationKey,
+            provider: GEMINI_PROVIDER,
+            model: params.model,
+            ...params.metadata,
+          },
+        });
+
+      return registeredPromptVersion.id;
+    } catch (error) {
+      logger.warn(
+        {
+          operationKey: params.operationKey,
+          promptKey: params.prompt.promptKey,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Could not register prompt version for AI observability'
+      );
+      return null;
+    }
+  }
+
+  private resolveTokenUsage(usageMetadata: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    totalTokenCount?: number;
+  } | null | undefined): OperationTokenUsage {
+    if (!usageMetadata) {
+      return {
+        promptTokens: null,
+        completionTokens: null,
+        totalTokens: null,
+      };
+    }
+
+    const promptTokens = usageMetadata.promptTokenCount ?? 0;
+    const completionTokens = usageMetadata.candidatesTokenCount ?? 0;
+    const totalTokens = usageMetadata.totalTokenCount ?? promptTokens + completionTokens;
+
+    return {
+      promptTokens,
+      completionTokens,
+      totalTokens,
+    };
+  }
+
+  private async registerPromptVersion(params: {
+    promptDescriptorName: string;
+    promptTemplate: string;
+    analysisMode: AnalysisMode;
+  }): Promise<string | null> {
+    if (!this.promptRegistryService) {
+      return null;
+    }
+
+    try {
+      const registeredPromptVersion = await this.promptRegistryService.registerPromptVersion({
+        module: VERITY_MODULE,
+        promptKey: params.promptDescriptorName,
+        version: ANALYSIS_PROMPT_VERSION,
+        template: params.promptTemplate,
+        sourceFile: ANALYSIS_PROMPT_SOURCE_FILE,
+        metadata: {
+          operationKey: ARTICLE_ANALYSIS_OPERATION_KEY,
+          provider: GEMINI_PROVIDER,
+          model: GEMINI_ANALYSIS_MODEL,
+          analysisMode: params.analysisMode,
+        },
+      });
+
+      return registeredPromptVersion.id;
+    } catch (error) {
+      logger.warn(
+        {
+          promptKey: params.promptDescriptorName,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Could not register prompt version for AI observability'
+      );
+      return null;
+    }
+  }
+
+  private normalizeObservabilityContext(
+    context: AIObservabilityContext | undefined
+  ): NormalizedAiObservabilityContext {
+    const requestId = this.normalizeObservabilityId(context?.requestId);
+    const correlationId =
+      this.normalizeObservabilityText(context?.correlationId, 120) ?? requestId;
+    const endpoint = this.normalizeObservabilityText(context?.endpoint, 120);
+    const userId = this.normalizeObservabilityText(context?.userId, 80);
+    const entityType = this.normalizeObservabilityText(context?.entityType, 80);
+    const entityId = this.normalizeObservabilityText(context?.entityId, 120);
+    const metadata =
+      context?.metadata &&
+      typeof context.metadata === 'object' &&
+      !Array.isArray(context.metadata)
+        ? context.metadata
+        : undefined;
+
+    return {
+      requestId,
+      correlationId,
+      endpoint,
+      userId,
+      entityType,
+      entityId,
+      metadata,
+    };
+  }
+
+  private normalizeObservabilityId(value: string | undefined): string {
+    const normalized = this.normalizeObservabilityText(value, 120);
+    if (normalized) {
+      return normalized;
+    }
+
+    return `ai_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  private normalizeObservabilityText(
+    value: string | undefined,
+    maxLength: number
+  ): string | undefined {
+    if (!value || typeof value !== 'string') {
+      return undefined;
+    }
+
+    const compact = value.replace(/\s+/g, ' ').trim();
+    if (!compact) {
+      return undefined;
+    }
+
+    return compact.slice(0, maxLength);
+  }
+
+  private async estimateRunCostMicrosEur(params: {
+    provider: string;
+    model: string;
+    promptTokens: number | null;
+    completionTokens: number | null;
+  }): Promise<bigint | null> {
+    if (!this.tokenAndCostService) {
+      return null;
+    }
+
+    try {
+      const estimate = await this.tokenAndCostService.estimateCostMicrosEur({
+        provider: params.provider,
+        model: params.model,
+        promptTokens: params.promptTokens,
+        completionTokens: params.completionTokens,
+      });
+      return estimate.estimatedCostMicrosEur;
+    } catch (error) {
+      logger.warn(
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Could not estimate AI operation cost in micros EUR'
+      );
+      return null;
+    }
+  }
+
+  private mapErrorToAiRunStatus(error: ExternalAPIError): AiRunStatus {
+    const errorMessage = error.message.toLowerCase();
+
+    if (
+      errorMessage.includes('timeout') ||
+      errorMessage.includes('etimedout') ||
+      errorMessage.includes('gateway timeout') ||
+      error.statusCode === 504
+    ) {
+      return AiRunStatus.TIMEOUT;
+    }
+
+    if (errorMessage.includes('cancel') || errorMessage.includes('aborted')) {
+      return AiRunStatus.CANCELLED;
+    }
+
+    return AiRunStatus.FAILED;
+  }
+
   /**
    * Validate and normalize factCheck verdict
    */
@@ -1732,7 +2663,10 @@ export class GeminiClient implements IGeminiClient {
    * @param mediaName Nombre del medio (e.g., "El PaÃ­s", "BBC News")
    * @returns URL del RSS si se encuentra, null si no existe o no se puede determinar
    */
-  async discoverRssUrl(mediaName: string): Promise<string | null> {
+  async discoverRssUrl(
+    mediaName: string,
+    observability?: AIObservabilityContext
+  ): Promise<string | null> {
     logger.info(
       { mediaLength: mediaName.length },
       'Starting RSS URL discovery'
@@ -1740,6 +2674,25 @@ export class GeminiClient implements IGeminiClient {
 
     // COST OPTIMIZATION: Prompt extraÃ­do a mÃ³dulo centralizado
     const prompt = buildRssDiscoveryPrompt(mediaName);
+    const operation = await this.beginAiOperationRun({
+      operationKey: RSS_DISCOVERY_OPERATION_KEY,
+      model: GEMINI_ANALYSIS_MODEL,
+      observability,
+      prompt: {
+        promptKey: 'RSS_DISCOVERY_PROMPT',
+        version: RSS_DISCOVERY_PROMPT_VERSION,
+        template: RSS_DISCOVERY_PROMPT_TEMPLATE,
+        sourceFile: RSS_DISCOVERY_PROMPT_SOURCE_FILE,
+      },
+      metadata: {
+        mediaNameLength: mediaName.length,
+      },
+    });
+    let tokenUsage: OperationTokenUsage = {
+      promptTokens: null,
+      completionTokens: null,
+      totalTokens: null,
+    };
 
     try {
       // RESILIENCIA: executeWithRetry maneja reintentos automÃ¡ticos
@@ -1756,6 +2709,7 @@ export class GeminiClient implements IGeminiClient {
           },
           async () => {
             const response = await this.model.generateContent(prompt);
+            tokenUsage = this.resolveTokenUsage(response.response.usageMetadata);
             return response.response.text().trim().replace(/['"]/g, '');
           }
         );
@@ -1763,6 +2717,15 @@ export class GeminiClient implements IGeminiClient {
 
       // Si la respuesta es literalmente "null" o vacÃ­a, retornar null
       if (result === 'null' || result === '' || result.length < 10) {
+        await this.completeAiOperationRun({
+          operation,
+          tokens: tokenUsage,
+          metadata: {
+            mediaNameLength: mediaName.length,
+            rssFound: false,
+            tokenUsageAvailable: tokenUsage.totalTokens !== null,
+          },
+        });
         logger.debug('No RSS URL found for media source');
         return null;
       }
@@ -1770,18 +2733,53 @@ export class GeminiClient implements IGeminiClient {
       // Validar que sea una URL vÃ¡lida
       try {
         new URL(result);
+        await this.completeAiOperationRun({
+          operation,
+          tokens: tokenUsage,
+          metadata: {
+            mediaNameLength: mediaName.length,
+            rssFound: true,
+            rssUrlLength: result.length,
+            tokenUsageAvailable: tokenUsage.totalTokens !== null,
+          },
+        });
         logger.info(
           { rssUrlLength: result.length },
           'Valid RSS URL discovered'
         );
         return result;
       } catch {
+        await this.completeAiOperationRun({
+          operation,
+          tokens: tokenUsage,
+          metadata: {
+            mediaNameLength: mediaName.length,
+            rssFound: false,
+            invalidUrlReturned: true,
+            tokenUsageAvailable: tokenUsage.totalTokens !== null,
+          },
+        });
         logger.warn('RSS discovery returned invalid URL format');
         return null;
       }
     } catch (error) {
+      const mappedError =
+        error instanceof ExternalAPIError
+          ? error
+          : GeminiErrorMapper.toExternalAPIError(error);
+
+      await this.failAiOperationRun({
+        operation,
+        error: mappedError,
+        tokens: tokenUsage,
+        metadata: {
+          mediaNameLength: mediaName.length,
+          tokenUsageAvailable: tokenUsage.totalTokens !== null,
+        },
+      });
+
       logger.error(
-        { errorCode: getErrorCode(error) },
+        { errorCode: String(mappedError.statusCode ?? getErrorCode(error) ?? 'UNKNOWN') },
         'Error during RSS URL discovery'
       );
       return null;
@@ -1794,15 +2792,35 @@ export class GeminiClient implements IGeminiClient {
    * @param city Nombre de la ciudad (e.g., "Bilbao", "Valencia")
    * @returns JSON string con array de fuentes sugeridas
    */
-  async discoverLocalSources(city: string): Promise<string> {
+  async discoverLocalSources(
+    city: string,
+    observability?: AIObservabilityContext
+  ): Promise<string> {
     logger.info(
       { cityLength: city.length },
       'Starting local sources discovery'
     );
 
-    // Usar el prompt de discovery de fuentes locales
-    const { buildLocationSourcesPrompt } = await import('./prompts/rss-discovery.prompt');
     const prompt = buildLocationSourcesPrompt(city);
+    const operation = await this.beginAiOperationRun({
+      operationKey: LOCAL_SOURCE_DISCOVERY_OPERATION_KEY,
+      model: GEMINI_ANALYSIS_MODEL,
+      observability,
+      prompt: {
+        promptKey: 'LOCATION_SOURCES_PROMPT',
+        version: LOCATION_SOURCES_PROMPT_VERSION,
+        template: LOCATION_SOURCES_PROMPT_TEMPLATE,
+        sourceFile: RSS_DISCOVERY_PROMPT_SOURCE_FILE,
+      },
+      metadata: {
+        cityLength: city.length,
+      },
+    });
+    let tokenUsage: OperationTokenUsage = {
+      promptTokens: null,
+      completionTokens: null,
+      totalTokens: null,
+    };
 
     try {
       // RESILIENCIA: executeWithRetry maneja reintentos automÃ¡ticos
@@ -1820,10 +2838,21 @@ export class GeminiClient implements IGeminiClient {
           },
           async () => {
             const response = await this.model.generateContent(prompt);
+            tokenUsage = this.resolveTokenUsage(response.response.usageMetadata);
             return response.response.text().trim();
           }
         );
       }, 2, 500); // 2 reintentos, 500ms delay
+
+      await this.completeAiOperationRun({
+        operation,
+        tokens: tokenUsage,
+        metadata: {
+          cityLength: city.length,
+          responseLength: result.length,
+          tokenUsageAvailable: tokenUsage.totalTokens !== null,
+        },
+      });
 
       logger.info(
         { responseLength: result.length },
@@ -1831,11 +2860,26 @@ export class GeminiClient implements IGeminiClient {
       );
       return result;
     } catch (error) {
+      const mappedError =
+        error instanceof ExternalAPIError
+          ? error
+          : GeminiErrorMapper.toExternalAPIError(error);
+
+      await this.failAiOperationRun({
+        operation,
+        error: mappedError,
+        tokens: tokenUsage,
+        metadata: {
+          cityLength: city.length,
+          tokenUsageAvailable: tokenUsage.totalTokens !== null,
+        },
+      });
+
       logger.error(
-        { errorCode: getErrorCode(error) },
+        { errorCode: String(mappedError.statusCode ?? getErrorCode(error) ?? 'UNKNOWN') },
         'Error during local sources discovery'
       );
-      throw error;
+      throw mappedError;
     }
   }
 

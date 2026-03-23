@@ -1,5 +1,19 @@
-import { ArticleBiasAIInput, ArticleBiasAIResponse, IArticleBiasAIProvider } from '../../application/contracts/IArticleBiasAIProvider';
-import { buildArticleBiasInputContext, buildArticleBiasInstructions } from './articleBiasPrompt';
+import {
+  ArticleBiasAIInput,
+  ArticleBiasAIResponse,
+  ArticleBiasProviderPromptDescriptors,
+  IArticleBiasAIProvider,
+} from '../../application/contracts/IArticleBiasAIProvider';
+import {
+  ARTICLE_BIAS_INPUT_CONTEXT_PROMPT_KEY,
+  ARTICLE_BIAS_INPUT_CONTEXT_TEMPLATE,
+  ARTICLE_BIAS_INSTRUCTIONS_PROMPT_KEY,
+  ARTICLE_BIAS_INSTRUCTIONS_TEMPLATE,
+  ARTICLE_BIAS_PROMPT_SOURCE_FILE,
+  ARTICLE_BIAS_PROMPT_VERSION,
+  buildArticleBiasInputContext,
+  buildArticleBiasInstructions,
+} from './articleBiasPrompt';
 
 interface OpenAICompatibleProviderConfig {
   apiKey: string;
@@ -11,6 +25,11 @@ interface OpenAICompatibleProviderConfig {
 
 interface OpenAIChatCompletionResponse {
   model?: string;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
   choices?: Array<{
     message?: {
       content?: string | null;
@@ -31,6 +50,25 @@ export class OpenAICompatibleArticleBiasAIProvider implements IArticleBiasAIProv
     this.apiKey = config.apiKey;
     this.baseUrl = config.baseUrl.replace(/\/$/, '');
     this.timeoutMs = config.timeoutMs;
+  }
+
+  getPromptDescriptors(): ArticleBiasProviderPromptDescriptors {
+    return {
+      primaryPrompt: {
+        promptKey: ARTICLE_BIAS_INSTRUCTIONS_PROMPT_KEY,
+        version: ARTICLE_BIAS_PROMPT_VERSION,
+        template: ARTICLE_BIAS_INSTRUCTIONS_TEMPLATE,
+        sourceFile: ARTICLE_BIAS_PROMPT_SOURCE_FILE,
+      },
+      relatedPrompts: [
+        {
+          promptKey: ARTICLE_BIAS_INPUT_CONTEXT_PROMPT_KEY,
+          version: ARTICLE_BIAS_PROMPT_VERSION,
+          template: ARTICLE_BIAS_INPUT_CONTEXT_TEMPLATE,
+          sourceFile: ARTICLE_BIAS_PROMPT_SOURCE_FILE,
+        },
+      ],
+    };
   }
 
   async analyzeArticle(input: ArticleBiasAIInput): Promise<ArticleBiasAIResponse> {
@@ -78,6 +116,17 @@ export class OpenAICompatibleArticleBiasAIProvider implements IArticleBiasAIProv
         provider: this.providerName,
         model: payload.model ?? this.modelName,
         rawText,
+        tokenUsage: {
+          promptTokens: payload.usage?.prompt_tokens ?? null,
+          completionTokens: payload.usage?.completion_tokens ?? null,
+          totalTokens: payload.usage?.total_tokens ?? null,
+        },
+        metadata: {
+          providerType: 'openai-compatible',
+          endpointPath: '/chat/completions',
+          usageAvailable: Boolean(payload.usage),
+          choicesCount: payload.choices?.length ?? 0,
+        },
       };
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {

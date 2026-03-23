@@ -324,7 +324,12 @@ describe('ChatArticleUseCase - RAG System (ZONA CRÍTICA)', () => {
 
       // ASSERT - Verificar flujo completo
       expect(mockArticleRepository.findById).toHaveBeenCalledWith('test-article-id-123');
-      expect(mockGeminiClient.generateEmbedding).toHaveBeenCalledWith(userQuestion);
+      expect(mockGeminiClient.generateEmbedding).toHaveBeenCalledWith(
+        userQuestion,
+        expect.objectContaining({
+          operationKey: 'embedding_generation',
+        })
+      );
       expect(mockChromaClient.querySimilarWithDocuments).toHaveBeenCalledWith(mockEmbedding, 3);
       expect(mockGeminiClient.generateChatResponse).toHaveBeenCalledTimes(1);
 
@@ -615,7 +620,12 @@ describe('ChatArticleUseCase - RAG System (ZONA CRÍTICA)', () => {
       });
 
       // ASSERT
-      expect(mockGeminiClient.generateEmbedding).toHaveBeenCalledWith('What are its applications?');
+      expect(mockGeminiClient.generateEmbedding).toHaveBeenCalledWith(
+        'What are its applications?',
+        expect.objectContaining({
+          operationKey: 'embedding_generation',
+        })
+      );
       expect(result.response).toBe('Applications include ML and NLP.');
     });
 
@@ -641,7 +651,12 @@ describe('ChatArticleUseCase - RAG System (ZONA CRÍTICA)', () => {
 
       // ASSERT - CRÍTICO: Solo debe generar embedding de la última pregunta
       expect(mockGeminiClient.generateEmbedding).toHaveBeenCalledTimes(1);
-      expect(mockGeminiClient.generateEmbedding).toHaveBeenCalledWith('Second question');
+      expect(mockGeminiClient.generateEmbedding).toHaveBeenCalledWith(
+        'Second question',
+        expect.objectContaining({
+          operationKey: 'embedding_generation',
+        })
+      );
     });
   });
 

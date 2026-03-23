@@ -6,6 +6,9 @@ import { Article, ClassificationStatus } from '../../src/domain/entities/Article
 import { ArticleBiasAnalysis, BiasAnalysisStatus, IdeologyLabel } from '../../src/domain/entities/ArticleBiasAnalysis';
 import { IArticleBiasAnalysisRepository } from '../../src/domain/repositories/IArticleBiasAnalysisRepository';
 import { IArticleRepository } from '../../src/domain/repositories/IArticleRepository';
+import { AIObservabilityService } from '../../src/infrastructure/observability/ai-observability.service';
+import { PromptRegistryService } from '../../src/infrastructure/observability/prompt-registry.service';
+import { TokenAndCostService } from '../../src/infrastructure/observability/token-and-cost.service';
 
 function buildArticle(overrides: Partial<Article> = {}): Article {
   return {
@@ -60,8 +63,31 @@ describe('AnalyzeArticleBiasUseCase', () => {
   const mockAIProvider: IArticleBiasAIProvider = {
     providerName: 'mock-ai',
     modelName: 'test-model',
+    getPromptDescriptors: vi.fn(() => ({
+      primaryPrompt: {
+        promptKey: 'article_bias_prompt',
+        version: '1.0.0',
+        template: 'prompt {{title}}',
+        sourceFile: 'src/infrastructure/ai/articleBiasPrompt.ts',
+      },
+      relatedPrompts: [],
+    })),
     analyzeArticle: vi.fn(),
   };
+
+  const mockAiObservabilityService = {
+    startRun: vi.fn(),
+    completeRun: vi.fn(),
+    failRun: vi.fn(),
+  } as unknown as AIObservabilityService;
+
+  const mockPromptRegistryService = {
+    registerPromptVersion: vi.fn(),
+  } as unknown as PromptRegistryService;
+
+  const mockTokenAndCostService = {
+    estimateCostMicrosEur: vi.fn(),
+  } as unknown as TokenAndCostService;
 
   let useCase: AnalyzeArticleBiasUseCase;
 
@@ -178,6 +204,84 @@ describe('AnalyzeArticleBiasUseCase', () => {
       status: BiasAnalysisStatus.COMPLETED,
       ideologyLabel: IdeologyLabel.CENTER_RIGHT,
       confidence: 0.73,
+    }));
+  });
+
+  it('completa ai_operation_run cuando la IA devuelve tokens reales', async () => {
+    vi.mocked(mockArticleRepository.findById).mockResolvedValue(buildArticle());
+    vi.mocked(mockArticleBiasAnalysisRepository.findByArticleId).mockResolvedValue(null);
+    vi.mocked(mockArticleBiasAnalysisRepository.upsertByArticleId)
+      .mockResolvedValueOnce(buildAnalysis({ status: BiasAnalysisStatus.PENDING }))
+      .mockResolvedValueOnce(buildAnalysis({
+        status: BiasAnalysisStatus.COMPLETED,
+        ideologyLabel: IdeologyLabel.CENTER,
+        confidence: 0.61,
+        summary: 'Resumen',
+        reasoningShort: 'Motivo',
+        analyzedAt: new Date('2026-03-17T10:20:00.000Z'),
+      }));
+    vi.mocked(mockPromptRegistryService.registerPromptVersion).mockResolvedValue({
+      id: 'prompt-version-1',
+      templateHash: 'hash-1',
+    });
+    vi.mocked(mockAiObservabilityService.startRun).mockResolvedValue('run-1');
+    vi.mocked(mockTokenAndCostService.estimateCostMicrosEur).mockResolvedValue({
+      estimatedCostMicrosEur: 1234n,
+      pricingId: 'pricing-1',
+      currency: 'EUR',
+    });
+    vi.mocked(mockAIProvider.analyzeArticle).mockResolvedValue({
+      provider: 'mock-ai',
+      model: 'test-model',
+      rawText: '{"ideologyLabel":"CENTER","confidence":0.61,"summary":"Resumen","reasoningShort":"Motivo"}',
+      tokenUsage: {
+        promptTokens: 100,
+        completionTokens: 40,
+        totalTokens: 140,
+      },
+      metadata: {
+        usageAvailable: true,
+      },
+    });
+
+    useCase = new AnalyzeArticleBiasUseCase(
+      mockArticleRepository,
+      mockArticleBiasAnalysisRepository,
+      mockAIProvider,
+      new ArticleBiasJsonParser(),
+      mockAiObservabilityService,
+      mockPromptRegistryService,
+      mockTokenAndCostService
+    );
+
+    const result = await useCase.execute('article-1', {
+      requestId: 'req-1',
+      correlationId: 'corr-1',
+      endpoint: 'POST /api/articles/article-1/analyze-bias',
+    });
+
+    expect(result.analysis.status).toBe(BiasAnalysisStatus.COMPLETED);
+    expect(mockAiObservabilityService.startRun).toHaveBeenCalledWith(expect.objectContaining({
+      module: 'media-bias-atlas',
+      operationKey: 'article_bias_analysis',
+      requestId: 'req-1',
+      correlationId: 'corr-1',
+      entityType: 'article',
+      entityId: 'article-1',
+      promptVersionId: 'prompt-version-1',
+    }));
+    expect(mockTokenAndCostService.estimateCostMicrosEur).toHaveBeenCalledWith({
+      provider: 'mock-ai',
+      model: 'test-model',
+      promptTokens: 100,
+      completionTokens: 40,
+    });
+    expect(mockAiObservabilityService.completeRun).toHaveBeenCalledWith(expect.objectContaining({
+      runId: 'run-1',
+      promptTokens: 100,
+      completionTokens: 40,
+      totalTokens: 140,
+      estimatedCostMicrosEur: 1234n,
     }));
   });
 });

@@ -21,13 +21,18 @@
  * IMPORTANTE: Este use case NO usa vectorClient ni RAG
  */
 
-import { IGeminiClient, ChatMessage } from '../../domain/services/gemini-client.interface';
+import {
+  AIObservabilityContext,
+  IGeminiClient,
+  ChatMessage,
+} from '../../domain/services/gemini-client.interface';
 import { ValidationError } from '../../domain/errors/domain.error';
 import { GeminiErrorMapper } from '../../infrastructure/external/gemini-error-mapper';
 import { buildGeneralChatSystemPrompt } from '../../infrastructure/external/prompts/general-chat.prompt';
 
 export interface ChatGeneralInput {
   messages: ChatMessage[];
+  observabilityContext?: AIObservabilityContext;
 }
 
 export interface ChatGeneralOutput {
@@ -46,7 +51,7 @@ export class ChatGeneralUseCase {
    * para respuestas con contexto conversacional y datos en tiempo real.
    */
   async execute(input: ChatGeneralInput): Promise<ChatGeneralOutput> {
-    const { messages } = input;
+    const { messages, observabilityContext } = input;
 
     // Validate input
     if (!messages || messages.length === 0) {
@@ -70,7 +75,22 @@ export class ChatGeneralUseCase {
     try {
       response = await this.geminiClient.generateGeneralResponse(
         systemPrompt,
-        messages
+        messages,
+        {
+          ...observabilityContext,
+          operationKey: observabilityContext?.operationKey ?? 'general_chat_grounding',
+          promptKey: observabilityContext?.promptKey ?? 'GENERAL_CHAT_SYSTEM_PROMPT',
+          promptVersion: observabilityContext?.promptVersion ?? '2.0.0',
+          promptTemplate: observabilityContext?.promptTemplate ?? systemPrompt,
+          promptSourceFile:
+            observabilityContext?.promptSourceFile ??
+            'backend/src/infrastructure/external/prompts/general-chat.prompt.ts',
+          metadata: {
+            ...observabilityContext?.metadata,
+            messagesCount: messages.length,
+            latestUserMessageLength: lastMessage.content.length,
+          },
+        }
       );
       console.log(`   ✅ Respuesta generada (${response.length} caracteres)`);
     } catch (error) {

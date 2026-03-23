@@ -6,6 +6,8 @@ import { SyncController } from './controllers/SyncController';
 import { ArticleController } from './controllers/ArticleController';
 import { BiasAnalysisController } from './controllers/BiasAnalysisController';
 import { GetOutletByIdUseCase } from '../../application/useCases/GetOutletByIdUseCase';
+import { AdminAiUsageController } from './controllers/AdminAiUsageController';
+import { createAdminAiUsageRoutes } from './routes/admin-ai-usage.routes';
 
 // Instanciar repositorios
 import { PrismaCountryRepository } from '../repositories/PrismaCountryRepository';
@@ -18,6 +20,7 @@ import { CreateOutletUseCase } from '../../application/useCases/CreateOutletUseC
 import { CalculateOutletBiasProfileUseCase } from '../../application/use-cases/bias-analysis/CalculateOutletBiasProfileUseCase';
 import { PrismaArticleRepository } from '../database/PrismaArticleRepository';
 import { prisma } from '../database/prismaClient';
+import { aiObservabilityService } from '../observability';
 
 export function setupRoutes(app: Application) {
   const apiRouter = Router();
@@ -36,6 +39,7 @@ export function setupRoutes(app: Application) {
   // Controladores
   const countryController = new CountryController(listCountriesUC, listOutletsByCountryUC);
   const outletController = new OutletController(getOutletByIdUC, createOutletUC, calculateOutletBiasProfileUC);
+  const adminAiUsageController = new AdminAiUsageController(aiObservabilityService);
 
   // Rutas - Countries
   apiRouter.get('/countries', (req, res, next) => countryController.list(req, res, next));
@@ -61,4 +65,5 @@ export function setupRoutes(app: Application) {
   apiRouter.get('/articles/:articleId/bias-analysis', BiasAnalysisController.getArticleBiasAnalysis);
 
   app.use('/api', apiRouter);
+  app.use('/api/admin/ai-usage', createAdminAiUsageRoutes(adminAiUsageController));
 }

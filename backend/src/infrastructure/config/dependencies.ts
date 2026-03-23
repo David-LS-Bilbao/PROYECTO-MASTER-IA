@@ -37,6 +37,10 @@ import { HealthController } from '../http/controllers/health.controller';
 import { SubscriptionController } from '../http/controllers/subscription.controller';
 import { QuotaResetJob } from '../jobs/quota-reset.job';
 import { CleanupNewsJob } from '../jobs/cleanup-news.job';
+import { AIObservabilityService } from '../observability/ai-observability.service';
+import { PromptRegistryService } from '../observability/prompt-registry.service';
+import { TokenAndCostService } from '../observability/token-and-cost.service';
+import { AdminAiUsageController } from '../http/controllers/admin-ai-usage.controller';
 
 export class DependencyContainer {
   private static instance: DependencyContainer;
@@ -44,6 +48,9 @@ export class DependencyContainer {
   public readonly prisma: PrismaClient;
   public readonly vectorClient: PgVectorClient;
   public readonly geminiClient: GeminiClient;
+  public readonly aiObservabilityService: AIObservabilityService;
+  public readonly promptRegistryService: PromptRegistryService;
+  public readonly tokenAndCostService: TokenAndCostService;
   public readonly newsRepository: PrismaNewsArticleRepository;
   public readonly topicRepository: PrismaTopicRepository;
   public readonly ingestionTracker: IngestionTrackerRepository; // Sprint 35
@@ -59,12 +66,20 @@ export class DependencyContainer {
   public readonly topicController: TopicController;
   public readonly healthController: HealthController;
   public readonly subscriptionController: SubscriptionController;
+  public readonly adminAiUsageController: AdminAiUsageController;
   public readonly quotaResetJob: QuotaResetJob;
   public readonly cleanupNewsJob: CleanupNewsJob;
 
   private constructor() {
     // Use singleton Prisma instance
     this.prisma = getPrismaClient();
+    this.aiObservabilityService = new AIObservabilityService(this.prisma);
+    this.promptRegistryService = new PromptRegistryService(this.prisma);
+    this.tokenAndCostService = new TokenAndCostService(this.prisma);
+
+    void this.tokenAndCostService.ensureDefaultPricingCatalog().catch((error) => {
+      console.warn('⚠️ Failed to seed default AI pricing catalog:', error);
+    });
 
     // Use Direct Spanish RSS as primary client (clean URLs, no Google obfuscation)
     // This allows MetadataExtractor to work properly with direct media links
@@ -81,7 +96,11 @@ export class DependencyContainer {
 
     // BLOQUEANTE #2: TokenTaximeter ahora se inyecta (DI Pattern)
     const tokenTaximeter = new TokenTaximeter();
-    this.geminiClient = new GeminiClient(process.env.GEMINI_API_KEY || '', tokenTaximeter);
+    this.geminiClient = new GeminiClient(process.env.GEMINI_API_KEY || '', tokenTaximeter, {
+      aiObservabilityService: this.aiObservabilityService,
+      promptRegistryService: this.promptRegistryService,
+      tokenAndCostService: this.tokenAndCostService,
+    });
     const jinaReaderClient = new JinaReaderClient(process.env.JINA_API_KEY || '');
     const metadataExtractor = new MetadataExtractor();
     this.vectorClient = new PgVectorClient(this.prisma);
@@ -150,6 +169,7 @@ export class DependencyContainer {
     this.sourcesController = new SourcesController(this.geminiClient);
     this.healthController = new HealthController(this.prisma);
     this.subscriptionController = new SubscriptionController();
+    this.adminAiUsageController = new AdminAiUsageController(this.aiObservabilityService);
 
     // Infrastructure Jobs (Sprint 14 - Paso 2: Automatización de Reset de Cuotas)
     this.quotaResetJob = new QuotaResetJob(this.prisma);

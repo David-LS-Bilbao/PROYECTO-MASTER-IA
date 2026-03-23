@@ -17,7 +17,11 @@
 
 import { ArticleAnalysis, NewsArticle } from '../../domain/entities/news-article.entity';
 import { INewsArticleRepository } from '../../domain/repositories/news-article.repository';
-import { AnalysisMode, IGeminiClient } from '../../domain/services/gemini-client.interface';
+import {
+  AnalysisMode,
+  AIObservabilityContext,
+  IGeminiClient,
+} from '../../domain/services/gemini-client.interface';
 import { IJinaReaderClient } from '../../domain/services/jina-reader-client.interface';
 import { IVectorClient } from '../../domain/services/vector-client.interface';
 import {
@@ -67,6 +71,7 @@ export interface AnalyzeArticleInput {
   articleId: string;
   analysisMode?: AnalysisMode;
   mode?: 'standard' | 'deep';
+  observabilityContext?: AIObservabilityContext;
   user?: {
     id: string;
     subscriptionPlan: 'FREE' | 'PREMIUM';
@@ -127,7 +132,7 @@ export class AnalyzeArticleUseCase {
    * Analyze a single article by ID
    */
   async execute(input: AnalyzeArticleInput): Promise<AnalyzeArticleOutput> {
-    const { articleId, user } = input;
+    const { articleId, user, observabilityContext } = input;
     const requestedMode = this.normalizeRequestedMode(input.mode);
     const requestedAnalysisMode =
       requestedMode === 'deep'
@@ -427,6 +432,24 @@ export class AnalyzeArticleUseCase {
         inputQuality,
         contentChars: promptContentChars,
         textSource,
+        observability: {
+          requestId: observabilityContext?.requestId ?? `req_${Date.now()}`,
+          correlationId:
+            observabilityContext?.correlationId ??
+            observabilityContext?.requestId ??
+            `req_${Date.now()}`,
+          endpoint: observabilityContext?.endpoint,
+          userId: observabilityContext?.userId ?? user?.id,
+          entityType: observabilityContext?.entityType ?? 'article',
+          entityId: observabilityContext?.entityId ?? article.id,
+          metadata: {
+            ...observabilityContext?.metadata,
+            requestedMode,
+            effectiveAnalysisMode,
+            inputQuality,
+            textSource,
+          },
+        },
       });
       analysis = this.normalizeAnalysis(analysis, {
         scrapedContentLength,
@@ -470,7 +493,23 @@ export class AnalyzeArticleUseCase {
       // Generate embedding with Gemini (wrapped with error mapping)
       let embedding: number[];
       try {
-        embedding = await this.geminiClient.generateEmbedding(textToEmbed);
+        embedding = await this.geminiClient.generateEmbedding(textToEmbed, {
+          requestId: observabilityContext?.requestId ?? `req_${Date.now()}`,
+          correlationId:
+            observabilityContext?.correlationId ??
+            observabilityContext?.requestId ??
+            `req_${Date.now()}`,
+          endpoint: observabilityContext?.endpoint,
+          userId: observabilityContext?.userId ?? user?.id,
+          entityType: observabilityContext?.entityType ?? 'article',
+          entityId: observabilityContext?.entityId ?? article.id,
+          operationKey: 'embedding_generation',
+          metadata: {
+            ...observabilityContext?.metadata,
+            embeddingPurpose: 'article_indexing',
+            textLength: textToEmbed.length,
+          },
+        });
       } catch (error) {
         const mappedError = GeminiErrorMapper.toExternalAPIError(error);
         console.error(`   âŒ Gemini embedding failed: ${mappedError.message}`);

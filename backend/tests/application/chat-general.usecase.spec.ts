@@ -119,7 +119,7 @@ describe('ChatGeneralUseCase', () => {
     const systemPrompt = mockGeminiClient.generateGeneralResponse.mock.calls[0][0];
     expect(systemPrompt).toContain('conocimiento general');
     expect(systemPrompt).toContain('Google Search');
-    expect(systemPrompt).toContain('español');
+    expect(systemPrompt).toContain('espanol');
   });
 
   it('NO llama a generateChatResponse (método RAG)', async () => {

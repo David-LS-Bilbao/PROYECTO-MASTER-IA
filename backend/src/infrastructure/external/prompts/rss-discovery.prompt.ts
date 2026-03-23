@@ -1,72 +1,47 @@
 /**
  * RSS Discovery Prompt Configuration
- * 
- * Mapeo HTML → Lista URLs con regla de Confianza de Formato
- * Versión: v2 (optimizada precisión estructural)
+ *
+ * Mapeo HTML -> Lista URLs con regla de Confianza de Formato
+ * Version: v2 (optimizada precision estructural)
  */
 
-/**
- * Genera prompt para buscar feed RSS de un medio
- *
- * @param mediaName - Nombre del medio de comunicación
- * @returns Prompt para enviar a Gemini
- */
-export function buildRssDiscoveryPrompt(mediaName: string): string {
-  return `INPUT: '${mediaName}'
+export const RSS_DISCOVERY_PROMPT_VERSION = '2.0.0';
+export const RSS_DISCOVERY_PROMPT_TEMPLATE = `INPUT: '{mediaName}'
 OUTPUT: URL feed RSS oficial
 
 REGLA CONFIANZA DE FORMATO:
 - SOLO URLs terminadas en .xml, .rss O que contengan /feed/
-- Si no cumple formato válido → 'null'
+- Si no cumple formato valido -> 'null'
 - Sin texto adicional, sin markdown`;
-}
 
-/**
- * Sprint 24.1: Genera prompt para identificar fuentes locales de noticias de una ciudad
- *
- * REFACTORIZACIÓN: En lugar de predecir URLs RSS (alta tasa de error), ahora pedimos:
- * 1. Identificar los 5 medios digitales más importantes de la ciudad/región
- * 2. Proporcionar el dominio principal (homepage URL limpia)
- * 3. Identificar el grupo editorial si es conocido (Vocento, Prensa Ibérica, etc.)
- * 4. Asignar nivel de confiabilidad
- * 5. Devolver SOLO JSON válido, sin markdown, sin explicaciones
- *
- * VENTAJAS:
- * - Reduce alucinaciones (dominios son más conocidos que URLs RSS específicas)
- * - Permite web scraping posterior para descubrir RSS feeds reales
- * - Información de grupo editorial útil para credibilidad
- *
- * @param city - Nombre de la ciudad/región española (ej: "Bilbao", "Comunidad Valenciana")
- * @returns Prompt estructurado para extracción de fuentes locales
- */
-export function buildLocationSourcesPrompt(city: string): string {
-  return `TAREA: Identifica los 5 medios de noticias digitales MÁS IMPORTANTES que cubran noticias de "${city}" (España).
+export const LOCATION_SOURCES_PROMPT_VERSION = '1.0.0';
+export const LOCATION_SOURCES_PROMPT_TEMPLATE = `TAREA: Identifica los 5 medios de noticias digitales MAS IMPORTANTES que cubran noticias de "{city}" (Espana).
 
-CRITERIOS DE SELECCIÓN (en orden de prioridad):
-1. Medios estrictamente locales con sede o redacción en ${city} o su municipio
-2. Si no existen suficientes medios locales: periódicos provinciales/regionales que cubran ${city}
-3. Si ${city} es una localidad pequeña o municipio de una gran ciudad: incluir los medios de la capital de provincia o comunidad autónoma que habitualmente cubren esa zona
-4. Priorizar: periódicos digitales consolidados > radios digitales > TV locales > portales independientes
-5. Permitir ediciones locales de medios regionales si tienen cobertura específica de ${city}
+CRITERIOS DE SELECCION (en orden de prioridad):
+1. Medios estrictamente locales con sede o redaccion en {city} o su municipio
+2. Si no existen suficientes medios locales: periodicos provinciales/regionales que cubran {city}
+3. Si {city} es una localidad pequena o municipio de una gran ciudad: incluir los medios de la capital de provincia o comunidad autonoma que habitualmente cubren esa zona
+4. Priorizar: periodicos digitales consolidados > radios digitales > TV locales > portales independientes
+5. Permitir ediciones locales de medios regionales si tienen cobertura especifica de {city}
 
 FORMATO DE SALIDA (JSON estricto):
 [
   {
     "name": "Nombre del medio",
     "domain": "https://www.levante-emv.com",
-    "media_group": "Prensa Ibérica",
+    "media_group": "Prensa Iberica",
     "reliability": "high"
   }
 ]
 
 INSTRUCCIONES PARA CADA CAMPO:
 - "name": Nombre oficial del medio (ej: "Levante-EMV", "Las Provincias")
-- "domain": URL de la página principal (homepage limpia, sin rutas adicionales)
+- "domain": URL de la pagina principal (homepage limpia, sin rutas adicionales)
   - Formato: https://www.[dominio].com
   - NO inventes subdominios (solo el principal)
-  - Ejemplos válidos: "https://www.levante-emv.com", "https://www.eldiario.es"
+  - Ejemplos validos: "https://www.levante-emv.com", "https://www.eldiario.es"
 - "media_group": Grupo editorial al que pertenece (si lo conoces), o "Independent" / "Unknown"
-- "reliability": "high" (>10 años, grupo conocido) | "medium" (5-10 años) | "low" (portal local pequeño)
+- "reliability": "high" (>10 anos, grupo conocido) | "medium" (5-10 anos) | "low" (portal local pequeno)
 
 REGLAS ESTRICTAS:
 1. NO predecir URLs RSS - SOLO proporcionar el dominio principal
@@ -75,8 +50,33 @@ REGLAS ESTRICTAS:
 
 IMPORTANTE:
 - Devolver SOLO el array JSON, SIN markdown (\`\`\`json), SIN explicaciones
-- Máximo 5 fuentes, mínimo 1
-- Si ${city} es un municipio pequeño, prioriza los medios de la provincia/comunidad que lo cubran
-- NUNCA devolver array vacío [] si existen medios provinciales/regionales que cubran la zona`;
+- Maximo 5 fuentes, minimo 1
+- Si {city} es un municipio pequeno, prioriza los medios de la provincia/comunidad que lo cubran
+- NUNCA devolver array vacio [] si existen medios provinciales/regionales que cubran la zona`;
+
+/**
+ * Genera prompt para buscar feed RSS de un medio
+ *
+ * @param mediaName - Nombre del medio de comunicacion
+ * @returns Prompt para enviar a Gemini
+ */
+export function buildRssDiscoveryPrompt(mediaName: string): string {
+  return RSS_DISCOVERY_PROMPT_TEMPLATE.replace('{mediaName}', mediaName);
 }
 
+/**
+ * Sprint 24.1: Genera prompt para identificar fuentes locales de noticias de una ciudad
+ *
+ * REFACTORIZACION: En lugar de predecir URLs RSS (alta tasa de error), ahora pedimos:
+ * 1. Identificar los 5 medios digitales mas importantes de la ciudad/region
+ * 2. Proporcionar el dominio principal (homepage URL limpia)
+ * 3. Identificar el grupo editorial si es conocido (Vocento, Prensa Iberica, etc.)
+ * 4. Asignar nivel de confiabilidad
+ * 5. Devolver SOLO JSON valido, sin markdown, sin explicaciones
+ *
+ * @param city - Nombre de la ciudad/region espanola (ej: "Bilbao", "Comunidad Valenciana")
+ * @returns Prompt estructurado para extraccion de fuentes locales
+ */
+export function buildLocationSourcesPrompt(city: string): string {
+  return LOCATION_SOURCES_PROMPT_TEMPLATE.replaceAll('{city}', city);
+}

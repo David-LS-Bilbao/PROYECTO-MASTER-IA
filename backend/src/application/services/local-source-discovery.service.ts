@@ -87,7 +87,17 @@ export class LocalSourceDiscoveryService {
 
     let aiResponse: string;
     try {
-      aiResponse = await this.geminiClient.discoverLocalSources(city);
+      const operationRequestId = `local-source-${Date.now()}`;
+      aiResponse = await this.geminiClient.discoverLocalSources(city, {
+        requestId: operationRequestId,
+        correlationId: operationRequestId,
+        operationKey: 'local_source_discovery',
+        entityType: 'city',
+        metadata: {
+          cityLength: city.length,
+          trigger: 'ingest_news_local_discovery',
+        },
+      });
       console.log(`✅ [LocalSourceDiscovery] Gemini response received (${aiResponse.length} chars)`);
     } catch (error) {
       console.error(`❌ [LocalSourceDiscovery] Gemini API error:`, error);

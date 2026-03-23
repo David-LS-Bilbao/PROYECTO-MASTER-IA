@@ -210,7 +210,12 @@ describe('SearchNewsUseCase - Semantic Search (ZONA ESTÁNDAR)', () => {
       const result = await useCase.execute({ query: searchQuery, limit: 10 });
 
       // ASSERT - Verificar flujo completo
-      expect(mockGeminiClient.generateEmbedding).toHaveBeenCalledWith(searchQuery);
+      expect(mockGeminiClient.generateEmbedding).toHaveBeenCalledWith(
+        searchQuery,
+        expect.objectContaining({
+          operationKey: 'embedding_generation',
+        })
+      );
       expect(mockChromaClient.querySimilar).toHaveBeenCalledWith(mockEmbedding, 10);
       expect(mockArticleRepository.findByIds).toHaveBeenCalledWith(chromaOrderedIds);
 
@@ -367,7 +372,12 @@ describe('SearchNewsUseCase - Semantic Search (ZONA ESTÁNDAR)', () => {
       // ASSERT - Debe funcionar sin errores
       expect(result).toBeDefined();
       expect(result.results).toHaveLength(1);
-      expect(mockGeminiClient.generateEmbedding).toHaveBeenCalledWith('AI');
+      expect(mockGeminiClient.generateEmbedding).toHaveBeenCalledWith(
+        'AI',
+        expect.objectContaining({
+          operationKey: 'embedding_generation',
+        })
+      );
     });
 
     it('LÍMITE MÁXIMO: debe funcionar con límite de 50 (máximo permitido)', async () => {
