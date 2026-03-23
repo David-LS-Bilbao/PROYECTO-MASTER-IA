@@ -32,6 +32,9 @@ interface OverviewTotalsRow {
   totalTokens: number | null;
   estimatedCostMicrosEur: bigint | null;
   avgLatencyMs: number | null;
+  tokenizedRuns: number | null;
+  costedRuns: number | null;
+  latencyRuns: number | null;
 }
 
 interface RecentErrorRow {
@@ -72,6 +75,38 @@ interface ListedRunRow {
   createdAt: Date;
   completedAt: Date | null;
   metadataJson: Prisma.JsonValue | null;
+  promptVersionModule: string | null;
+  promptVersionKey: string | null;
+  promptVersion: string | null;
+  promptTemplateHash: string | null;
+  promptSourceFile: string | null;
+  promptIsActive: boolean | null;
+}
+
+interface PromptVersionListRow {
+  id: string;
+  module: string;
+  promptKey: string;
+  version: string;
+  templateHash: string;
+  sourceFile: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  runs: number;
+  lastUsedAt: Date | null;
+}
+
+interface ComparisonRow {
+  value: string | null;
+  runs: number;
+  errorRuns: number;
+  tokenizedRuns: number;
+  costedRuns: number;
+  latencyRuns: number;
+  totalTokens: number | null;
+  estimatedCostMicrosEur: bigint | null;
+  totalLatencyMs: bigint | null;
 }
 
 export interface StartAiOperationRunInput {
@@ -134,6 +169,14 @@ export interface AiRunFilters {
 }
 
 export interface ListAiRunsInput extends AiRunFilters {
+  page?: number;
+  pageSize?: number;
+}
+
+export interface ListAiPromptVersionsInput {
+  module?: string;
+  promptKey?: string;
+  isActive?: boolean;
   page?: number;
   pageSize?: number;
 }
@@ -275,6 +318,9 @@ export class AIObservabilityService {
       totalTokens: number;
       estimatedCostMicrosEur: string;
       avgLatencyMs: number | null;
+      tokenizedRuns: number;
+      costedRuns: number;
+      latencyRuns: number;
     };
     byStatus: Array<{ status: AiRunStatus; runs: number }>;
     byModule: Array<{
@@ -315,7 +361,10 @@ export class AIObservabilityService {
           COALESCE(SUM("completion_tokens"), 0)::int AS "completionTokens",
           COALESCE(SUM("total_tokens"), 0)::int AS "totalTokens",
           COALESCE(SUM("estimated_cost_micros_eur"), 0)::bigint AS "estimatedCostMicrosEur",
-          ROUND(AVG("latency_ms"))::int AS "avgLatencyMs"
+          ROUND(AVG("latency_ms"))::int AS "avgLatencyMs",
+          COUNT("total_tokens")::int AS "tokenizedRuns",
+          COUNT("estimated_cost_micros_eur")::int AS "costedRuns",
+          COUNT("latency_ms")::int AS "latencyRuns"
         FROM "ai_operation_runs"
         ${whereSql}
       `),
@@ -393,6 +442,9 @@ export class AIObservabilityService {
       totalTokens: 0,
       estimatedCostMicrosEur: 0n,
       avgLatencyMs: null,
+      tokenizedRuns: 0,
+      costedRuns: 0,
+      latencyRuns: 0,
     };
 
     return {
@@ -407,6 +459,9 @@ export class AIObservabilityService {
         totalTokens: totalsRow.totalTokens ?? 0,
         estimatedCostMicrosEur: (totalsRow.estimatedCostMicrosEur ?? 0n).toString(),
         avgLatencyMs: totalsRow.avgLatencyMs,
+        tokenizedRuns: totalsRow.tokenizedRuns ?? 0,
+        costedRuns: totalsRow.costedRuns ?? 0,
+        latencyRuns: totalsRow.latencyRuns ?? 0,
       },
       byStatus,
       byModule: byModule.map((entry) => ({
@@ -460,6 +515,15 @@ export class AIObservabilityService {
       createdAt: Date;
       completedAt: Date | null;
       metadataJson: Prisma.JsonValue | null;
+      promptVersion: {
+        id: string;
+        module: string;
+        promptKey: string;
+        version: string;
+        templateHash: string;
+        sourceFile: string;
+        isActive: boolean;
+      } | null;
     }>;
   }> {
     const page = input.page && input.page > 0 ? input.page : 1;
@@ -475,32 +539,40 @@ export class AIObservabilityService {
       `),
       this.prisma.$queryRaw<ListedRunRow[]>(Prisma.sql`
         SELECT
-          "id" AS "id",
-          "module" AS "module",
-          "operation_key" AS "operationKey",
-          "provider" AS "provider",
-          "model" AS "model",
-          "status" AS "status",
-          "request_id" AS "requestId",
-          "correlation_id" AS "correlationId",
-          "endpoint" AS "endpoint",
-          "user_id" AS "userId",
-          "entity_type" AS "entityType",
-          "entity_id" AS "entityId",
-          "prompt_tokens" AS "promptTokens",
-          "completion_tokens" AS "completionTokens",
-          "total_tokens" AS "totalTokens",
-          "estimated_cost_micros_eur" AS "estimatedCostMicrosEur",
-          "latency_ms" AS "latencyMs",
-          "error_code" AS "errorCode",
-          "error_message" AS "errorMessage",
-          "prompt_version_id" AS "promptVersionId",
-          "created_at" AS "createdAt",
-          "completed_at" AS "completedAt",
-          "metadata_json" AS "metadataJson"
-        FROM "ai_operation_runs"
-        ${whereSql}
-        ORDER BY "created_at" DESC
+          r."id" AS "id",
+          r."module" AS "module",
+          r."operation_key" AS "operationKey",
+          r."provider" AS "provider",
+          r."model" AS "model",
+          r."status" AS "status",
+          r."request_id" AS "requestId",
+          r."correlation_id" AS "correlationId",
+          r."endpoint" AS "endpoint",
+          r."user_id" AS "userId",
+          r."entity_type" AS "entityType",
+          r."entity_id" AS "entityId",
+          r."prompt_tokens" AS "promptTokens",
+          r."completion_tokens" AS "completionTokens",
+          r."total_tokens" AS "totalTokens",
+          r."estimated_cost_micros_eur" AS "estimatedCostMicrosEur",
+          r."latency_ms" AS "latencyMs",
+          r."error_code" AS "errorCode",
+          r."error_message" AS "errorMessage",
+          r."prompt_version_id" AS "promptVersionId",
+          r."created_at" AS "createdAt",
+          r."completed_at" AS "completedAt",
+          r."metadata_json" AS "metadataJson",
+          pv."module" AS "promptVersionModule",
+          pv."prompt_key" AS "promptVersionKey",
+          pv."version" AS "promptVersion",
+          pv."template_hash" AS "promptTemplateHash",
+          pv."source_file" AS "promptSourceFile",
+          pv."is_active" AS "promptIsActive"
+        FROM "ai_operation_runs" r
+        LEFT JOIN "ai_prompt_versions" pv
+          ON pv."id" = r."prompt_version_id"
+        ${this.buildRunsWhereSql(input, 'r')}
+        ORDER BY r."created_at" DESC
         OFFSET ${skip}
         LIMIT ${pageSize}
       `),
@@ -516,6 +588,171 @@ export class AIObservabilityService {
           run.estimatedCostMicrosEur !== null
             ? run.estimatedCostMicrosEur.toString()
             : null,
+        promptVersion: run.promptVersionId
+          ? {
+              id: run.promptVersionId,
+              module: run.promptVersionModule ?? run.module,
+              promptKey: run.promptVersionKey ?? 'unknown',
+              version: run.promptVersion ?? 'unknown',
+              templateHash: run.promptTemplateHash ?? 'unknown',
+              sourceFile: run.promptSourceFile ?? 'unknown',
+              isActive: run.promptIsActive ?? false,
+            }
+          : null,
+      })),
+    };
+  }
+
+  async listPromptVersions(input: ListAiPromptVersionsInput = {}): Promise<{
+    page: number;
+    pageSize: number;
+    total: number;
+    promptVersions: PromptVersionListRow[];
+  }> {
+    const page = input.page && input.page > 0 ? input.page : 1;
+    const pageSize = input.pageSize && input.pageSize > 0 ? Math.min(input.pageSize, 100) : 20;
+    const skip = (page - 1) * pageSize;
+    const whereSql = this.buildPromptVersionsWhereSql(input, 'pv');
+
+    const [countRows, promptVersions] = await Promise.all([
+      this.prisma.$queryRaw<Array<{ total: number }>>(Prisma.sql`
+        SELECT COUNT(*)::int AS "total"
+        FROM "ai_prompt_versions" pv
+        ${whereSql}
+      `),
+      this.prisma.$queryRaw<PromptVersionListRow[]>(Prisma.sql`
+        SELECT
+          pv."id" AS "id",
+          pv."module" AS "module",
+          pv."prompt_key" AS "promptKey",
+          pv."version" AS "version",
+          pv."template_hash" AS "templateHash",
+          pv."source_file" AS "sourceFile",
+          pv."is_active" AS "isActive",
+          pv."created_at" AS "createdAt",
+          pv."updated_at" AS "updatedAt",
+          COUNT(r."id")::int AS "runs",
+          MAX(r."created_at") AS "lastUsedAt"
+        FROM "ai_prompt_versions" pv
+        LEFT JOIN "ai_operation_runs" r
+          ON r."prompt_version_id" = pv."id"
+        ${whereSql}
+        GROUP BY
+          pv."id",
+          pv."module",
+          pv."prompt_key",
+          pv."version",
+          pv."template_hash",
+          pv."source_file",
+          pv."is_active",
+          pv."created_at",
+          pv."updated_at"
+        ORDER BY
+          MAX(r."created_at") DESC NULLS LAST,
+          pv."updated_at" DESC
+        OFFSET ${skip}
+        LIMIT ${pageSize}
+      `),
+    ]);
+
+    return {
+      page,
+      pageSize,
+      total: countRows[0]?.total ?? 0,
+      promptVersions,
+    };
+  }
+
+  async getComparison(filters: AiRunFilters = {}): Promise<{
+    filters: { from: string | null; to: string | null };
+    byModule: Array<{
+      module: string | null;
+      runs: number;
+      errorRuns: number;
+      tokenizedRuns: number;
+      costedRuns: number;
+      latencyRuns: number;
+      totalTokens: number;
+      estimatedCostMicrosEur: string;
+      totalLatencyMs: string;
+      avgTokens: number | null;
+      avgCostMicrosEur: string | null;
+      avgLatencyMs: number | null;
+      errorRate: number;
+    }>;
+    byOperation: Array<{
+      operationKey: string | null;
+      runs: number;
+      errorRuns: number;
+      tokenizedRuns: number;
+      costedRuns: number;
+      latencyRuns: number;
+      totalTokens: number;
+      estimatedCostMicrosEur: string;
+      totalLatencyMs: string;
+      avgTokens: number | null;
+      avgCostMicrosEur: string | null;
+      avgLatencyMs: number | null;
+      errorRate: number;
+    }>;
+    byProvider: Array<{
+      provider: string | null;
+      runs: number;
+      errorRuns: number;
+      tokenizedRuns: number;
+      costedRuns: number;
+      latencyRuns: number;
+      totalTokens: number;
+      estimatedCostMicrosEur: string;
+      totalLatencyMs: string;
+      avgTokens: number | null;
+      avgCostMicrosEur: string | null;
+      avgLatencyMs: number | null;
+      errorRate: number;
+    }>;
+    byModel: Array<{
+      model: string | null;
+      runs: number;
+      errorRuns: number;
+      tokenizedRuns: number;
+      costedRuns: number;
+      latencyRuns: number;
+      totalTokens: number;
+      estimatedCostMicrosEur: string;
+      totalLatencyMs: string;
+      avgTokens: number | null;
+      avgCostMicrosEur: string | null;
+      avgLatencyMs: number | null;
+      errorRate: number;
+    }>;
+  }> {
+    const [byModule, byOperation, byProvider, byModel] = await Promise.all([
+      this.getComparisonRows('module', filters),
+      this.getComparisonRows('operation_key', filters),
+      this.getComparisonRows('provider', filters),
+      this.getComparisonRows('model', filters),
+    ]);
+
+    return {
+      filters: {
+        from: filters.from ? filters.from.toISOString() : null,
+        to: filters.to ? filters.to.toISOString() : null,
+      },
+      byModule: byModule.map((entry) => ({
+        module: entry.value,
+        ...this.toComparisonMetrics(entry),
+      })),
+      byOperation: byOperation.map((entry) => ({
+        operationKey: entry.value,
+        ...this.toComparisonMetrics(entry),
+      })),
+      byProvider: byProvider.map((entry) => ({
+        provider: entry.value,
+        ...this.toComparisonMetrics(entry),
+      })),
+      byModel: byModel.map((entry) => ({
+        model: entry.value,
+        ...this.toComparisonMetrics(entry),
       })),
     };
   }
@@ -624,8 +861,124 @@ export class AIObservabilityService {
     return Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`;
   }
 
+  private buildPromptVersionsWhereSql(
+    filters: ListAiPromptVersionsInput,
+    alias?: string
+  ): Prisma.Sql {
+    const conditions: Prisma.Sql[] = [];
+
+    if (filters.module) {
+      conditions.push(Prisma.sql`${this.columnSql('module', alias)} = ${filters.module}`);
+    }
+    if (filters.promptKey) {
+      conditions.push(
+        Prisma.sql`${this.columnSql('prompt_key', alias)} = ${filters.promptKey}`
+      );
+    }
+    if (typeof filters.isActive === 'boolean') {
+      conditions.push(
+        Prisma.sql`${this.columnSql('is_active', alias)} = ${filters.isActive}`
+      );
+    }
+
+    if (conditions.length === 0) {
+      return Prisma.empty;
+    }
+
+    return Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`;
+  }
+
+  private async getComparisonRows(
+    columnName: 'module' | 'operation_key' | 'provider' | 'model',
+    filters: AiRunFilters
+  ): Promise<ComparisonRow[]> {
+    const whereSql = this.buildRunsWhereSql(filters, 'r');
+
+    return this.prisma.$queryRaw<ComparisonRow[]>(Prisma.sql`
+      SELECT
+        ${this.columnSql(columnName, 'r')}::text AS "value",
+        COUNT(*)::int AS "runs",
+        SUM(
+          CASE
+            WHEN r."status" IN (${Prisma.join([
+              AiRunStatus.FAILED,
+              AiRunStatus.TIMEOUT,
+              AiRunStatus.CANCELLED,
+            ])})
+            THEN 1
+            ELSE 0
+          END
+        )::int AS "errorRuns",
+        COUNT(r."total_tokens")::int AS "tokenizedRuns",
+        COUNT(r."estimated_cost_micros_eur")::int AS "costedRuns",
+        COUNT(r."latency_ms")::int AS "latencyRuns",
+        COALESCE(SUM(r."total_tokens"), 0)::int AS "totalTokens",
+        COALESCE(SUM(r."estimated_cost_micros_eur"), 0)::bigint AS "estimatedCostMicrosEur",
+        COALESCE(SUM(r."latency_ms"), 0)::bigint AS "totalLatencyMs"
+      FROM "ai_operation_runs" r
+      ${whereSql}
+      GROUP BY ${this.columnSql(columnName, 'r')}
+      ORDER BY "runs" DESC, "value" ASC NULLS LAST
+    `);
+  }
+
+  private toComparisonMetrics(entry: ComparisonRow): {
+    runs: number;
+    errorRuns: number;
+    tokenizedRuns: number;
+    costedRuns: number;
+    latencyRuns: number;
+    totalTokens: number;
+    estimatedCostMicrosEur: string;
+    totalLatencyMs: string;
+    avgTokens: number | null;
+    avgCostMicrosEur: string | null;
+    avgLatencyMs: number | null;
+    errorRate: number;
+  } {
+    const totalTokens = entry.totalTokens ?? 0;
+    const totalCostMicros = this.toBigInt(entry.estimatedCostMicrosEur);
+    const totalLatencyMs = this.toBigInt(entry.totalLatencyMs);
+
+    return {
+      runs: entry.runs,
+      errorRuns: entry.errorRuns,
+      tokenizedRuns: entry.tokenizedRuns,
+      costedRuns: entry.costedRuns,
+      latencyRuns: entry.latencyRuns,
+      totalTokens,
+      estimatedCostMicrosEur: totalCostMicros.toString(),
+      totalLatencyMs: totalLatencyMs.toString(),
+      avgTokens:
+        entry.tokenizedRuns > 0 ? Math.round(totalTokens / entry.tokenizedRuns) : null,
+      avgCostMicrosEur:
+        entry.costedRuns > 0
+          ? (totalCostMicros / BigInt(entry.costedRuns)).toString()
+          : null,
+      avgLatencyMs:
+        entry.latencyRuns > 0
+          ? Number(totalLatencyMs / BigInt(entry.latencyRuns))
+          : null,
+      errorRate: entry.runs > 0 ? entry.errorRuns / entry.runs : 0,
+    };
+  }
+
   private columnSql(column: string, alias?: string): Prisma.Sql {
     return Prisma.raw(`${alias ? `${alias}.` : ''}"${column}"`);
+  }
+
+  private toBigInt(value: bigint | number | string | null | undefined): bigint {
+    if (typeof value === 'bigint') {
+      return value;
+    }
+    if (typeof value === 'number') {
+      return BigInt(Math.trunc(value));
+    }
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return BigInt(value);
+    }
+
+    return 0n;
   }
 
   private jsonSql(

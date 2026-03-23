@@ -62,3 +62,18 @@ sequenceDiagram
     LLM-->>App: Respuesta generada y fundamentada
     App-->>API: Resultado final
     API-->>User: JSON Response
+```
+
+---
+
+## 3. Observabilidad IA (estado actual)
+
+La observabilidad IA ya cubre Fase 1 (core comun) y Fase 2 (instrumentacion persistente de operaciones IA de Verity), con persistencia de runs, versionado de prompts y calculo de coste en micros EUR.
+
+Referencias:
+
+- [AI Observability Phase 1](AI_OBSERVABILITY_PHASE_1.md)
+- [AI Observability Phase 2](AI_OBSERVABILITY_PHASE_2.md)
+- [Plan oficial de la feature (MBA)](../../media-bias-atlas/docs/PLAN_FEATURE_AI_OBSERVABILITY_AUDIT.md)
+- [Sprint 11 - Fase 1 Observabilidad IA (MBA)](../../media-bias-atlas/docs/SPRINT_11_AI_OBSERVABILITY_FASE_1.md)
+- [Informe acumulado de sprints MBA](../../media-bias-atlas/docs/MEDIA_BIAS_ATLAS_INFORME_SPRINTS.md)

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
   AIObservabilityService,
   AiRunFilters,
+  ListAiPromptVersionsInput,
   ListAiRunsInput,
 } from '../../observability/ai-observability.service';
 
@@ -34,6 +35,17 @@ const runsQuerySchema = baseFiltersSchema.extend({
   pageSize: z.coerce.number().int().min(1).max(100).optional(),
 });
 
+const promptQuerySchema = z.object({
+  module: z.string().trim().min(1).optional(),
+  promptKey: z.string().trim().min(1).optional(),
+  isActive: z
+    .enum(['true', 'false'])
+    .transform((value) => value === 'true')
+    .optional(),
+  page: z.coerce.number().int().min(1).optional(),
+  pageSize: z.coerce.number().int().min(1).max(100).optional(),
+});
+
 export class AdminAiUsageController {
   constructor(private readonly aiObservabilityService: AIObservabilityService) {}
 
@@ -60,6 +72,34 @@ export class AdminAiUsageController {
     res.status(200).json({
       success: true,
       data: runs,
+    });
+  }
+
+  async getPrompts(req: Request, res: Response): Promise<void> {
+    const query = promptQuerySchema.parse(req.query);
+    const filters: ListAiPromptVersionsInput = {
+      module: query.module,
+      promptKey: query.promptKey,
+      isActive: query.isActive,
+      page: query.page,
+      pageSize: query.pageSize,
+    };
+
+    const promptVersions = await this.aiObservabilityService.listPromptVersions(filters);
+    res.status(200).json({
+      success: true,
+      data: promptVersions,
+    });
+  }
+
+  async getComparison(req: Request, res: Response): Promise<void> {
+    const query = baseFiltersSchema.parse(req.query);
+    const filters = this.toRunFilters(query);
+    const comparison = await this.aiObservabilityService.getComparison(filters);
+
+    res.status(200).json({
+      success: true,
+      data: comparison,
     });
   }
 

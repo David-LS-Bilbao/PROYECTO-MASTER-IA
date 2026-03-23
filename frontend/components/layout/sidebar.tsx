@@ -23,6 +23,7 @@ import {
   HeartPulse,
   Heart,
   RefreshCw,
+  Bot,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -260,6 +261,11 @@ export function Sidebar({
       onClick: () => {
         onOpenSources?.();
       },
+    },
+    {
+      label: 'Uso IA',
+      icon: Bot,
+      href: '/admin/ai-usage',
     },
   ];
 

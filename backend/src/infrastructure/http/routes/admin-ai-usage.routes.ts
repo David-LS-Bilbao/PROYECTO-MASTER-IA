@@ -32,5 +32,17 @@ export function createAdminAiUsageRoutes(controller: AdminAiUsageController): Ro
     asyncHandler(controller.getRuns.bind(controller))
   );
 
+  router.get(
+    '/prompts',
+    requireInternalSecret,
+    asyncHandler(controller.getPrompts.bind(controller))
+  );
+
+  router.get(
+    '/compare',
+    requireInternalSecret,
+    asyncHandler(controller.getComparison.bind(controller))
+  );
+
   return router;
 }
