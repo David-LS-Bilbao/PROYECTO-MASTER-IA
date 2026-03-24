@@ -481,122 +481,71 @@ export class NewsController {
       }
 
       // SPECIAL CASE 2: 'ciencia-tecnologia' topic (unified category)
-      // Search for both 'ciencia' AND 'tecnologia' articles
-      // Sprint 34 FIX: Only interleave on first page to avoid duplicates
+      // Search for both 'ciencia' AND 'tecnologia' articles with stable interleaving.
+      // We build the merged sequence from offset 0 and then slice the requested window
+      // so pagination stays consistent across pages without duplicates.
       if (resolvedCategory === 'ciencia-tecnologia') {
-        // Normalize to search both categories (will be handled by repository if supported)
-        // For now, we'll search for 'ciencia' and 'tecnologia' separately and merge
-        const useInterleaving = resolvedOffset === 0;
+        const targetSize = resolvedOffset + resolvedLimit;
+        const fetchPerCategory = Math.max(targetSize, Math.ceil(resolvedLimit / 2));
 
         let cienciaNews: NewsArticle[] = [];
         let tecnologiaNews: NewsArticle[] = [];
 
-        if (useInterleaving) {
-          // FIRST PAGE: Fetch half from each category and interleave
-          cienciaNews = await this.repository.findAll({
-            limit: Math.ceil(resolvedLimit / 2),
-            offset: 0,
-            category: 'ciencia',
-            onlyFavorites,
-            userId,
-          });
+        cienciaNews = await this.repository.findAll({
+          limit: fetchPerCategory,
+          offset: 0,
+          category: 'ciencia',
+          onlyFavorites,
+          userId,
+        });
 
-          tecnologiaNews = await this.repository.findAll({
-            limit: Math.ceil(resolvedLimit / 2),
-            offset: 0,
-            category: 'tecnologia',
-            onlyFavorites,
-            userId,
-          });
+        tecnologiaNews = await this.repository.findAll({
+          limit: fetchPerCategory,
+          offset: 0,
+          category: 'tecnologia',
+          onlyFavorites,
+          userId,
+        });
 
-          // Sprint 22 FIX: Auto-fill if both categories are empty
-          if (cienciaNews.length === 0 && tecnologiaNews.length === 0 && !onlyFavorites) {
-            try {
-              // Ingest both categories in parallel
-              // Sprint 23: Pass topicSlug to assign articles to correct Topic
-              await Promise.all([
-                this.ingestNewsUseCase.execute({ category: 'ciencia', topicSlug: 'ciencia-tecnologia', pageSize: 15, language: 'es' }),
-                this.ingestNewsUseCase.execute({ category: 'tecnologia', topicSlug: 'ciencia-tecnologia', pageSize: 15, language: 'es' }),
-              ]);
-
-              // Re-query both categories
-              cienciaNews = await this.repository.findAll({
-                limit: Math.ceil(resolvedLimit / 2),
-                offset: 0,
-                category: 'ciencia',
-                onlyFavorites,
-                userId,
-              });
-
-              tecnologiaNews = await this.repository.findAll({
-                limit: Math.ceil(resolvedLimit / 2),
-                offset: 0,
-                category: 'tecnologia',
-                onlyFavorites,
-                userId,
-              });
-            } catch (ingestionError) {
-              console.error(`[NewsController.getNews] ❌ Auto-ingestion failed for ciencia-tecnologia:`, ingestionError);
-            }
-          }
-        } else {
-          // SUBSEQUENT PAGES: Sequential fetch (first ciencia, then tecnología)
-          // Get total count of ciencia articles to know where to split
-          const cienciaCount = await this.repository.countFiltered({ category: 'ciencia', onlyFavorites, userId });
-
-          if (resolvedOffset < cienciaCount) {
-            // Still fetching from ciencia
-            const cienciaRemaining = cienciaCount - resolvedOffset;
-            const cienciaToFetch = Math.min(resolvedLimit, cienciaRemaining);
+        // Sprint 22 FIX: Auto-fill if both categories are empty
+        if (cienciaNews.length === 0 && tecnologiaNews.length === 0 && !onlyFavorites) {
+          try {
+            await Promise.all([
+              this.ingestNewsUseCase.execute({ category: 'ciencia', topicSlug: 'ciencia-tecnologia', pageSize: 15, language: 'es' }),
+              this.ingestNewsUseCase.execute({ category: 'tecnologia', topicSlug: 'ciencia-tecnologia', pageSize: 15, language: 'es' }),
+            ]);
 
             cienciaNews = await this.repository.findAll({
-              limit: cienciaToFetch,
-              offset: resolvedOffset,
+              limit: fetchPerCategory,
+              offset: 0,
               category: 'ciencia',
               onlyFavorites,
               userId,
             });
 
-            // If we need more articles, fetch from tecnología
-            if (cienciaToFetch < resolvedLimit) {
-              tecnologiaNews = await this.repository.findAll({
-                limit: resolvedLimit - cienciaToFetch,
-                offset: 0, // Start from beginning of tecnología
-                category: 'tecnologia',
-                onlyFavorites,
-                userId,
-              });
-            }
-          } else {
-            // Offset beyond ciencia, fetch only from tecnología
-            const tecnologiaOffset = resolvedOffset - cienciaCount;
             tecnologiaNews = await this.repository.findAll({
-              limit: resolvedLimit,
-              offset: tecnologiaOffset,
+              limit: fetchPerCategory,
+              offset: 0,
               category: 'tecnologia',
               onlyFavorites,
               userId,
             });
+          } catch (ingestionError) {
+            console.error(`[NewsController.getNews] ❌ Auto-ingestion failed for ciencia-tecnologia:`, ingestionError);
           }
         }
 
-        // Merge results
-        let mergedNews: NewsArticle[];
-        if (useInterleaving) {
-          // Interleave for first page (diversity)
-          mergedNews = [];
-          const maxLength = Math.max(cienciaNews.length, tecnologiaNews.length);
-          for (let i = 0; i < maxLength; i++) {
-            if (i < cienciaNews.length) mergedNews.push(cienciaNews[i]);
-            if (i < tecnologiaNews.length) mergedNews.push(tecnologiaNews[i]);
-            if (mergedNews.length >= resolvedLimit) break;
+        const mergedSequence: NewsArticle[] = [];
+        const maxLength = Math.max(cienciaNews.length, tecnologiaNews.length);
+        for (let i = 0; i < maxLength && mergedSequence.length < targetSize; i++) {
+          if (i < cienciaNews.length) {
+            mergedSequence.push(cienciaNews[i]);
           }
-        } else {
-          // Sequential for subsequent pages (no duplicates)
-          mergedNews = [...cienciaNews, ...tecnologiaNews];
+          if (i < tecnologiaNews.length && mergedSequence.length < targetSize) {
+            mergedSequence.push(tecnologiaNews[i]);
+          }
         }
-
-        const news = mergedNews.slice(0, resolvedLimit);
+        const news = mergedSequence.slice(resolvedOffset, targetSize);
 
         // Get total count (sum of both categories)
         const cienciaCount = await this.repository.countFiltered({ category: 'ciencia', onlyFavorites, userId });

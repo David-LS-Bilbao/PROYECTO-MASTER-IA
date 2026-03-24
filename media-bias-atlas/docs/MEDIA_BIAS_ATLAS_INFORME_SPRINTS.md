@@ -484,7 +484,7 @@ No son nuevas funcionalidades. Son límites o mejoras pendientes del MVP actual:
 2. La comparativa entre outlets es MVP y no incorpora series temporales ni visualizaciones más ricas.
 3. El proyecto depende de que PostgreSQL esté levantado externamente; no hay orquestación propia dentro de `media-bias-atlas/`.
 4. Los scripts auxiliares de diagnóstico/integración del backend siguen siendo utilidades manuales y no parte formal del flujo de desarrollo.
-5. La observabilidad IA de Sprint 11 aun no esta instrumentada dentro de los providers propios de MBA.
+5. La observabilidad IA ya esta instrumentada y operativa en MBA, pero la validacion real cerrada se apoya sobre Gemini; `openai-compatible` sigue siendo una validacion opcional aparte.
 
 ## 8. Conclusión
 
@@ -500,13 +500,13 @@ No son nuevas funcionalidades. Son límites o mejoras pendientes del MVP actual:
 - Sprint 8 alineó el provider IA real con Gemini.
 - Sprint 9 introdujo el perfil ideológico por medio.
 - Sprint 10 mejoró la exploración del atlas con resúmenes, filtros, ordenación y comparativa.
-- Sprint 11 dejó definido el contrato comun de observabilidad IA para extenderlo a MBA sin rediseñar el modelo.
+- Sprint 11 dejó definido el contrato comun de observabilidad IA y la evolucion posterior de esta rama lo dejó operativo tambien dentro de MBA.
 
 Resultado global:
 
 - el producto ya puede registrar, ingerir, clasificar, analizar, resumir y comparar;
 - el backend y el frontend están técnicamente cerrados para este tramo;
-- la base comun de observabilidad IA ya existe en el repositorio, aunque la integracion concreta en MBA queda como siguiente fase;
+- la base comun de observabilidad IA ya existe en el repositorio y su integracion concreta en MBA ha quedado operativa;
 - el MVP está listo para demo y para consolidación en git;
 - las condiciones operativas restantes son claras y acotadas:
   - PostgreSQL disponible
@@ -537,3 +537,21 @@ Referencias tecnicas:
 - `media-bias-atlas/docs/PLAN_FEATURE_AI_OBSERVABILITY_AUDIT.md`
 - `media-bias-atlas/docs/SPRINT_11_AI_OBSERVABILITY_FASE_1.md`
 - `docs/architecture/AI_OBSERVABILITY_PHASE_1.md`
+
+## 10. Addendum de cierre local de observabilidad IA (2026-03-24)
+
+Desde esta rama, la situacion descrita en la seccion anterior ya no es solo preparatoria: ha quedado validada operativamente.
+
+Estado final confirmado:
+
+- la migracion de observabilidad de MBA esta aplicada tambien en local y en la base de test;
+- existen y se usan `ai_prompt_versions`, `ai_model_pricing` y `ai_operation_runs`;
+- el flujo real de analisis ideologico de MBA persiste `provider`, `model`, tokens, coste estimado, latencia y `status`;
+- los endpoints admin de MBA responden `200 OK`;
+- Verity consume esos datos desde `/admin/ai-usage` junto con su propia fuente;
+- la suite completa de `media-bias-atlas/backend` queda verde: `15` archivos / `48` tests OK.
+
+Interpretacion practica:
+
+- MBA ya no esta “preparado para observabilidad”; ya esta integrado en el circuito real de observabilidad IA del repositorio.
+- El unico pendiente estricto no bloqueante es decidir si el provider `openai-compatible` queda tambien validado con una ejecucion real o se documenta fuera del alcance actual.

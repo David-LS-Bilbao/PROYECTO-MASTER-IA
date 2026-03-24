@@ -276,7 +276,7 @@ export class ChatController {
       return req.id.trim();
     }
 
-    const headerRequestId = req.header('x-request-id');
+    const headerRequestId = this.getHeaderValue(req, 'x-request-id');
     if (headerRequestId && headerRequestId.trim().length > 0) {
       return headerRequestId.trim();
     }
@@ -285,11 +285,20 @@ export class ChatController {
   }
 
   private resolveCorrelationId(req: Request, fallbackRequestId: string): string {
-    const headerCorrelationId = req.header('x-correlation-id');
+    const headerCorrelationId = this.getHeaderValue(req, 'x-correlation-id');
     if (headerCorrelationId && headerCorrelationId.trim().length > 0) {
       return headerCorrelationId.trim();
     }
 
     return fallbackRequestId;
+  }
+
+  private getHeaderValue(req: Request, headerName: string): string | undefined {
+    if (typeof req.header === 'function') {
+      return req.header(headerName) ?? undefined;
+    }
+
+    const candidate = req.headers?.[headerName] ?? req.headers?.[headerName.toLowerCase()];
+    return Array.isArray(candidate) ? candidate[0] : candidate;
   }
 }

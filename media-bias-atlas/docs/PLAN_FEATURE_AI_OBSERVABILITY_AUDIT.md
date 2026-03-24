@@ -490,7 +490,7 @@ Ese PR ya deja valor real, reduce incertidumbre y prepara bien Fase 2.
 
 ---
 
-## 14. Estado real de ejecucion (actualizado a 2026-03-22)
+## 14. Estado real de ejecucion (actualizado a 2026-03-24)
 
 ### 14.1 Fase 1 completada en el repositorio
 
@@ -517,14 +517,77 @@ Implementado:
   - runs: 180 dias
   - debug payload: 30 dias
 
-### 14.2 Pendiente para Media Bias Atlas (siguiente fase)
+### 14.2 Fase 3 operativa en Media Bias Atlas
 
-Todavia no esta instrumentado el flujo IA de MBA con la nueva capa persistente. Queda como siguiente tramo:
+La instrumentacion de MBA ya esta conectada a la capa persistente comun y validada en local.
 
-- `GeminiArticleBiasAIProvider`;
-- `OpenAICompatibleArticleBiasAIProvider`;
-- persistencia de `provider`, `model`, `tokens`, `estimatedCostMicrosEur`, `latencyMs`, `promptVersion`, `status/error`.
+Validado:
 
-### 14.3 Nota operativa de migraciones
+- migracion de observabilidad aplicada en `media-bias-atlas/backend`;
+- tablas accesibles:
+  - `ai_prompt_versions`
+  - `ai_model_pricing`
+  - `ai_operation_runs`
+- integracion del flujo real de analisis ideologico en `AnalyzeArticleBiasUseCase`;
+- persistencia de `provider`, `model`, `tokens`, `estimatedCostMicrosEur`, `latencyMs`, `promptVersion`, `status/error`;
+- endpoints admin de MBA respondiendo:
+  - `GET /api/admin/ai-usage/overview`
+  - `GET /api/admin/ai-usage/runs`
+  - `GET /api/admin/ai-usage/prompts`
+  - `GET /api/admin/ai-usage/compare`
+- al menos una ejecucion real `COMPLETED` persistida en `ai_operation_runs`.
 
-La migracion de observabilidad ya esta creada en codigo, pero su aplicacion local depende de tener PostgreSQL accesible en el entorno de ejecucion.
+### 14.3 Fase 4 usable en local desde Verity
+
+La UI interna de Verity ya consume datos reales agregados de Verity y Media Bias Atlas.
+
+Validado:
+
+- `/admin/ai-usage` carga correctamente en local;
+- el agregador interno devuelve ambas fuentes como disponibles;
+- la tabla de ejecuciones muestra runs reales persistidos;
+- el catalogo de prompts muestra versiones registradas sin exponer prompts interpolados;
+- el comparador y el resumen operan sobre datos historicos persistidos;
+- el formateo de coste ya preserva precision para microcostes pequenos en la UI.
+
+### 14.4 Pendiente menor para cierre estricto
+
+Si se quiere considerar el plan completamente cerrado con criterio estricto, queda una validacion opcional:
+
+- ejecutar una prueba real del provider `openai-compatible` en MBA, o dejar ese provider explicitamente fuera del alcance validado de esta fase.
+
+### 14.5 Cierre operativo final validado en local
+
+Estado consolidado tras la intervencion tecnica final de esta rama:
+
+- Verity backend operativo con migraciones coherentes y observabilidad IA accesible;
+- Media Bias Atlas backend operativo con migracion de observabilidad aplicada tambien en la base de test;
+- UI interna de Verity `/admin/ai-usage` consumiendo datos agregados reales de `verity` y `media-bias-atlas`;
+- CORS local alineado para uso del panel en `localhost:3002`;
+- formateo de microcostes pequeno corregido en la UI para no mostrar `0,0000 €` cuando existe coste real;
+- documentacion local de arranque y puertos alineada con el setup real (`5433` Verity, `5432` MBA).
+
+Quality gate ejecutado sobre esta feature:
+
+- `backend`: `69` archivos / `720` tests OK;
+- `media-bias-atlas/backend`: `15` archivos / `48` tests OK;
+- endpoints admin MBA validados con `200 OK`:
+  - `GET /api/admin/ai-usage/overview`
+  - `GET /api/admin/ai-usage/runs`
+  - `GET /api/admin/ai-usage/prompts`
+  - `GET /api/admin/ai-usage/compare`
+- panel agregado validado en local:
+  - `GET /api/internal/ai-usage/overview`
+  - `GET /api/internal/ai-usage/runs`
+  - carga correcta de `/admin/ai-usage`
+
+Conclusión de cierre del plan:
+
+- Fase 1: cerrada
+- Fase 2: cerrada para el alcance validado en Verity
+- Fase 3: cerrada operativamente en MBA
+- Fase 4: cerrada operativamente en local para el flujo agregado Verity + MBA
+
+Pendiente no bloqueante:
+
+- si se quiere un cierre documental absolutamente estricto, validar con ejecucion real el provider `openai-compatible` de MBA o declararlo fuera de alcance validado.

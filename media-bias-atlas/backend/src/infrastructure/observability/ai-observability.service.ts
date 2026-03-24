@@ -219,7 +219,7 @@ export class AIObservabilityService {
           ${input.operationKey},
           ${input.provider ?? null},
           ${input.model ?? null},
-          ${input.status ?? AiRunStatus.PENDING},
+          ${this.aiRunStatusSql(input.status ?? AiRunStatus.PENDING)},
           ${input.promptVersionId ?? null},
           ${input.requestId},
           ${input.correlationId},
@@ -251,7 +251,7 @@ export class AIObservabilityService {
         Prisma.sql`
           UPDATE "ai_operation_runs"
           SET
-            "status" = ${input.status ?? AiRunStatus.COMPLETED},
+            "status" = ${this.aiRunStatusSql(input.status ?? AiRunStatus.COMPLETED)},
             "prompt_tokens" = ${this.normalizeInteger(input.promptTokens)},
             "completion_tokens" = ${this.normalizeInteger(input.completionTokens)},
             "total_tokens" = ${this.normalizeInteger(input.totalTokens)},
@@ -285,7 +285,7 @@ export class AIObservabilityService {
         Prisma.sql`
           UPDATE "ai_operation_runs"
           SET
-            "status" = ${input.status ?? AiRunStatus.FAILED},
+            "status" = ${this.aiRunStatusSql(input.status ?? AiRunStatus.FAILED)},
             "error_code" = ${this.sanitizeShortText(input.errorCode) ?? null},
             "error_message" = ${this.sanitizeErrorMessage(input.errorMessage) ?? null},
             "prompt_tokens" = ${this.normalizeInteger(input.promptTokens)},
@@ -427,7 +427,9 @@ export class AIObservabilityService {
           },
           undefined,
           Prisma.sql`"status" IN (${Prisma.join(
-            [AiRunStatus.FAILED, AiRunStatus.TIMEOUT, AiRunStatus.CANCELLED]
+            [AiRunStatus.FAILED, AiRunStatus.TIMEOUT, AiRunStatus.CANCELLED].map((status) =>
+              this.aiRunStatusSql(status)
+            )
           )})`
         )}
         ORDER BY "created_at" DESC
@@ -820,7 +822,9 @@ export class AIObservabilityService {
       conditions.push(Prisma.sql`${this.columnSql('model', alias)} = ${filters.model}`);
     }
     if (filters.status) {
-      conditions.push(Prisma.sql`${this.columnSql('status', alias)} = ${filters.status}`);
+      conditions.push(
+        Prisma.sql`${this.columnSql('status', alias)} = ${this.aiRunStatusSql(filters.status)}`
+      );
     }
     if (filters.requestId) {
       conditions.push(
@@ -901,9 +905,9 @@ export class AIObservabilityService {
         SUM(
           CASE
             WHEN r."status" IN (${Prisma.join([
-              AiRunStatus.FAILED,
-              AiRunStatus.TIMEOUT,
-              AiRunStatus.CANCELLED,
+              this.aiRunStatusSql(AiRunStatus.FAILED),
+              this.aiRunStatusSql(AiRunStatus.TIMEOUT),
+              this.aiRunStatusSql(AiRunStatus.CANCELLED),
             ])})
             THEN 1
             ELSE 0
@@ -1135,6 +1139,10 @@ export class AIObservabilityService {
 
     const normalized = Math.floor(value);
     return normalized >= 0 ? normalized : null;
+  }
+
+  private aiRunStatusSql(status: AiRunStatus): Prisma.Sql {
+    return Prisma.sql`${status}::"AiRunStatus"`;
   }
 
   private addDays(baseDate: Date, days: number): Date {

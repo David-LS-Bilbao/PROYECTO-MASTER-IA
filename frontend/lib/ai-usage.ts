@@ -454,11 +454,13 @@ export function formatMicrosEur(
     return options.fallback ?? 'Sin datos';
   }
 
-  const fractionDigits = options.fractionDigits ?? 4;
   const micros = parseBigInt(value);
   const sign = micros < 0 ? '-' : '';
   const absolute = micros < 0 ? -micros : micros;
   const microsPerEuro = BigInt(1000000);
+  const fractionDigits =
+    options.fractionDigits ??
+    (absolute > BigInt(0) && absolute < BigInt(10000) ? 6 : 4);
   const integerPart = absolute / microsPerEuro;
   const fractionalPart = absolute % microsPerEuro;
   const fraction = fractionalPart

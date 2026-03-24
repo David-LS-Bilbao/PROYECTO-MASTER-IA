@@ -9,6 +9,7 @@ import {
 describe('ai-usage helpers', () => {
   it('formats micros in EUR legibly', () => {
     expect(formatMicrosEur('1234567')).toBe('1,2345 €');
+    expect(formatMicrosEur('45')).toBe('0,000045 €');
     expect(formatMicrosEur(null)).toBe('Sin datos');
   });
 

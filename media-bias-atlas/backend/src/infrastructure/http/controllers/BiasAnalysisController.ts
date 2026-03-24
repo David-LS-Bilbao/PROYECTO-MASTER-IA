@@ -34,10 +34,10 @@ export class BiasAnalysisController {
   static async analyzeArticle(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { articleId } = req.params;
-      const requestId = this.resolveRequestId(req);
+      const requestId = BiasAnalysisController.resolveRequestId(req);
       const result = await analyzeArticleBiasUseCase.execute(articleId, {
         requestId,
-        correlationId: this.resolveCorrelationId(req, requestId),
+        correlationId: BiasAnalysisController.resolveCorrelationId(req, requestId),
         endpoint: `${req.method} ${req.originalUrl}`,
         entityType: 'article',
         entityId: articleId,
@@ -54,10 +54,10 @@ export class BiasAnalysisController {
   static async analyzeFeed(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { feedId } = req.params;
-      const requestId = this.resolveRequestId(req);
+      const requestId = BiasAnalysisController.resolveRequestId(req);
       const result = await analyzeFeedBiasUseCase.execute(feedId, {
         requestId,
-        correlationId: this.resolveCorrelationId(req, requestId),
+        correlationId: BiasAnalysisController.resolveCorrelationId(req, requestId),
         endpoint: `${req.method} ${req.originalUrl}`,
         entityType: 'feed',
         entityId: feedId,

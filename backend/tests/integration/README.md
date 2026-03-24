@@ -9,7 +9,7 @@ Verificar el comportamiento completo del sistema desde la petición HTTP hasta l
 - Controladores
 - Casos de uso
 - Repositorios
-- Base de datos real (SQLite en tests)
+- Base de datos real PostgreSQL en local
 
 ## 🔧 Configuración
 
@@ -21,12 +21,17 @@ Los tests se ejecutan automáticamente con estas variables (configuradas en `vit
 {
   NODE_ENV: 'test',
   VITEST: 'true',
-  DATABASE_URL: 'file:./test.db',
+  DATABASE_URL: 'postgresql://admin:adminpassword@localhost:5433/verity_news?schema=public',
   GEMINI_API_KEY: 'test-api-key-for-integration-tests',
   JINA_API_KEY: 'test-jina-api-key-for-integration-tests',
   CHROMA_URL: 'http://localhost:8000',
 }
 ```
+
+Importante:
+- Los tests ya no usan SQLite.
+- El entorno local esperado para integración es PostgreSQL con `pgvector`, levantado con `docker compose up -d`.
+- Para Verity, el puerto recomendado es `5433`.
 
 ### Mock de Firebase Auth
 
@@ -82,12 +87,12 @@ Verifica la paginación correcta:
 
 ### Todos los tests de integración
 ```bash
-npm run test:integration
+npm test -- --run
 ```
 
 ### Solo routing-logic tests
 ```bash
-npm run test -- routing-logic.spec.ts
+npm test -- --run routing-logic.spec.ts
 ```
 
 ### Con coverage
@@ -97,7 +102,7 @@ npm run test:coverage
 
 ### En modo watch (desarrollo)
 ```bash
-npm run test:watch
+npm test
 ```
 
 ## 📊 Estructura de Datos de Test
@@ -158,9 +163,11 @@ Los tests incluyen logs en consola:
 ```
 
 ### Base de datos de test
-La base de datos SQLite se crea en `backend/test.db`. Puedes inspeccionarla con:
+Los tests usan la base PostgreSQL local configurada en `DATABASE_URL` (por defecto `localhost:5433/verity_news`).
+Puedes verificar rápidamente que el backend de tests apunta a la BD esperada con:
 ```bash
-sqlite3 test.db
+cd backend
+npx prisma migrate status
 ```
 
 ### Limpiar base de datos entre tests

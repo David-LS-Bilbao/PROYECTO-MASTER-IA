@@ -35,7 +35,11 @@ export function createServer(): Application {
   app.use(helmet());
 
   // CORS configuration - ANTES del rate limiter para que las respuestas 429 incluyan headers CORS
-  const defaultOrigins = ['http://localhost:3001', 'http://localhost:5173'];
+  const defaultOrigins = [
+    'http://localhost:3001',
+    'http://localhost:3002',
+    'http://localhost:5173',
+  ];
   const envOrigins = process.env.CORS_ORIGIN
     ? process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean)
     : defaultOrigins;

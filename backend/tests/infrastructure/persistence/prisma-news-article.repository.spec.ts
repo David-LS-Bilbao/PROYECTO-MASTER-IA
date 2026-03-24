@@ -90,16 +90,14 @@ describe('PrismaNewsArticleRepository', () => {
     expect(prisma.article.upsert).not.toHaveBeenCalled();
   });
 
-  it('saveMany ejecuta upserts dentro de transaccion', async () => {
-    const txUpsert = vi.fn();
-    prisma.$transaction.mockImplementation(async (cb: any) => cb({ article: { upsert: txUpsert } }));
-
+  it('saveMany ejecuta upserts directos sin transaccion global', async () => {
     await repository.saveMany([
       makeDomainArticle({ id: 'a1', url: 'https://example.com/a1' }),
       makeDomainArticle({ id: 'a2', url: 'https://example.com/a2' }),
     ]);
 
-    expect(txUpsert).toHaveBeenCalledTimes(2);
+    expect(prisma.article.upsert).toHaveBeenCalledTimes(2);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('findById retorna null si no existe', async () => {

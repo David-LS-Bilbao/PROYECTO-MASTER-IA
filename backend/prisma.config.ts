@@ -14,7 +14,7 @@ const databaseUrl =
   process.env.DATABASE_URL ||
   process.env.POSTGRES_PRISMA_URL ||
   process.env.POSTGRES_URL ||
-  'postgresql://postgres:postgres@localhost:5432/verity_news?schema=public';
+  'postgresql://admin:adminpassword@localhost:5433/verity_news?schema=public';
 
 const directUrl =
   process.env.DIRECT_URL ||

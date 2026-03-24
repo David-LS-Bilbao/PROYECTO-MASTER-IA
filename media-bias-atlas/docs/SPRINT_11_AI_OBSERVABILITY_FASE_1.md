@@ -75,3 +75,18 @@ Se considera cerrada la Fase 1 porque:
 - existe operacion real ya instrumentada;
 - existe consulta admin para validar datos;
 - se mantiene compatibilidad con el flujo actual (`TokenTaximeter` no se elimina).
+
+## 7. Actualizacion posterior de estado (2026-03-24)
+
+Este documento sigue describiendo correctamente el cierre de la Fase 1, pero el estado real del repositorio ya ha avanzado mas alla:
+
+- Media Bias Atlas ya esta instrumentado sobre el contrato comun;
+- la UI interna de Verity ya consume datos agregados reales de Verity + MBA;
+- el circuito local de observabilidad IA ya se ha validado de punta a punta;
+- las suites backend relevantes quedaron verdes:
+  - `backend`: `720/720`
+  - `media-bias-atlas/backend`: `48/48`
+
+Referencia actualizada de estado:
+
+- `media-bias-atlas/docs/PLAN_FEATURE_AI_OBSERVABILITY_AUDIT.md`

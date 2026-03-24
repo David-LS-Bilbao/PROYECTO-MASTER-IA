@@ -50,9 +50,18 @@ Este proyecto ha migrado desde ChromaDB (base de datos vectorial externa) a **pg
 
 ## Pasos para Aplicar la Migración
 
-### 1. Instalar pgvector en PostgreSQL
+### 1. Preparar PostgreSQL con pgvector
 
-**Para PostgreSQL local:**
+**Forma recomendada en este repo:**
+```bash
+docker compose up -d postgres
+```
+
+Esto levanta un PostgreSQL basado en `pgvector/pgvector:pg16`.
+- Verity usa `localhost:5433`
+- `localhost:5432` se conserva por compatibilidad local con Media Bias Atlas
+
+**Si NO usas el `docker-compose.yml` del repo y prefieres un PostgreSQL propio:**
 ```bash
 # Ubuntu/Debian
 sudo apt install postgresql-15-pgvector
@@ -145,7 +154,7 @@ npm install chromadb@^3.3.0 @chroma-core/default-embed@^0.1.9
 - **Índice HNSW**: Más eficiente que IVFFlat para la mayoría de casos de uso
 - **Distancia coseno**: Usamos el operador `<=>` para búsquedas de similitud
 - **Performance**: pgvector es comparable a ChromaDB en velocidad para volúmenes < 1M vectores
-- **Compose local**: usar `pgvector/pgvector:pg16` (en este proyecto se expone en `localhost:5433`)
+- **Compose local**: usar `pgvector/pgvector:pg16`; en este proyecto Verity se conecta por `localhost:5433` y `localhost:5432` queda disponible por compatibilidad con MBA
 
 ## Soporte
 

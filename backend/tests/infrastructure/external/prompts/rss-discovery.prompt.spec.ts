@@ -22,6 +22,6 @@ describe('rss-discovery.prompt', () => {
     expect(prompt).toContain('"Bilbao"');
     expect(prompt).toContain('FORMATO DE SALIDA (JSON estricto)');
     expect(prompt).toContain('NO predecir URLs RSS');
-    expect(prompt).toContain('devuelve array');
+    expect(prompt).toContain('Devolver SOLO el array JSON');
   });
 });

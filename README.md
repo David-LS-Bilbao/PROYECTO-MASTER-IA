@@ -39,7 +39,8 @@ Esta seccion resume los comandos y comportamientos vigentes del feature de anali
 ```bash
 docker compose up -d
 ```
-- PostgreSQL corre en `localhost:5433` con imagen `pgvector/pgvector:pg16`.
+- PostgreSQL corre en el contenedor `verity-news-postgres` con imagen `pgvector/pgvector:pg16`.
+- En local se expone en `localhost:5433` para Verity y en `localhost:5432` por compatibilidad con Media Bias Atlas; ambos puertos apuntan al mismo contenedor.
 - `chromadb` sigue definido en `docker-compose.yml` por compatibilidad legacy, pero el backend activo usa `pgvector` (`PgVectorClient`).
 
 2. Preparar backend:
@@ -110,6 +111,10 @@ Referencias:
 
 #### Error `extension "vector" is not available`
 - Verificar que el contenedor usa `pgvector/pgvector:pg16`.
+- Si el contenedor fue creado antes del cambio a `pgvector`, recrearlo:
+```bash
+docker compose up -d --force-recreate postgres
+```
 - Reaplicar migraciones:
 ```bash
 cd backend
@@ -118,6 +123,59 @@ npx prisma migrate deploy
 
 #### Hydration mismatch en localhost
 - Si aparece `data-darkreader-inline-stroke`, desactivar Dark Reader en `localhost`.
+
+---
+
+## Cierre Feature Observabilidad IA (2026-03-24)
+
+Esta rama deja cerrada la observabilidad IA comun entre Verity News y Media Bias Atlas para uso local real, sin depender ya de validaciones teoricas.
+
+### Estado final validado
+
+- Verity backend operativo con observabilidad IA y migraciones alineadas.
+- Media Bias Atlas backend operativo con observabilidad IA aplicada tambien en su base de test.
+- UI admin interna de Verity disponible en `/admin/ai-usage` con datos agregados reales de:
+  - `verity`
+  - `media-bias-atlas`
+- endpoints admin de MBA validados:
+  - `GET /api/admin/ai-usage/overview`
+  - `GET /api/admin/ai-usage/runs`
+  - `GET /api/admin/ai-usage/prompts`
+  - `GET /api/admin/ai-usage/compare`
+- persistencia real confirmada en `ai_operation_runs` con:
+  - `provider`
+  - `model`
+  - `tokens`
+  - `estimatedCostMicrosEur`
+  - `latencyMs`
+  - `status`
+
+### Setup local relevante para esta feature
+
+- PostgreSQL local con `pgvector` en el mismo contenedor:
+  - `localhost:5433` para Verity
+  - `localhost:5432` para compatibilidad con Media Bias Atlas
+- Verity backend: `http://localhost:3000`
+- Media Bias Atlas backend: `http://localhost:3001`
+- Verity frontend / UI admin: `http://localhost:3002`
+
+### Quality gate ejecutado
+
+- `backend`: `69` archivos / `720` tests OK
+- `media-bias-atlas/backend`: `15` archivos / `48` tests OK
+- la UI `/admin/ai-usage` se ha validado manualmente en local con ambas fuentes disponibles
+- el formateo de microcostes pequenos en la tabla ya no pierde precision visual
+
+### Alcance realmente cerrado
+
+- Fase 1: cerrada
+- Fase 2: cerrada para el alcance validado en Verity
+- Fase 3: cerrada operativamente en Media Bias Atlas
+- Fase 4: cerrada operativamente en local desde la UI admin de Verity
+
+### Pendiente menor no bloqueante
+
+- si se quiere cierre estricto total del plan, falta validar con ejecucion real el provider `openai-compatible` de MBA o documentarlo explicitamente fuera del alcance actual.
 
 ---
 
@@ -273,7 +331,7 @@ CRON_SECRET=tu_secreto_seguro_aqui
 PROMO_CODES=VERITY_ADMIN,TEST_CODE
 
 # Database (PostgreSQL con pgvector)
-DATABASE_URL=postgresql://verity:verity_password_dev@localhost:5432/verity_news
+DATABASE_URL=postgresql://admin:adminpassword@localhost:5433/verity_news
 
 # Gemini API
 GEMINI_API_KEY=tu_api_key_de_gemini
@@ -329,7 +387,9 @@ docker compose up -d
 ```
 
 Esto iniciara:
-- **PostgreSQL + pgvector** en `localhost:5433` (contenedor `verity-news-postgres`)
+- **PostgreSQL + pgvector** en el contenedor `verity-news-postgres`
+- **Puerto recomendado para Verity**: `localhost:5433`
+- **Puerto conservado por compatibilidad con MBA**: `localhost:5432`
 - **Redis** en `localhost:6379`
 - **ChromaDB** como servicio legacy opcional (no requerido para el flujo principal con `pgvector`)
 
@@ -1273,11 +1333,13 @@ Estado actual de `media-bias-atlas`:
 - provider real Gemini ya alineado con el patrón técnico de Verity, manteniendo contrato desacoplado propio;
 - seeds manuales idempotentes ya preparadas para `ES`, `GB`, `FR`, `DE` y `US`;
 - lote de `US` ya cargado en base para demo local con `9` outlets y `18` feeds RSS validados;
-- condición operativa pendiente: activar `BIAS_AI_*` en `media-bias-atlas/backend/.env` para análisis real contra proveedor externo.
+- observabilidad IA ya integrada en el circuito comun del repositorio y visible desde `/admin/ai-usage`;
+- suites backend de MBA en verde (`48/48`) tras alinear migraciones y BD de test;
+- pendiente menor no bloqueante: validar con ejecucion real el provider `openai-compatible` o dejarlo fuera del alcance cerrado.
 
 Documentación asociada:
 
-- [Informe Media Bias Atlas](MEDIA_BIAS_ATLAS_INFORME_SPRINTS_1_7.md)
+- [Informe Media Bias Atlas](media-bias-atlas/docs/MEDIA_BIAS_ATLAS_INFORME_SPRINTS.md)
 - [Arquitectura](docs/architecture/ARCHITECTURE.md)
 - [Memoria del TFM](docs/MemoriaTFM.md)
 
@@ -1313,10 +1375,15 @@ Documentación asociada:
    - Contratos de error (`PAYWALL_BLOCKED`, `formatError`)
    - Comandos de validacion reproducibles
 
-7. [Informe Media Bias Atlas](MEDIA_BIAS_ATLAS_INFORME_SPRINTS_1_7.md)
+7. [Informe Media Bias Atlas](media-bias-atlas/docs/MEDIA_BIAS_ATLAS_INFORME_SPRINTS.md)
    - Evolución detallada del subproyecto `media-bias-atlas`
    - Estado funcional acumulado hasta Sprint 10
    - Situación operativa actual del provider IA y de las seeds manuales
+
+8. [Plan oficial - AI Observability Audit](media-bias-atlas/docs/PLAN_FEATURE_AI_OBSERVABILITY_AUDIT.md)
+   - Estado real actualizado del cierre de Fase 1 a Fase 4
+   - Validación local de la UI admin agregada y de los runs persistidos
+   - Quality gate ejecutado en esta rama
 
 ### Diagramas Arquitecturales
 
