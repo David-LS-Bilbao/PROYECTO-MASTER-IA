@@ -32,6 +32,13 @@ class HttpError extends Error {
   }
 }
 
+function isDevelopmentAuthBypassEnabled(): boolean {
+  return (
+    process.env.NODE_ENV === 'development' &&
+    process.env.AI_USAGE_DEV_BYPASS_AUTH === 'true'
+  );
+}
+
 function getSourceConfigs(): SourceConfig[] {
   const verityBaseUrl =
     process.env.AI_USAGE_VERITY_API_URL ??
@@ -75,6 +82,10 @@ function getAdminSecret(): string {
 }
 
 export async function ensureAiUsageAuth(request: NextRequest): Promise<void> {
+  if (isDevelopmentAuthBypassEnabled()) {
+    return;
+  }
+
   const authorization = request.headers.get('authorization');
 
   if (!authorization?.startsWith('Bearer ')) {

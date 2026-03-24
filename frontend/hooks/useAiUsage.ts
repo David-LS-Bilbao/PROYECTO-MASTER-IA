@@ -22,10 +22,15 @@ async function requireToken(getToken: (forceRefresh?: boolean) => Promise<string
 
 export function useAiUsageOverview(filters: AiUsageQueryFilters, enabled = true) {
   const { getToken } = useAuth();
+  const authBypassEnabled = process.env.NEXT_PUBLIC_AI_USAGE_DEV_BYPASS_AUTH === 'true';
 
   return useQuery({
     queryKey: ['ai-usage', 'overview', filters],
-    queryFn: async () => fetchAiUsageOverview(await requireToken(getToken), filters),
+    queryFn: async () =>
+      fetchAiUsageOverview(
+        authBypassEnabled ? null : await requireToken(getToken),
+        filters
+      ),
     enabled,
     staleTime: 60_000,
     placeholderData: (previousData) => previousData,
@@ -37,10 +42,15 @@ export function useAiUsageRuns(
   enabled = true
 ) {
   const { getToken } = useAuth();
+  const authBypassEnabled = process.env.NEXT_PUBLIC_AI_USAGE_DEV_BYPASS_AUTH === 'true';
 
   return useQuery({
     queryKey: ['ai-usage', 'runs', filters],
-    queryFn: async () => fetchAiUsageRuns(await requireToken(getToken), filters),
+    queryFn: async () =>
+      fetchAiUsageRuns(
+        authBypassEnabled ? null : await requireToken(getToken),
+        filters
+      ),
     enabled,
     staleTime: 30_000,
     placeholderData: (previousData) => previousData,
@@ -52,10 +62,15 @@ export function useAiUsagePrompts(
   enabled = true
 ) {
   const { getToken } = useAuth();
+  const authBypassEnabled = process.env.NEXT_PUBLIC_AI_USAGE_DEV_BYPASS_AUTH === 'true';
 
   return useQuery({
     queryKey: ['ai-usage', 'prompts', filters],
-    queryFn: async () => fetchAiUsagePrompts(await requireToken(getToken), filters),
+    queryFn: async () =>
+      fetchAiUsagePrompts(
+        authBypassEnabled ? null : await requireToken(getToken),
+        filters
+      ),
     enabled,
     staleTime: 60_000,
     placeholderData: (previousData) => previousData,
@@ -64,10 +79,15 @@ export function useAiUsagePrompts(
 
 export function useAiUsageComparison(filters: AiUsageQueryFilters, enabled = true) {
   const { getToken } = useAuth();
+  const authBypassEnabled = process.env.NEXT_PUBLIC_AI_USAGE_DEV_BYPASS_AUTH === 'true';
 
   return useQuery({
     queryKey: ['ai-usage', 'comparison', filters],
-    queryFn: async () => fetchAiUsageComparison(await requireToken(getToken), filters),
+    queryFn: async () =>
+      fetchAiUsageComparison(
+        authBypassEnabled ? null : await requireToken(getToken),
+        filters
+      ),
     enabled,
     staleTime: 60_000,
     placeholderData: (previousData) => previousData,

@@ -162,6 +162,9 @@ function SourceStatusCard({
 export function AiUsageManagementPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const authBypassEnabled = process.env.NEXT_PUBLIC_AI_USAGE_DEV_BYPASS_AUTH === 'true';
+  const canAccessWithoutAuth = authBypassEnabled;
+  const canQueryAiUsage = !authLoading && (Boolean(user) || canAccessWithoutAuth);
 
   const [moduleFilter, setModuleFilter] = useState('');
   const [operationFilter, setOperationFilter] = useState('');
@@ -176,10 +179,10 @@ export function AiUsageManagementPage() {
   const [selectedRun, setSelectedRun] = useState<AiUsageRunRecord | null>(null);
 
   useEffect(() => {
-    if (!authLoading && !user) {
+    if (!authLoading && !user && !canAccessWithoutAuth) {
       router.replace('/login');
     }
-  }, [authLoading, user, router]);
+  }, [authLoading, user, canAccessWithoutAuth, router]);
 
   const queryFilters = {
     module: moduleFilter || undefined,
@@ -199,10 +202,10 @@ export function AiUsageManagementPage() {
     limit: promptLimit,
   };
 
-  const overviewQuery = useAiUsageOverview(queryFilters, !!user && !authLoading);
-  const runsQuery = useAiUsageRuns({ ...queryFilters, limit: runsLimit }, !!user && !authLoading);
-  const promptsQuery = useAiUsagePrompts(promptsFilters, !!user && !authLoading);
-  const comparisonQuery = useAiUsageComparison(queryFilters, !!user && !authLoading);
+  const overviewQuery = useAiUsageOverview(queryFilters, canQueryAiUsage);
+  const runsQuery = useAiUsageRuns({ ...queryFilters, limit: runsLimit }, canQueryAiUsage);
+  const promptsQuery = useAiUsagePrompts(promptsFilters, canQueryAiUsage);
+  const comparisonQuery = useAiUsageComparison(queryFilters, canQueryAiUsage);
 
   if (authLoading) {
     return (
@@ -215,7 +218,7 @@ export function AiUsageManagementPage() {
     );
   }
 
-  if (!user) {
+  if (!user && !canAccessWithoutAuth) {
     return null;
   }
 

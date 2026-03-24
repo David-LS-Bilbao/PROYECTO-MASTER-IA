@@ -26,7 +26,7 @@ export interface AiUsagePromptFilters {
 type AiUsageQueryParamValue = string | number | boolean | undefined | null;
 
 export async function fetchAiUsageOverview(
-  token: string,
+  token: string | null,
   filters: AiUsageQueryFilters
 ): Promise<AiUsageEnvelope<AiUsageOverviewData>> {
   return fetchInternalAiUsage<AiUsageOverviewData, AiUsageQueryFilters>(
@@ -37,7 +37,7 @@ export async function fetchAiUsageOverview(
 }
 
 export async function fetchAiUsageRuns(
-  token: string,
+  token: string | null,
   filters: AiUsageQueryFilters & { limit: number }
 ): Promise<AiUsageEnvelope<AiUsageRunsData>> {
   return fetchInternalAiUsage<AiUsageRunsData, AiUsageQueryFilters & { limit: number }>(
@@ -48,7 +48,7 @@ export async function fetchAiUsageRuns(
 }
 
 export async function fetchAiUsagePrompts(
-  token: string,
+  token: string | null,
   filters: AiUsagePromptFilters & { limit: number }
 ): Promise<AiUsageEnvelope<AiUsagePromptsData>> {
   return fetchInternalAiUsage<AiUsagePromptsData, AiUsagePromptFilters & { limit: number }>(
@@ -59,7 +59,7 @@ export async function fetchAiUsagePrompts(
 }
 
 export async function fetchAiUsageComparison(
-  token: string,
+  token: string | null,
   filters: AiUsageQueryFilters
 ): Promise<AiUsageEnvelope<AiUsageComparisonData>> {
   return fetchInternalAiUsage<AiUsageComparisonData, AiUsageQueryFilters>(
@@ -74,7 +74,7 @@ async function fetchInternalAiUsage<
   TParams extends object = Record<string, AiUsageQueryParamValue>
 >(
   path: string,
-  token: string,
+  token: string | null,
   params: TParams
 ): Promise<AiUsageEnvelope<T>> {
   const url = new URL(path, window.location.origin);
@@ -89,9 +89,11 @@ async function fetchInternalAiUsage<
 
   const response = await fetch(url.toString(), {
     method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+    headers: token
+      ? {
+          Authorization: `Bearer ${token}`,
+        }
+      : undefined,
     cache: 'no-store',
   });
 
