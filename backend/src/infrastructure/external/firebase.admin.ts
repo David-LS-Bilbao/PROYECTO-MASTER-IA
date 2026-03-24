@@ -36,6 +36,48 @@ function hasUsableEnvCredentials(
   return !placeholderMarkers.some((marker) => combined.includes(marker));
 }
 
+function getBackendRootPath(): string {
+  return path.join(__dirname, '../../../');
+}
+
+function getServiceAccountCandidates(backendRootPath: string): string[] {
+  const candidates: string[] = [];
+  const envPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH?.trim();
+
+  if (envPath) {
+    candidates.push(
+      path.isAbsolute(envPath) ? envPath : path.resolve(backendRootPath, envPath)
+    );
+  }
+
+  candidates.push(path.join(backendRootPath, 'service-account.json'));
+
+  try {
+    const autoDetectedCandidates =
+      fs.readdirSync?.(backendRootPath)
+        ?.filter((fileName) => /firebase-adminsdk.*\.json$/i.test(fileName))
+        .map((fileName) => path.join(backendRootPath, fileName)) ?? [];
+
+    candidates.push(...autoDetectedCandidates);
+  } catch {
+    // Ignore scan errors and keep explicit candidates only.
+  }
+
+  return [...new Set(candidates)];
+}
+
+function resolveServiceAccountPath(): string | null {
+  const backendRootPath = getBackendRootPath();
+
+  for (const candidatePath of getServiceAccountCandidates(backendRootPath)) {
+    if (fs.existsSync(candidatePath)) {
+      return candidatePath;
+    }
+  }
+
+  return null;
+}
+
 /**
  * Inicializa Firebase Admin SDK si no está ya inicializado
  */
@@ -87,14 +129,14 @@ function initializeFirebaseAdmin(): admin.app.App {
     // OPCIÓN 2: Cargar desde archivo local (DESARROLLO)
     // =========================================================================
     console.log('⚠️ Variables de entorno no encontradas. Intentando archivo local...');
-    
-    const serviceAccountPath = path.join(__dirname, '../../../service-account.json');
-    
-    if (fs.existsSync(serviceAccountPath)) {
-      console.log('✅ Archivo service-account.json encontrado.');
-      
+
+    const serviceAccountPath = resolveServiceAccountPath();
+
+    if (serviceAccountPath) {
+      console.log(`✅ Archivo de credenciales Firebase detectado: ${path.basename(serviceAccountPath)}.`);
+
       const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
-      
+
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
         projectId: serviceAccount.project_id,

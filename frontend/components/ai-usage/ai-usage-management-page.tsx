@@ -11,9 +11,11 @@ import {
   RefreshCw,
   TableProperties,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import { useAiUsageComparison, useAiUsageOverview, useAiUsagePrompts, useAiUsageRuns } from '@/hooks/useAiUsage';
 import {
+  buildAiUsageFilterCatalog,
   type AiUsageComparisonMetrics,
   type AiRunStatus,
   buildDateRangeParams,
@@ -80,6 +82,57 @@ function truncateValue(value: string | null | undefined, maxLength = 24): string
   }
 
   return `${value.slice(0, maxLength)}...`;
+}
+
+function formatRefreshTimestamp(value: Date): string {
+  return new Intl.DateTimeFormat('es-ES', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(value);
+}
+
+function FilterSelect({
+  label,
+  value,
+  onChange,
+  options,
+  allLabel,
+  emptyLabel,
+  isLoading,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: string[];
+  allLabel: string;
+  emptyLabel: string;
+  isLoading: boolean;
+}) {
+  const showEmptyState = options.length === 0;
+
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-zinc-500">{label}</label>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm"
+      >
+        <option value="">{allLabel}</option>
+        {showEmptyState && (
+          <option value="__empty__" disabled>
+            {isLoading ? 'Cargando opciones...' : emptyLabel}
+          </option>
+        )}
+        {options.map((entry) => (
+          <option key={entry} value={entry}>
+            {entry}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
 }
 
 function SectionTable<K extends string>({
@@ -177,6 +230,8 @@ export function AiUsageManagementPage() {
   const [promptLimit, setPromptLimit] = useState(20);
   const [promptStateFilter, setPromptStateFilter] = useState<PromptStateFilter>('all');
   const [selectedRun, setSelectedRun] = useState<AiUsageRunRecord | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastRefreshAt, setLastRefreshAt] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user && !canAccessWithoutAuth) {
@@ -203,6 +258,7 @@ export function AiUsageManagementPage() {
   };
 
   const overviewQuery = useAiUsageOverview(queryFilters, canQueryAiUsage);
+  const filterCatalogQuery = useAiUsageOverview({}, canQueryAiUsage);
   const runsQuery = useAiUsageRuns({ ...queryFilters, limit: runsLimit }, canQueryAiUsage);
   const promptsQuery = useAiUsagePrompts(promptsFilters, canQueryAiUsage);
   const comparisonQuery = useAiUsageComparison(queryFilters, canQueryAiUsage);
@@ -228,22 +284,53 @@ export function AiUsageManagementPage() {
   const comparison = comparisonQuery.data?.data;
   const sourceStatus = overviewQuery.data?.sources ?? runsQuery.data?.sources ?? [];
   const totalErrors = overview ? getErrorRunsCount(overview) : 0;
-  const moduleOptions = overview?.byModule.map((entry) => entry.module) ?? [];
-  const operationOptions = overview?.byOperation.map((entry) => entry.operationKey) ?? [];
-  const providerOptions = Array.from(
-    new Set((overview?.byProviderModel ?? []).map((entry) => entry.provider).filter(Boolean))
-  ) as string[];
-  const modelOptions = Array.from(
-    new Set((overview?.byProviderModel ?? []).map((entry) => entry.model).filter(Boolean))
-  ) as string[];
+  const filterCatalog = buildAiUsageFilterCatalog({
+    overview: filterCatalogQuery.data?.data ?? overview,
+    runs,
+    prompts,
+    selectedValues: {
+      module: moduleFilter || undefined,
+      operationKey: operationFilter || undefined,
+      provider: providerFilter || undefined,
+      model: modelFilter || undefined,
+    },
+  });
+  const moduleOptions = filterCatalog.modules;
+  const operationOptions = filterCatalog.operations;
+  const providerOptions = filterCatalog.providers;
+  const modelOptions = filterCatalog.models;
+  const filtersAreLoading = filterCatalogQuery.isLoading && !filterCatalogQuery.data;
 
   const handleRefresh = async () => {
-    await Promise.all([
-      overviewQuery.refetch(),
-      runsQuery.refetch(),
-      promptsQuery.refetch(),
-      comparisonQuery.refetch(),
-    ]);
+    if (isRefreshing) {
+      return;
+    }
+
+    setIsRefreshing(true);
+
+    try {
+      const results = await Promise.all([
+        overviewQuery.refetch(),
+        filterCatalogQuery.refetch(),
+        runsQuery.refetch(),
+        promptsQuery.refetch(),
+        comparisonQuery.refetch(),
+      ]);
+
+      const hasErrors = results.some((result) => result.error);
+
+      if (hasErrors) {
+        toast.error('No se han podido refrescar todas las secciones de AI Observer.');
+        return;
+      }
+
+      setLastRefreshAt(formatRefreshTimestamp(new Date()));
+      toast.success('AI Observer actualizado.');
+    } catch {
+      toast.error('Ha fallado la actualización de AI Observer.');
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   return (
@@ -264,10 +351,19 @@ export function AiUsageManagementPage() {
               Consulta unificada de observabilidad IA para Verity y Media Bias Atlas.
             </p>
           </div>
-          <Button variant="outline" onClick={() => void handleRefresh()}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Refrescar
-          </Button>
+          <div className="flex flex-col items-end gap-1">
+            <Button variant="outline" onClick={() => void handleRefresh()} disabled={isRefreshing}>
+              <RefreshCw className={cn('mr-2 h-4 w-4', isRefreshing && 'animate-spin')} />
+              {isRefreshing ? 'Actualizando...' : 'Refrescar'}
+            </Button>
+            <span className="text-xs text-zinc-500">
+              {isRefreshing
+                ? 'Recargando datos...'
+                : lastRefreshAt
+                  ? `Actualizado a las ${lastRefreshAt}`
+                  : 'Sin refresco manual reciente'}
+            </span>
+          </div>
         </div>
       </header>
 
@@ -276,7 +372,7 @@ export function AiUsageManagementPage() {
           <CardHeader className="border-b border-zinc-100">
             <CardTitle className="text-base">Filtros operativos</CardTitle>
             <CardDescription>
-              La tabla y los agregados usan solo métricas reales persistidas. Si un proveedor no reporta tokens o coste, la UI lo muestra como dato ausente.
+              La tabla y los agregados usan solo métricas reales persistidas. Si un proveedor no reporta tokens o coste, la UI lo muestra como dato ausente. Las opciones se cargan desde el histórico observado; si no hay runs todavía, el desplegable lo indica.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 pt-6 md:grid-cols-2 xl:grid-cols-7">
@@ -288,66 +384,42 @@ export function AiUsageManagementPage() {
               <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-zinc-500">Hasta</label>
               <Input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
             </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-zinc-500">Módulo</label>
-              <select
-                value={moduleFilter}
-                onChange={(event) => setModuleFilter(event.target.value)}
-                className="h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm"
-              >
-                <option value="">Todos</option>
-                {moduleOptions.map((entry) => (
-                  <option key={entry} value={entry}>
-                    {entry}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-zinc-500">Operación</label>
-              <select
-                value={operationFilter}
-                onChange={(event) => setOperationFilter(event.target.value)}
-                className="h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm"
-              >
-                <option value="">Todas</option>
-                {operationOptions.map((entry) => (
-                  <option key={entry} value={entry}>
-                    {entry}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-zinc-500">Provider</label>
-              <select
-                value={providerFilter}
-                onChange={(event) => setProviderFilter(event.target.value)}
-                className="h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm"
-              >
-                <option value="">Todos</option>
-                {providerOptions.map((entry) => (
-                  <option key={entry} value={entry}>
-                    {entry}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-zinc-500">Modelo</label>
-              <select
-                value={modelFilter}
-                onChange={(event) => setModelFilter(event.target.value)}
-                className="h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm"
-              >
-                <option value="">Todos</option>
-                {modelOptions.map((entry) => (
-                  <option key={entry} value={entry}>
-                    {entry}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <FilterSelect
+              label="Módulo"
+              value={moduleFilter}
+              onChange={setModuleFilter}
+              options={moduleOptions}
+              allLabel="Todos"
+              emptyLabel="Sin módulos observados aún"
+              isLoading={filtersAreLoading}
+            />
+            <FilterSelect
+              label="Operación"
+              value={operationFilter}
+              onChange={setOperationFilter}
+              options={operationOptions}
+              allLabel="Todas"
+              emptyLabel="Sin operaciones observadas aún"
+              isLoading={filtersAreLoading}
+            />
+            <FilterSelect
+              label="Provider"
+              value={providerFilter}
+              onChange={setProviderFilter}
+              options={providerOptions}
+              allLabel="Todos"
+              emptyLabel="Sin providers observados aún"
+              isLoading={filtersAreLoading}
+            />
+            <FilterSelect
+              label="Modelo"
+              value={modelFilter}
+              onChange={setModelFilter}
+              options={modelOptions}
+              allLabel="Todos"
+              emptyLabel="Sin modelos observados aún"
+              isLoading={filtersAreLoading}
+            />
             <div>
               <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-zinc-500">Estado</label>
               <select

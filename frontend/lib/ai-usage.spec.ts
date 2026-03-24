@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildAiUsageFilterCatalog,
   formatMicrosEur,
   mergeComparisonPayloads,
   mergeOverviewPayloads,
@@ -206,5 +207,96 @@ describe('ai-usage helpers', () => {
     expect(merged.byModule[0].runs).toBe(3);
     expect(merged.byModule[0].avgTokens).toBe(17);
     expect(merged.byModule[0].errorRate).toBeCloseTo(1 / 3);
+  });
+
+  it('builds stable filter options from overview, runs and prompts', () => {
+    const catalog = buildAiUsageFilterCatalog({
+      overview: {
+        byModule: [
+          { module: 'verity', runs: 3, totalTokens: 120, estimatedCostMicrosEur: '1000' },
+        ],
+        byOperation: [
+          {
+            operationKey: 'rag_chat',
+            runs: 2,
+            totalTokens: 40,
+            estimatedCostMicrosEur: '700',
+          },
+        ],
+        byProviderModel: [
+          {
+            provider: 'google',
+            model: 'gemini-2.5-flash',
+            runs: 2,
+            totalTokens: 40,
+            estimatedCostMicrosEur: '700',
+          },
+        ],
+      },
+      runs: {
+        runs: [
+          {
+            id: 'run-1',
+            module: 'media-bias-atlas',
+            operationKey: 'article_bias_analysis',
+            provider: 'openai-compatible',
+            model: 'gpt-4.1-mini',
+            status: 'COMPLETED',
+            requestId: 'req-1',
+            correlationId: 'corr-1',
+            endpoint: null,
+            userId: null,
+            entityType: null,
+            entityId: null,
+            promptTokens: null,
+            completionTokens: null,
+            totalTokens: null,
+            estimatedCostMicrosEur: null,
+            latencyMs: 50,
+            errorCode: null,
+            errorMessage: null,
+            promptVersionId: null,
+            createdAt: '2026-03-24T10:00:00.000Z',
+            completedAt: '2026-03-24T10:00:01.000Z',
+            metadataJson: {},
+            promptVersion: null,
+          },
+        ],
+      },
+      prompts: {
+        promptVersions: [
+          {
+            id: 'prompt-1',
+            module: 'verity',
+            promptKey: 'RAG_CHAT_PROMPT',
+            version: '1.0.0',
+            templateHash: 'abc123',
+            sourceFile: 'src/prompts/rag.ts',
+            isActive: true,
+            createdAt: '2026-03-24T10:00:00.000Z',
+            updatedAt: '2026-03-24T10:00:00.000Z',
+            runs: 2,
+            lastUsedAt: '2026-03-24T10:00:00.000Z',
+          },
+        ],
+      },
+      selectedValues: {
+        provider: 'anthropic',
+      },
+    });
+
+    expect(catalog.modules).toEqual(['media-bias-atlas', 'verity']);
+    expect(catalog.operations).toEqual(['article_bias_analysis', 'rag_chat']);
+    expect(catalog.providers).toEqual(['anthropic', 'google', 'openai-compatible']);
+    expect(catalog.models).toEqual(['gemini-2.5-flash', 'gpt-4.1-mini']);
+  });
+
+  it('keeps known modules available even without persisted runs yet', () => {
+    const catalog = buildAiUsageFilterCatalog({});
+
+    expect(catalog.modules).toEqual(['media-bias-atlas', 'verity']);
+    expect(catalog.operations).toEqual([]);
+    expect(catalog.providers).toEqual([]);
+    expect(catalog.models).toEqual([]);
   });
 });

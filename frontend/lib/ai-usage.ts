@@ -160,6 +160,15 @@ export interface AiUsageEnvelope<T> {
   data: T;
 }
 
+export interface AiUsageFilterCatalog {
+  modules: string[];
+  operations: string[];
+  providers: string[];
+  models: string[];
+}
+
+const KNOWN_AI_USAGE_MODULES = ['media-bias-atlas', 'verity'] as const;
+
 type AiUsageGroupedTotal = {
   runs: number;
   totalTokens: number;
@@ -518,6 +527,93 @@ export function getErrorRunsCount(overview: AiUsageOverviewData): number {
   return overview.byStatus
     .filter((entry) => ['FAILED', 'TIMEOUT', 'CANCELLED'].includes(entry.status))
     .reduce((acc, entry) => acc + entry.runs, 0);
+}
+
+export function buildAiUsageFilterCatalog(input: {
+  overview?: Pick<AiUsageOverviewData, 'byModule' | 'byOperation' | 'byProviderModel'> | null;
+  runs?: Pick<AiUsageRunsData, 'runs'> | null;
+  prompts?: Pick<AiUsagePromptsData, 'promptVersions'> | null;
+  selectedValues?: {
+    module?: string;
+    operationKey?: string;
+    provider?: string;
+    model?: string;
+  };
+}): AiUsageFilterCatalog {
+  const modules = new Set<string>(KNOWN_AI_USAGE_MODULES);
+  const operations = new Set<string>();
+  const providers = new Set<string>();
+  const models = new Set<string>();
+
+  for (const entry of input.overview?.byModule ?? []) {
+    if (entry.module) {
+      modules.add(entry.module);
+    }
+  }
+
+  for (const entry of input.overview?.byOperation ?? []) {
+    if (entry.operationKey) {
+      operations.add(entry.operationKey);
+    }
+  }
+
+  for (const entry of input.overview?.byProviderModel ?? []) {
+    if (entry.provider) {
+      providers.add(entry.provider);
+    }
+    if (entry.model) {
+      models.add(entry.model);
+    }
+  }
+
+  for (const run of input.runs?.runs ?? []) {
+    if (run.module) {
+      modules.add(run.module);
+    }
+    if (run.operationKey) {
+      operations.add(run.operationKey);
+    }
+    if (run.provider) {
+      providers.add(run.provider);
+    }
+    if (run.model) {
+      models.add(run.model);
+    }
+  }
+
+  for (const prompt of input.prompts?.promptVersions ?? []) {
+    if (prompt.module) {
+      modules.add(prompt.module);
+    }
+  }
+
+  if (input.selectedValues?.module) {
+    modules.add(input.selectedValues.module);
+  }
+  if (input.selectedValues?.operationKey) {
+    operations.add(input.selectedValues.operationKey);
+  }
+  if (input.selectedValues?.provider) {
+    providers.add(input.selectedValues.provider);
+  }
+  if (input.selectedValues?.model) {
+    models.add(input.selectedValues.model);
+  }
+
+  return {
+    modules: sortFilterValues(modules),
+    operations: sortFilterValues(operations),
+    providers: sortFilterValues(providers),
+    models: sortFilterValues(models),
+  };
+}
+
+function sortFilterValues(values: Set<string>): string[] {
+  return Array.from(values).sort((left, right) =>
+    left.localeCompare(right, 'es', {
+      sensitivity: 'base',
+    })
+  );
 }
 
 export function buildDateRangeParams(from: string, to: string): {

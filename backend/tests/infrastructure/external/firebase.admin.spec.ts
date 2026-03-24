@@ -256,6 +256,54 @@ describe('firebase.admin initialization (non-test env)', () => {
     expect(mockVerifyIdToken).toHaveBeenCalledWith('token-4');
   });
 
+  it('detecta automáticamente un json descargado de firebase-adminsdk cuando no existe service-account.json', async () => {
+    const mockVerifyIdToken = vi.fn().mockResolvedValue({ uid: 'u5' });
+    const mockApp = {
+      auth: () => ({
+        verifyIdToken: mockVerifyIdToken,
+        getUser: vi.fn(),
+        getUserByEmail: vi.fn(),
+        createUser: vi.fn(),
+        updateUser: vi.fn(),
+        deleteUser: vi.fn(),
+      }),
+    };
+
+    const adminMock = {
+      apps: [],
+      initializeApp: vi.fn(() => {
+        adminMock.apps.push(mockApp as any);
+        return mockApp as any;
+      }),
+      credential: { cert: vi.fn(() => ({ mocked: true })) },
+    };
+
+    vi.doMock('firebase-admin', () => adminMock);
+    vi.doMock('fs', () => ({
+      existsSync: vi.fn((candidatePath: string) =>
+        candidatePath.endsWith('verity-news-4a798-firebase-adminsdk-fbsvc-0dbc197b85.json')
+      ),
+      readFileSync: vi.fn(() =>
+        JSON.stringify({
+          project_id: 'wildcard-project',
+          private_key: 'wildcard-key',
+          client_email: 'wildcard@test.com',
+        })
+      ),
+      readdirSync: vi.fn(() => ['verity-news-4a798-firebase-adminsdk-fbsvc-0dbc197b85.json']),
+    }));
+
+    const mod = await import('../../../src/infrastructure/external/firebase.admin');
+    await mod.firebaseAuth.verifyIdToken('token-5');
+
+    expect(adminMock.credential.cert).toHaveBeenCalledWith({
+      project_id: 'wildcard-project',
+      private_key: 'wildcard-key',
+      client_email: 'wildcard@test.com',
+    });
+    expect(mockVerifyIdToken).toHaveBeenCalledWith('token-5');
+  });
+
   it('lanza error si no hay credenciales ni archivo local', async () => {
     const adminMock = {
       apps: [],
@@ -267,6 +315,7 @@ describe('firebase.admin initialization (non-test env)', () => {
     vi.doMock('fs', () => ({
       existsSync: vi.fn(() => false),
       readFileSync: vi.fn(),
+      readdirSync: vi.fn(() => []),
     }));
 
     const mod = await import('../../../src/infrastructure/external/firebase.admin');
