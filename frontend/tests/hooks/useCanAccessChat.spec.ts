@@ -4,7 +4,6 @@ import { useCanAccessChat } from '@/hooks/useCanAccessChat';
 
 const mockUseAuth = vi.fn();
 const mockUseProfile = vi.fn();
-const mockUseEntitlements = vi.fn();
 
 vi.mock('@/context/AuthContext', () => ({
   useAuth: () => mockUseAuth(),
@@ -12,10 +11,6 @@ vi.mock('@/context/AuthContext', () => ({
 
 vi.mock('@/hooks/useProfile', () => ({
   useProfile: (...args: any[]) => mockUseProfile(...args),
-}));
-
-vi.mock('@/hooks/useEntitlements', () => ({
-  useEntitlements: (...args: any[]) => mockUseEntitlements(...args),
 }));
 
 describe('useCanAccessChat', () => {
@@ -48,14 +43,6 @@ describe('useCanAccessChat', () => {
       authToken: 'token',
       save: vi.fn(),
     });
-
-    mockUseEntitlements.mockReturnValue({
-      entitlements: { deepAnalysis: false },
-      loading: false,
-      redeeming: false,
-      redeem: vi.fn(),
-      refetch: vi.fn(),
-    });
   });
 
   it('allows chat for premium plan users', () => {
@@ -76,12 +63,15 @@ describe('useCanAccessChat', () => {
   });
 
   it('allows chat for free users with deep-analysis entitlement', () => {
-    mockUseEntitlements.mockReturnValue({
-      entitlements: { deepAnalysis: true },
+    mockUseProfile.mockReturnValue({
+      profile: {
+        plan: 'FREE',
+        entitlements: { deepAnalysis: true },
+      },
       loading: false,
-      redeeming: false,
-      redeem: vi.fn(),
-      refetch: vi.fn(),
+      saving: false,
+      authToken: 'token',
+      save: vi.fn(),
     });
 
     const { result } = renderHook(() => useCanAccessChat());

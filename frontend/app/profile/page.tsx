@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { TokenUsageCard } from '@/components/token-usage-card';
 import { useProfileAuth } from '@/hooks/useProfileAuth';
 import { useProfile } from '@/hooks/useProfile';
 import { useProfileFormStore } from '@/stores/profile-form.store';
@@ -31,7 +30,7 @@ const AVAILABLE_CATEGORIES = [
 export default function ProfilePage() {
   const { user, authLoading, getToken } = useProfileAuth();
   const router = useRouter();
-  const { profile, loading, saving, authToken, save } = useProfile(user, authLoading, getToken);
+  const { profile, loading, saving, save } = useProfile(user, authLoading, getToken);
   const [isPricingOpen, setIsPricingOpen] = useState(false);
 
   // Zustand Store - Gestión global de estado del formulario
@@ -39,11 +38,9 @@ export default function ProfilePage() {
     name,
     location, // Sprint 20: Geolocalización
     selectedCategories,
-    showTokenUsage,
     setName,
     setLocation, // Sprint 20: Setter para location
     toggleCategory,
-    toggleTokenUsage,
     setInitialState,
     getSavePayload,
   } = useProfileFormStore();
@@ -68,6 +65,10 @@ export default function ProfilePage() {
         ...payload.preferences,
       },
     });
+  };
+
+  const handleOpenAiObserver = () => {
+    router.push('/admin/ai-usage');
   };
 
   // Loading state
@@ -166,8 +167,7 @@ export default function ProfilePage() {
                 plan={profile.plan}
                 createdAt={profile.createdAt}
                 userId={profile.id}
-                onShowTokenUsage={toggleTokenUsage}
-                showingTokenUsage={showTokenUsage}
+                onOpenAiObserver={handleOpenAiObserver}
               />
             </div>
 
@@ -176,8 +176,6 @@ export default function ProfilePage() {
               selectedCategories={selectedCategories}
               onToggle={toggleCategory}
             />
-
-            {authToken && showTokenUsage && <TokenUsageCard token={authToken} />}
           </div>
         </div>
 

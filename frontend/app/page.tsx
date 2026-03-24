@@ -7,7 +7,7 @@ import { Menu } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { type NewsArticle, type BiasDistribution } from '@/lib/api';
 import { NewsGrid } from '@/components/news/news-grid';
-import { Sidebar, DashboardDrawer } from '@/components/layout';
+import { Sidebar } from '@/components/layout';
 import { SourcesDrawer } from '@/components/sources-drawer';
 import { GeneralChatDrawer } from '@/components/general-chat-drawer';
 import { SearchBar } from '@/components/search-bar';
@@ -146,7 +146,6 @@ function HomeContent() {
   // =========================================================================
   // UI STATE: Drawers (no server state)
   // =========================================================================
-  const [isDashboardOpen, setIsDashboardOpen] = useState(false);
   const [isSourcesOpen, setIsSourcesOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -341,25 +340,11 @@ function HomeContent() {
     <div className="flex h-screen bg-zinc-50 dark:bg-zinc-950">
       {/* Sidebar */}
       <Sidebar
-        onOpenDashboard={() => setIsDashboardOpen(true)}
         onOpenSources={() => setIsSourcesOpen(true)}
         onOpenChat={() => setIsChatOpen(true)}
         isMobileOpen={isMobileSidebarOpen}
         onMobileOpenChange={setIsMobileSidebarOpen}
       />
-
-      {/* Dashboard Drawer */}
-      {stats && (
-        <DashboardDrawer
-          isOpen={isDashboardOpen}
-          onOpenChange={setIsDashboardOpen}
-          totalArticles={stats.totalArticles ?? 0}
-          analyzedCount={stats.analyzedCount ?? 0}
-          coverage={stats.coverage ?? 0}
-          biasDistribution={resolvedBiasDistribution}
-          isLoading={isLoading}
-        />
-      )}
 
       {/* Sources Drawer */}
       <SourcesDrawer

@@ -9,7 +9,6 @@
 
 import { useAuth } from '@/context/AuthContext';
 import { isUserPremium } from '@/lib/auth';
-import { useEntitlements } from './useEntitlements';
 import { useProfile } from './useProfile';
 
 interface ChatAccessResult {
@@ -20,9 +19,8 @@ interface ChatAccessResult {
 export function useCanAccessChat(): ChatAccessResult {
   const { user, loading: authLoading, getToken } = useAuth();
   const { profile, loading: profileLoading } = useProfile(user, authLoading, getToken);
-  const { entitlements, loading: entitlementsLoading } = useEntitlements(user, authLoading, getToken);
 
-  if (authLoading || profileLoading || entitlementsLoading) {
+  if (authLoading || profileLoading) {
     return {
       canAccess: false,
       reason: 'LOADING',
@@ -38,7 +36,7 @@ export function useCanAccessChat(): ChatAccessResult {
 
   const canAccess = isUserPremium({
     plan: profile.plan,
-    entitlements: entitlements ?? profile.entitlements,
+    entitlements: profile.entitlements,
   });
 
   return {

@@ -45,54 +45,41 @@ describe('AccountLevelCard', () => {
     expect(screen.getByText(/test-user-123456789.../)).toBeInTheDocument();
   });
 
-  describe('Boton de toggle de tokens', () => {
-    it('NO muestra el boton cuando no se pasa onShowTokenUsage', () => {
+  describe('CTA de AI Observer', () => {
+    it('NO muestra el boton cuando no se pasa onOpenAiObserver', () => {
       render(<AccountLevelCard {...mockProps} />);
 
-      expect(screen.queryByText('Ver Uso de Tokens')).not.toBeInTheDocument();
-      expect(screen.queryByText('Ocultar Uso de Tokens')).not.toBeInTheDocument();
+      expect(screen.queryByText('Abrir AI Observer')).not.toBeInTheDocument();
     });
 
-    it('muestra "Ver Uso de Tokens" cuando showingTokenUsage es false', () => {
-      const onShowTokenUsage = vi.fn();
+    it('muestra el CTA al panel completo de observabilidad', () => {
+      const onOpenAiObserver = vi.fn();
       render(
         <AccountLevelCard
           {...mockProps}
-          onShowTokenUsage={onShowTokenUsage}
-          showingTokenUsage={false}
+          onOpenAiObserver={onOpenAiObserver}
         />
       );
 
-      expect(screen.getByText('Ver Uso de Tokens')).toBeInTheDocument();
+      expect(screen.getByText('Abrir AI Observer')).toBeInTheDocument();
+      expect(
+        screen.getByText(/Accede al panel completo de observabilidad/i)
+      ).toBeInTheDocument();
     });
 
-    it('muestra "Ocultar Uso de Tokens" cuando showingTokenUsage es true', () => {
-      const onShowTokenUsage = vi.fn();
+    it('llama a onOpenAiObserver al hacer click en el boton', () => {
+      const onOpenAiObserver = vi.fn();
       render(
         <AccountLevelCard
           {...mockProps}
-          onShowTokenUsage={onShowTokenUsage}
-          showingTokenUsage={true}
+          onOpenAiObserver={onOpenAiObserver}
         />
       );
 
-      expect(screen.getByText('Ocultar Uso de Tokens')).toBeInTheDocument();
-    });
-
-    it('llama a onShowTokenUsage al hacer click en el boton', () => {
-      const onShowTokenUsage = vi.fn();
-      render(
-        <AccountLevelCard
-          {...mockProps}
-          onShowTokenUsage={onShowTokenUsage}
-          showingTokenUsage={false}
-        />
-      );
-
-      const button = screen.getByText('Ver Uso de Tokens');
+      const button = screen.getByText('Abrir AI Observer');
       fireEvent.click(button);
 
-      expect(onShowTokenUsage).toHaveBeenCalledTimes(1);
+      expect(onOpenAiObserver).toHaveBeenCalledTimes(1);
     });
   });
 });

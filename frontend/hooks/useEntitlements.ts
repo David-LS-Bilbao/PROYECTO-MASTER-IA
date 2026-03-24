@@ -6,7 +6,11 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { UserEntitlements } from '@/lib/api';
-import { getEntitlements, redeemEntitlementCode } from '@/lib/entitlements.api';
+import {
+  EntitlementsAPIError,
+  getEntitlements,
+  redeemEntitlementCode,
+} from '@/lib/entitlements.api';
 import { toast } from 'sonner';
 
 interface AuthUser {
@@ -17,6 +21,8 @@ interface AuthUser {
 const DEFAULT_ENTITLEMENTS: UserEntitlements = {
   deepAnalysis: false,
 };
+
+const MAX_RETRIES = 2;
 
 export function useEntitlements(
   user: AuthUser | null,
@@ -35,14 +41,28 @@ export function useEntitlements(
     }
 
     try {
-      const token = await getToken();
-      if (!token) {
-        setEntitlements(DEFAULT_ENTITLEMENTS);
-        return;
-      }
+      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        const token = await getToken(attempt > 0);
+        if (!token) {
+          setEntitlements(DEFAULT_ENTITLEMENTS);
+          return;
+        }
 
-      const data = await getEntitlements(token);
-      setEntitlements(data);
+        try {
+          const data = await getEntitlements(token);
+          setEntitlements(data);
+          return;
+        } catch (error) {
+          const shouldRetry =
+            error instanceof EntitlementsAPIError &&
+            error.statusCode === 401 &&
+            attempt < MAX_RETRIES - 1;
+
+          if (!shouldRetry) {
+            throw error;
+          }
+        }
+      }
     } catch (error) {
       console.error('Error fetching entitlements:', error);
       setEntitlements(DEFAULT_ENTITLEMENTS);
@@ -68,16 +88,29 @@ export function useEntitlements(
 
     setRedeeming(true);
     try {
-      const token = await getToken(true);
-      if (!token) {
-        toast.error('Debes iniciar sesion para activar esta funcion');
-        return false;
-      }
+      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        const token = await getToken(attempt > 0);
+        if (!token) {
+          toast.error('Debes iniciar sesion para activar esta funcion');
+          return false;
+        }
 
-      const updatedEntitlements = await redeemEntitlementCode(token, normalizedCode);
-      setEntitlements(updatedEntitlements);
-      toast.success('Analisis profundo activado');
-      return true;
+        try {
+          const updatedEntitlements = await redeemEntitlementCode(token, normalizedCode);
+          setEntitlements(updatedEntitlements);
+          toast.success('Analisis profundo activado');
+          return true;
+        } catch (error) {
+          const shouldRetry =
+            error instanceof EntitlementsAPIError &&
+            error.statusCode === 401 &&
+            attempt < MAX_RETRIES - 1;
+
+          if (!shouldRetry) {
+            throw error;
+          }
+        }
+      }
     } catch (error) {
       console.error('Error redeeming entitlement code:', error);
       toast.error('Codigo no valido');
@@ -85,6 +118,8 @@ export function useEntitlements(
     } finally {
       setRedeeming(false);
     }
+
+    return false;
   };
 
   return {

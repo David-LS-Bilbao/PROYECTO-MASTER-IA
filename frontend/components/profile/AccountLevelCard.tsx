@@ -4,7 +4,7 @@
  * Componente de presentacion: Progreso del plan + info de cuenta.
  */
 
-import { TrendingUp, Calendar, Shield, Eye, EyeOff } from 'lucide-react';
+import { TrendingUp, Calendar, Shield, ArrowRight } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
@@ -16,8 +16,7 @@ export interface AccountLevelCardProps {
   plan: 'FREE' | 'PREMIUM';
   createdAt: string;
   userId: string;
-  onShowTokenUsage?: () => void;
-  showingTokenUsage?: boolean;
+  onOpenAiObserver?: () => void;
 }
 
 export function AccountLevelCard({
@@ -25,8 +24,7 @@ export function AccountLevelCard({
   plan,
   createdAt,
   userId,
-  onShowTokenUsage,
-  showingTokenUsage = false,
+  onOpenAiObserver,
 }: AccountLevelCardProps) {
   const isPremium = plan === 'PREMIUM';
   const usagePercentage = Math.min(
@@ -97,25 +95,19 @@ export function AccountLevelCard({
           </div>
         </div>
 
-        {onShowTokenUsage && (
+        {onOpenAiObserver && (
           <div className="pt-4 border-t border-zinc-200 dark:border-zinc-700">
+            <p className="mb-3 text-xs text-muted-foreground">
+              Accede al panel completo de observabilidad para revisar uso, costes y ejecuciones de IA.
+            </p>
             <Button
               variant="outline"
               size="sm"
-              onClick={onShowTokenUsage}
+              onClick={onOpenAiObserver}
               className="w-full gap-2"
             >
-              {showingTokenUsage ? (
-                <>
-                  <EyeOff className="h-4 w-4" />
-                  Ocultar Uso de Tokens
-                </>
-              ) : (
-                <>
-                  <Eye className="h-4 w-4" />
-                  Ver Uso de Tokens
-                </>
-              )}
+              <ArrowRight className="h-4 w-4" />
+              Abrir AI Observer
             </Button>
           </div>
         )}

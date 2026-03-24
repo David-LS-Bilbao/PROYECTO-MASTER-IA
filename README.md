@@ -63,6 +63,13 @@ npm run dev
 4. URLs locales:
 - Frontend: `http://localhost:3001`
 - Backend: `http://localhost:3000`
+- Launcher MBA desde el sidebar de Verity:
+  - variable recomendada: `NEXT_PUBLIC_MEDIA_BIAS_ATLAS_URL`
+  - ejemplo local: `NEXT_PUBLIC_MEDIA_BIAS_ATLAS_URL=http://localhost:3004`
+  - si no se define, el sidebar usa como fallback el frontend standalone de MBA en `http://localhost:3004`
+- Acceso directo a observabilidad desde perfil:
+  - el antiguo bloque local de “Uso de Tokens” se ha reconvertido en CTA a `AI Observer`
+  - ruta interna usada: `/admin/ai-usage`
 
 ### Testing (Actualizado)
 
@@ -378,6 +385,11 @@ NEXT_PUBLIC_FIREBASE_APP_ID=1:123456789:web:abc123
 NEXT_PUBLIC_ENABLE_ADSENSE=false
 NEXT_PUBLIC_ADSENSE_CLIENT_ID=ca-pub-xxxxxxxxxxxxxxxx
 ```
+
+Nota:
+- `frontend/.env.local.example` ya incluye la configuración pública actual de Firebase Client SDK usada por Verity.
+- Estas variables `NEXT_PUBLIC_FIREBASE_*` son públicas del cliente web y no sustituyen a las credenciales privadas `FIREBASE_*` del backend.
+- Para login local con Google, el backend de Verity necesita además `FIREBASE_*` o un `backend/service-account.json` válido del proyecto Firebase.
 
 ### Paso 3: Levantar Servicios con Docker
 

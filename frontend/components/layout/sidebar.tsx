@@ -36,7 +36,6 @@ import { toast } from 'sonner';
 import { updateUserProfile } from '@/lib/profile.api';
 
 interface SidebarProps {
-  onOpenDashboard?: () => void;
   onOpenSources?: () => void;
   onOpenChat?: () => void;
   isMobileOpen?: boolean;
@@ -44,7 +43,6 @@ interface SidebarProps {
 }
 
 export function Sidebar({
-  onOpenDashboard,
   onOpenSources,
   onOpenChat,
   isMobileOpen: isMobileOpenProp,
@@ -61,6 +59,7 @@ export function Sidebar({
   const currentTopic = searchParams.get('topic') || 'general';
   const globalRefresh = useGlobalRefresh();
   const queryClient = useQueryClient();
+  const mediaBiasAtlasUrl = process.env.NEXT_PUBLIC_MEDIA_BIAS_ATLAS_URL?.trim() || 'http://localhost:3004';
   // Sprint 35: Public endpoint, no CRON_SECRET needed
   const canGlobalRefresh = true; // Rate-limited in backend (1 req/5min)
   const canRefreshCurrentTopic = currentTopic === 'local' ? !!user : canGlobalRefresh;
@@ -249,11 +248,10 @@ export function Sidebar({
       },
     },
     {
-      label: 'Medios',
+      label: 'Media Bias Atlas',
       icon: BarChart3,
-      onClick: () => {
-        onOpenDashboard?.();
-      },
+      href: mediaBiasAtlasUrl,
+      external: true,
     },
     {
       label: 'Fuentes RSS',
@@ -331,6 +329,26 @@ export function Sidebar({
                 const isDisabled = Boolean((item as { disabled?: boolean }).disabled) || showSpinner;
 
                 if ('href' in item && item.href) {
+                  if ('external' in item && item.external) {
+                    return (
+                      <a
+                        key={index}
+                        href={item.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => setIsMobileOpen(false)}
+                        className={cn(
+                          'w-full h-10 rounded-lg transition-colors flex items-center gap-3 px-3',
+                          'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100',
+                          'dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-900'
+                        )}
+                      >
+                        <Icon className="h-4 w-4 shrink-0" />
+                        <span className="text-sm font-medium">{item.label}</span>
+                      </a>
+                    );
+                  }
+
                   return (
                     <Link
                       key={index}
@@ -526,6 +544,26 @@ export function Sidebar({
 
               // Si el item tiene href, renderizar Link; si tiene onClick, renderizar button
               if ('href' in item && item.href) {
+                if ('external' in item && item.external) {
+                  return (
+                    <a
+                      key={index}
+                      href={item.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={cn(
+                        'w-full h-10 rounded-lg transition-colors flex items-center gap-3 px-3',
+                        'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100',
+                        'dark:text-zinc-400 dark:hover:text-white dark:hover:bg-zinc-900'
+                      )}
+                      title={!isOpen ? item.label : undefined}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" />
+                      {isOpen && <span className="text-sm font-medium">{item.label}</span>}
+                    </a>
+                  );
+                }
+
                 return (
                   <Link
                     key={index}

@@ -9,6 +9,7 @@ declare namespace NodeJS {
   interface ProcessEnv {
     // Backend API
     NEXT_PUBLIC_API_URL: string;
+    NEXT_PUBLIC_MEDIA_BIAS_ATLAS_URL?: string;
 
     // Firebase Configuration
     NEXT_PUBLIC_FIREBASE_API_KEY: string;
