@@ -1,0 +1,102 @@
+{
+  "name": "clawbot_staging_receiver",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "clawbot/staging/proposals",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-clawbot-staging",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst data = item.json ?? {};\nconst headers = data.headers ?? {};\nconst body = data.body ?? data;\n\nconst getHeader = (name) => headers[name] ?? headers[name.toLowerCase()] ?? headers[name.toUpperCase()] ?? null;\n\nconst token = getHeader('x-clawbot-token');\nconst environment = getHeader('x-clawbot-environment');\nconst allowedActions = ['propose_source', 'report_incident', 'summarize_status', 'validate_site'];\n\nconst action = body.action ?? null;\nconst sourceType = body.sourceType ?? null;\nconst confidence = body.confidence;\n\nlet accepted = true;\nlet httpStatus = 202;\nlet error = '';\n\nif (!token) {\n  accepted = false;\n  httpStatus = 401;\n  error = 'missing_token';\n} else if (environment !== 'staging') {\n  accepted = false;\n  httpStatus = 403;\n  error = 'invalid_environment';\n} else if (!action || !sourceType) {\n  accepted = false;\n  httpStatus = 400;\n  error = 'missing_required_fields';\n} else if (!allowedActions.includes(action)) {\n  accepted = false;\n  httpStatus = 400;\n  error = 'unsupported_action';\n} else if (confidence !== undefined && (typeof confidence !== 'number' || confidence < 0 || confidence > 1)) {\n  accepted = false;\n  httpStatus = 400;\n  error = 'invalid_confidence';\n}\n\nreturn [{ json: { accepted, httpStatus, error, action, sourceType, title: body.title ?? '', summary: body.summary ?? '', url: body.url ?? '', confidence: confidence ?? null, tags: Array.isArray(body.tags) ? body.tags : [], metadata: body.metadata ?? {}, environment: environment ?? null, receivedAt: new Date().toISOString(), rawPayload: body } }];"
+      },
+      "id": "code-validate-request",
+      "name": "Validate Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.accepted }}",
+              "operation": "isTrue"
+            }
+          ]
+        }
+      },
+      "id": "if-accepted",
+      "name": "Accepted?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [760, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { httpStatus: 202, responseBody: { success: true, accepted: true, decision: 'queued_for_review', action: $json.action, sourceType: $json.sourceType, receivedAt: $json.receivedAt }, auditRecord: { accepted: true, decision: 'queued_for_review', action: $json.action, sourceType: $json.sourceType, title: $json.title, url: $json.url, confidence: $json.confidence, environment: $json.environment, receivedAt: $json.receivedAt, rawPayload: $json.rawPayload } } }];"
+      },
+      "id": "code-build-success",
+      "name": "Build Success Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1020, 220]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { httpStatus: $json.httpStatus ?? 400, responseBody: { success: false, accepted: false, error: $json.error ?? 'invalid_request', action: $json.action ?? null, sourceType: $json.sourceType ?? null, receivedAt: $json.receivedAt ?? new Date().toISOString() } } }];"
+      },
+      "id": "code-build-error",
+      "name": "Build Error Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1020, 380]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.responseBody }}",
+        "options": {
+          "responseCode": "={{ $json.httpStatus }}"
+        }
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1280, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Validate Request", "type": "main", "index": 0 }]]
+    },
+    "Validate Request": {
+      "main": [[{ "node": "Accepted?", "type": "main", "index": 0 }]]
+    },
+    "Accepted?": {
+      "main": [
+        [{ "node": "Build Success Response", "type": "main", "index": 0 }],
+        [{ "node": "Build Error Response", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build Success Response": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    },
+    "Build Error Response": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "clawbot-staging-receiver-v1"
+}

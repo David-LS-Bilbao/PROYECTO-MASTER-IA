@@ -1,0 +1,29 @@
+services:
+  clawbot-staging:
+    image: ghcr.io/openclaw/openclaw:latest
+    container_name: clawbot-staging
+    restart: "no"
+    env_file:
+      - ./clawbot/.env.staging
+    command: ["sleep", "infinity"]
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid,nodev
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    mem_limit: 768m
+    cpus: 1.0
+    volumes:
+      - ./clawbot/data:/app/data
+      - ./clawbot/logs:/app/logs
+      - ./clawbot/config:/app/config:ro
+    networks:
+      - clawbot_staging_net
+
+networks:
+  clawbot_staging_net:
+    name: clawbot_staging_net
+    driver: bridge

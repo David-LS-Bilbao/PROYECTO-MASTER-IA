@@ -1,0 +1,92 @@
+services:
+  postgres-staging:
+    image: pgvector/pgvector:pg16
+    container_name: veritynews-postgres-staging
+    restart: unless-stopped
+    env_file:
+      - ./env/postgres.staging.env
+    volumes:
+      - verity_staging_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - verity_staging_net
+
+  redis-staging:
+    image: redis:7-alpine
+    container_name: veritynews-redis-staging
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - verity_staging_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - verity_staging_net
+
+  backend-staging:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: veritynews-backend-staging
+    restart: unless-stopped
+    env_file:
+      - ./env/backend.staging.env
+    depends_on:
+      postgres-staging:
+        condition: service_healthy
+      redis-staging:
+        condition: service_healthy
+    networks:
+      - verity_staging_net
+
+  frontend-staging:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.staging
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NEXT_PUBLIC_CRON_SECRET: ${NEXT_PUBLIC_CRON_SECRET}
+        NEXT_PUBLIC_FIREBASE_API_KEY: ${NEXT_PUBLIC_FIREBASE_API_KEY}
+        NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN}
+        NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${NEXT_PUBLIC_FIREBASE_PROJECT_ID}
+        NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET}
+        NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID}
+        NEXT_PUBLIC_FIREBASE_APP_ID: ${NEXT_PUBLIC_FIREBASE_APP_ID}
+        NEXT_PUBLIC_ENABLE_ADSENSE: ${NEXT_PUBLIC_ENABLE_ADSENSE}
+        NEXT_PUBLIC_ADSENSE_CLIENT_ID: ${NEXT_PUBLIC_ADSENSE_CLIENT_ID}
+        SENTRY_ORG: ${SENTRY_ORG}
+        SENTRY_PROJECT: ${SENTRY_PROJECT}
+        SENTRY_AUTH_TOKEN: ${SENTRY_AUTH_TOKEN}
+    container_name: veritynews-frontend-staging
+    restart: unless-stopped
+    env_file:
+      - ./env/frontend.staging.env
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      HOSTNAME: 0.0.0.0
+    depends_on:
+      backend-staging:
+        condition: service_started
+    ports:
+      - "127.0.0.1:3002:3001"
+    networks:
+      - verity_staging_net
+
+volumes:
+  verity_staging_postgres_data:
+  verity_staging_redis_data:
+  verity_staging_frontend_node_modules:
+  verity_staging_frontend_next:
+
+networks:
+  verity_staging_net:
+    name: verity_staging_net
+    driver: bridge
